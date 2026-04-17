@@ -31,12 +31,15 @@ PATTERNS = [
 SKIP_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg',
                    '.woff', '.ttf', '.eot', '.map', '.lock', '.sum'}
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build', 'vendor'}
+SKIP_FILENAMES = {'magician-scan'}  # avoid self-scan false positives on pattern strings
 
 for root, dirs, files in os.walk(target):
     dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
     for fname in files:
         ext = os.path.splitext(fname)[1].lower()
         if ext in SKIP_EXTENSIONS:
+            continue
+        if fname in SKIP_FILENAMES:
             continue
         fpath = os.path.join(root, fname)
         try:

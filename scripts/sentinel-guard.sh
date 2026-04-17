@@ -15,7 +15,7 @@ except Exception:
 
 command = ""
 if isinstance(data, dict):
-    inp = data.get("input", data)
+    inp = data.get("tool_input", data.get("input", data))
     command = inp.get("command", inp.get("cmd", "")) if isinstance(inp, dict) else ""
 
 if not command:

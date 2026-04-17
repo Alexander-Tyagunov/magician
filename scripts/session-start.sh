@@ -89,5 +89,16 @@ except: print('unknown')
   fi
 fi
 
-CONTEXT="${LORE_NOTE}${CHRONICLE_NOTE}${STRATEGY_NOTE}"
+# ── First-run detection (project-scoped) ────────────────────────────────────
+# Keyed to the project directory so each new project gets the prompt once.
+FIRST_RUN_NOTE=""
+PROJECT_HASH=$(python3 -c "import hashlib, os; print(hashlib.md5(os.getcwd().encode()).hexdigest()[:12])" 2>/dev/null || echo "default")
+INIT_MARKER="$PLUGIN_DATA/projects/$PROJECT_HASH/initialized"
+
+if [ ! -f "$INIT_MARKER" ]; then
+  mkdir -p "$(dirname "$INIT_MARKER")"
+  FIRST_RUN_NOTE=" MAGICIAN FIRST RUN FOR THIS PROJECT: Before doing any other work, use AskUserQuestion to ask: (1) Are there any files, directories, or patterns in this project that I should NEVER read or write? Examples: proprietary algorithms, vendor directories, generated artifacts, confidential configs. If yes, write them as deny rules in settings.json under permissions.deny using glob patterns like \"Read(**/vendor/**)\" or \"Write(**/proprietary/**)\". (2) Should the workspace be shared with your team via git, or kept private to this machine? After collecting answers, create the file $INIT_MARKER to mark this project as initialized."
+fi
+
+CONTEXT="${LORE_NOTE}${CHRONICLE_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"

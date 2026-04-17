@@ -40,6 +40,15 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/format.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/access-tracker.sh\""
+          }
+        ]
       }
     ],
     "PreCompact": [
