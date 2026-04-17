@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(curl *| bash)",
+      "Bash(curl *| sh)",
+      "Bash(wget *| bash)",
+      "Bash(wget *| sh)",
+      "Bash(eval *)",
+      "Bash(rm -rf /)",
+      "Bash(cat ~/.ssh/*)",
+      "Bash(cat .env*)",
+      "Read(**/.env)",
+      "Read(**/.aws/credentials)",
+      "Read(**/id_rsa)",
+      "Read(**/id_ed25519)"
+    ]
+  }
+}
