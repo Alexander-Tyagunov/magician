@@ -1,0 +1,13 @@
+# Workspace local — per-machine, never committed
+.workspace/local/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Test artifacts
+/tmp/magician-test/
