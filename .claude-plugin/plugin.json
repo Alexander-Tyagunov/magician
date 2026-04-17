@@ -1,0 +1,25 @@
+{
+  "name": "magician",
+  "version": "1.0.0",
+  "description": "Full-stack SDLC plugin with dynamic project inspection, team memory, self-learning, and parallel agent orchestration",
+  "author": {
+    "name": "Alexander Tyagunov",
+    "email": "tyagunov.alex@gmail.com",
+    "url": "https://github.com/Alexander-Tyagunov"
+  },
+  "homepage": "https://github.com/Alexander-Tyagunov/magician",
+  "repository": "https://github.com/Alexander-Tyagunov/magician",
+  "license": "MIT",
+  "keywords": [
+    "sdlc",
+    "agents",
+    "tdd",
+    "workspace",
+    "self-learning",
+    "security",
+    "mobile",
+    "gamedev",
+    "parallel",
+    "orchestration"
+  ]
+}
