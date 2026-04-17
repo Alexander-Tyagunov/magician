@@ -1,0 +1,42 @@
+{
+  "name": "magician-marketplace",
+  "owner": {
+    "name": "Alexander Tyagunov",
+    "email": "tyagunov.alex@gmail.com"
+  },
+  "metadata": {
+    "description": "Magician plugin — full-stack SDLC for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "magician",
+      "source": {
+        "source": "github",
+        "repo": "Alexander-Tyagunov/magician",
+        "ref": "main"
+      },
+      "description": "Full-stack SDLC plugin with dynamic project inspection, team memory, self-learning, and parallel agent orchestration",
+      "version": "1.0.0",
+      "author": {
+        "name": "Alexander Tyagunov",
+        "email": "tyagunov.alex@gmail.com"
+      },
+      "homepage": "https://github.com/Alexander-Tyagunov/magician",
+      "repository": "https://github.com/Alexander-Tyagunov/magician",
+      "license": "MIT",
+      "keywords": [
+        "sdlc",
+        "agents",
+        "tdd",
+        "workspace",
+        "self-learning",
+        "security",
+        "mobile",
+        "gamedev",
+        "parallel",
+        "orchestration"
+      ]
+    }
+  ]
+}
