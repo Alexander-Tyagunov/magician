@@ -14,40 +14,96 @@ Do NOT write any code, scaffold any project, or take any implementation action u
 
 ---
 
-## Process
+## Process — Gated Dialogue
 
-1. **Explore context** — read relevant files, recent git log, existing specs in `.workspace/shared/specs/`
-2. **Understand the inspector** — note detected stack and archetype from session additionalContext
-3. **Ask clarifying questions** — one at a time. Focus on: purpose, constraints, success criteria, edge cases
-   - Skip stack questions the inspector already answered
-   - Use multiple choice when possible
-4. **Offer the visual companion** — ask the user which design mode they want (see below). This offer is its own message.
-5. **Propose 2–3 approaches** — with tradeoffs and your recommendation; render visually if mode allows
-6. **Present design** — architecture, components, data flow, error handling, testing strategy; render visually if mode allows
-7. **Capture approval** — take a Playwright screenshot of the approved screen if visual companion is active
-8. **Write spec** — save to `.workspace/shared/specs/YYYY-MM-DD-<feature>.md`; embed design artifact path
-9. **Commit** — `git add .workspace/shared/specs/ && git commit -m "docs: add spec for <feature>"`
+**Core rule: each gate is one turn. End your turn after each gate. Do NOT advance to the next gate until the user replies. Never collapse two gates into one message.**
+
+### Step 1 — Explore
+Read relevant files, recent git log, existing specs in `.workspace/shared/specs/`. Note detected stack and archetype from session additionalContext. Do this silently before asking anything.
+
+### Step 2 — Clarify (one question per turn)
+Ask one clarifying question. End your turn. Wait for the answer. Repeat until you understand purpose, constraints, success criteria, and edge cases. Skip stack questions the inspector already answered. Use multiple choice when possible.
+
+---
+### GATE 0 — Design Mode
+Present the design mode options as its own message (see Design Mode section below). End your turn. **Do not propose approaches until the user picks a mode.**
+
+If visual mode chosen: start the visual companion server now (see Visual Companion → Starting). Open the browser. Tell user the URL. Then proceed to GATE 1.
+
+---
+### GATE 1 — Approach Selection
+
+Present 2–3 approaches.
+
+**If visual mode:** write the approach comparison screen (`$VC_SCREENS/v1/approaches.html`), tell user the URL and a one-sentence summary of each approach. End your turn. On the next turn read `$VC_STATE/events` for their click choice plus their terminal message.
+
+**If text mode:** present the approaches in text. End with: *"Which approach would you like to go with?"* End your turn.
+
+**Do not present architecture until the user confirms an approach.**
+
+---
+### GATE 2 — Architecture Review
+
+Present the architecture for the chosen approach only.
+
+**If visual mode:** write the architecture diagram screen (`$VC_SCREENS/v1/architecture.html`). Tell user the URL and describe the diagram in 2 sentences. End your turn. Wait for their feedback.
+
+**If text mode:** present the architecture (file structure, data flow, component responsibilities). End with: *"Does this architecture make sense, or do you want to change anything?"* End your turn.
+
+Iterate on changes if requested. Only advance when user explicitly approves.
+
+---
+### GATE 3 — UI Design (skip if no UI involved)
+
+If the feature has a UI, present a mockup.
+
+**If visual mode:** write the mockup screen (`$VC_SCREENS/v1/mockup.html`) as a full-document design applying frontend-design quality rules. Tell user the URL. End your turn. Iterate on versions if requested. Capture a Playwright screenshot when approved.
+
+**If text mode:** describe the UI layout and key interactions. End with: *"Does this design direction look right?"* End your turn.
+
+Only advance when user explicitly approves the design.
+
+---
+### GATE 4 — Spec Approval
+
+Write the full spec to `.workspace/shared/specs/YYYY-MM-DD-<feature>.md`. Then say:
+
+> "Spec written to `[path]`. Please review it and let me know if anything needs to change before we lock it in."
+
+End your turn. Wait for explicit approval — "yes", "looks good", "approved", etc. Do NOT commit until this arrives.
+
+---
+### Step 3 — Commit and close
+
+```bash
+git add .workspace/shared/specs/
+git commit -m "docs: add spec for <feature>"
+```
+
+Stop the visual companion if running. Then say: *"Spec approved and committed. Run `/magician:blueprint` to create the implementation plan."*
 
 ---
 
 ## Design Mode
 
-Before proposing approaches, ask the user which mode they want. Present this as a single message with exactly these options:
+At GATE 0, send this message — and nothing else. Do not add clarifying questions. Do not preview approaches. Just this:
 
 > **How would you like to work through the design?**
 >
-> **A — Visual + Strict** Open a design companion in your browser. Approved mockups become binding implementation targets — forge tasks must match the design.
+> **A — Visual + Strict** — I open a design companion in your browser. I show approach options, architecture diagrams, and UI mockups as interactive screens you can click. Approved designs become binding implementation targets — forge tasks must match them exactly.
 >
-> **B — Visual + Reference** Open the design companion, but treat mockups as inspiration. Implementation can deviate with good reason.
+> **B — Visual + Reference** — Same visual companion, but designs are advisory. Implementation can deviate with good reason.
 >
-> **C — Text only** Skip the visual companion. Design dialogue happens here in the terminal.
+> **C — Text only** — Skip the browser companion. Everything happens here in the terminal.
 
-Read their reply. Store the chosen mode:
-- `VISUAL_STRICT` → visual companion active, designs are binding
-- `VISUAL_REFERENCE` → visual companion active, designs are advisory
-- `TEXT_ONLY` → skip all visual companion steps
+End your turn. Wait for their reply before doing anything else.
 
-If the user says "skip" at any point: switch to TEXT_ONLY immediately, stop the companion if running.
+Map reply to mode:
+- `VISUAL_STRICT` → visual companion active, designs are binding in forge
+- `VISUAL_REFERENCE` → visual companion active, designs are advisory in forge
+- `TEXT_ONLY` → no visual companion
+
+If the user says "skip" at any point during the session: immediately switch to TEXT_ONLY, stop the companion server if running, continue text-only.
 
 ---
 
