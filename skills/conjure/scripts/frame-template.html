@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>✦ {{PROJECT}} · {{VERSION}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg:        #080810;
+      --surface:   #0f0f1a;
+      --border:    #1a1a2e;
+      --accent:    #7c3aed;
+      --accent-lo: rgba(124,58,237,0.12);
+      --accent-hi: #a78bfa;
+      --gold:      #f59e0b;
+      --green:     #10b981;
+      --red:       #f43f5e;
+      --text:      #e2e8f0;
+      --muted:     #4a5568;
+      --dim:       #64748b;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Subtle noise */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky; top: 0; z-index: 200;
+      background: rgba(8,8,16,0.88);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .hd-logo {
+      font-size: 16px; font-weight: 700; letter-spacing: -0.4px;
+      background: linear-gradient(135deg, #7c3aed, #a78bfa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .hd-sep { color: var(--border); }
+
+    .hd-project {
+      font-size: 13px; font-weight: 600; color: var(--dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .hd-version {
+      font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 100px;
+      background: var(--accent-lo); color: var(--accent-hi);
+      border: 1px solid rgba(124,58,237,0.25);
+    }
+
+    .hd-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 7px var(--green);
+      animation: blink 2.4s ease-in-out infinite;
+      margin-left: auto;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    #__vc_selection {
+      font-size: 12px; color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      margin-left: 8px;
+      transition: color 0.25s;
+    }
+
+    /* ── Main ── */
+    main {
+      flex: 1; position: relative; z-index: 1;
+      padding: 36px 28px;
+      max-width: 1280px; margin: 0 auto; width: 100%;
+    }
+
+    /* ── Typography ── */
+    .page-title {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700; letter-spacing: -1.2px; line-height: 1.1;
+      background: linear-gradient(135deg, var(--text) 40%, var(--dim));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+
+    .page-subtitle {
+      font-size: 15px; color: var(--dim); line-height: 1.65; margin-bottom: 36px;
+    }
+
+    .section-label {
+      font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 14px; font-weight: 600;
+    }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+
+    /* ── Approach cards ── */
+    .approaches {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 18px; margin-top: 4px;
+    }
+
+    .approach-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px; padding: 26px;
+      cursor: pointer; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+      position: relative; overflow: hidden;
+    }
+
+    .approach-card::after {
+      content: ''; position: absolute; inset: 0; border-radius: 18px;
+      background: radial-gradient(circle at 50% -10%, var(--accent-lo), transparent 65%);
+      opacity: 0; transition: opacity 0.25s;
+    }
+
+    .approach-card:hover { transform: translateY(-3px); border-color: #2a2a40; box-shadow: 0 12px 36px rgba(0,0,0,0.4); }
+    .approach-card:hover::after { opacity: 1; }
+
+    .approach-card.selected,
+    .approach-card.recommended.selected {
+      border-color: var(--accent-hi);
+      box-shadow: 0 0 0 1px var(--accent), 0 12px 36px rgba(124,58,237,0.25);
+    }
+
+    .approach-card.recommended {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, var(--surface) 60%, rgba(124,58,237,0.06));
+    }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 100px; margin-bottom: 14px;
+    }
+    .badge-recommended { background: rgba(124,58,237,0.18); color: var(--accent-hi); }
+    .badge-simple      { background: rgba(16,185,129,0.14); color: var(--green); }
+    .badge-complex     { background: rgba(244,63,94,0.14);  color: var(--red); }
+    .badge-neutral     { background: rgba(100,116,139,0.18); color: var(--dim); }
+    .badge-iteration   { background: rgba(245,158,11,0.14); color: var(--gold); border: 1px solid rgba(245,158,11,0.3); }
+
+    /* ── Card internals ── */
+    .card-title { font-size: 21px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
+    .card-desc  { font-size: 13.5px; color: var(--dim); line-height: 1.65; margin-bottom: 20px; }
+
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .pros-label, .cons-label { font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+    .pros-label { color: var(--green); }
+    .cons-label { color: var(--red); }
+    .pros li, .cons li {
+      font-size: 12px; color: var(--dim); line-height: 1.7;
+      list-style: none; padding-left: 14px; position: relative;
+    }
+    .pros li::before { content: '+'; position: absolute; left: 0; color: var(--green); }
+    .cons li::before { content: '–'; position: absolute; left: 0; color: var(--red); }
+
+    .complexity { display: flex; align-items: center; gap: 5px; margin-top: 18px; }
+    .complexity-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-right: 2px; }
+    .complexity-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+    .complexity-dot.filled { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+    /* ── Architecture / diagrams ── */
+    .arch-container {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 18px; padding: 32px; margin: 8px 0;
+      overflow-x: auto;
+    }
+
+    .arch-title {
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: 24px;
+    }
+
+    .mermaid { display: flex; justify-content: center; }
+
+    /* ── Browser mockup chrome ── */
+    .mockup-chrome {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px 20px 0 0; overflow: hidden; margin: 8px 0 0;
+    }
+    .mockup-titlebar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 11px 16px; border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.015);
+    }
+    .mock-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .mock-dot:nth-child(1) { background: #ff5f57; }
+    .mock-dot:nth-child(2) { background: #febc2e; }
+    .mock-dot:nth-child(3) { background: #28c840; }
+    .mock-url {
+      flex: 1; margin: 0 14px;
+      background: rgba(255,255,255,0.04); border-radius: 7px;
+      padding: 4px 12px; font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: var(--muted);
+    }
+    .mockup-body { min-height: 380px; }
+    .mockup-footer { border-top: 1px solid var(--border); height: 40px; background: rgba(255,255,255,0.01); }
+
+    /* ── Iteration badge ── */
+    .iteration-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 700;
+      padding: 4px 14px; border-radius: 100px;
+      background: rgba(245,158,11,0.1); color: var(--gold);
+      border: 1px solid rgba(245,158,11,0.3); margin-bottom: 20px;
+    }
+
+    /* ── Comparison grid ── */
+    .compare-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    }
+    .compare-pane {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden;
+    }
+    .compare-label {
+      padding: 10px 16px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.5px; text-transform: uppercase; color: var(--dim);
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    .compare-content { padding: 20px; }
+
+    /* ── Approval CTA ── */
+    .approve-strip {
+      margin-top: 36px; padding: 22px 28px;
+      background: linear-gradient(135deg, rgba(124,58,237,0.1), rgba(16,185,129,0.06));
+      border: 1px solid rgba(124,58,237,0.25); border-radius: 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    }
+    .approve-strip p { font-size: 14px; color: var(--dim); }
+    .approve-strip strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="hd-logo">✦ Magician</span>
+    <span class="hd-sep">|</span>
+    <span class="hd-project">{{PROJECT}}</span>
+    <span class="hd-version">{{VERSION}}</span>
+    <div class="hd-dot"></div>
+    <span id="__vc_selection">click an option to select</span>
+  </header>
+
+  <main>
+    <!-- CONTENT -->
+  </main>
+</body>
+</html>
