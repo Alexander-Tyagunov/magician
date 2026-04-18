@@ -48,13 +48,17 @@ for f in files:
 
 ## Process
 
-1. Ask user: what do you want to see?
-   - "last N sessions" — show summaries
-   - "sessions on branch X" — filter by branch
-   - "sessions since date Y" — filter by date
-   - "clear old chronicles" — delete entries older than N days
-2. Execute the relevant command and present results
-3. For clear: ask confirmation before deleting
+1. Ask: "What do you want to see?
+   - `last N` — show last N session summaries
+   - `branch X` — sessions on branch X
+   - `since YYYY-MM-DD` — sessions from that date onward
+   - `clear N` — delete entries older than N days"
+
+   **End your turn. Wait for their choice before running any commands.**
+
+2. Execute the relevant command and present results.
+
+3. For `clear`: before deleting anything, ask: "This will permanently delete chronicle entries older than N days. Confirm?" **End your turn. Wait for an explicit 'yes' or 'confirm' before running the delete.**
 
 ## Clearing Old Chronicles
 ```bash

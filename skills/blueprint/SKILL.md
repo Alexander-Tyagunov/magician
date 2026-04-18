@@ -10,7 +10,9 @@ Convert an approved spec into an implementation task plan with parallelism analy
 
 ## Inputs Required
 
-Ask the user for: spec file path (or read from `.workspace/shared/specs/` most recent).
+If the spec file path is not clear from context, ask: "Which spec should I plan from? (I'll use the most recent file in `.workspace/shared/specs/` if you don't specify.)"
+
+**End your turn. Wait for their reply (or proceed with most recent if context is unambiguous).**
 
 ## Process
 
@@ -19,8 +21,11 @@ Ask the user for: spec file path (or read from `.workspace/shared/specs/` most r
 3. **Decompose into tasks** — each task: one component, 2–5 minutes of work, starts with a failing test
 4. **Build parallelism map** — mark each task: PARALLEL (no shared files, no dependency) or SEQUENTIAL (depends on task N)
 5. **Write the plan** — save to `.workspace/shared/plans/YYYY-MM-DD-<feature>.md`
-6. **Present summary** — show task list with parallelism annotations
-7. **Get approval** — do not proceed without user confirmation
+6. **Present summary** — show task list with parallelism annotations, then ask:
+
+   > "Blueprint ready. Does this task breakdown look right — any tasks to split, merge, or reorder before we lock it in?"
+
+   **End your turn. Wait for explicit approval ("looks good", "approved", "yes", etc.) before closing.**
 
 ## Task Format
 

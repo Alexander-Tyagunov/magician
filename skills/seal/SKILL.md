@@ -37,7 +37,9 @@ git push -u origin <branch>
 ```
 
 ### 5. Create PR
-Ask user to provide the PR title, then:
+Ask: "What should the PR title be?" **End your turn. Wait for their answer before running any `gh` command.**
+
+Once you have the title:
 ```bash
 gh pr create --title "<title>" --body "$(cat <<'EOF'
 ## Summary

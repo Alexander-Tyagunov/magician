@@ -10,7 +10,9 @@ Execute an entire blueprint using parallel and sequential agent dispatch.
 
 ## Inputs Required
 
-Blueprint plan file path (or read most recent from `.workspace/shared/plans/`).
+If the plan file is not clear from context, ask: "Which blueprint plan should I execute? (I'll use the most recent file in `.workspace/shared/plans/` if you don't specify.)"
+
+**End your turn. Wait for their reply (or proceed with most recent if context is unambiguous).**
 
 ## Process
 

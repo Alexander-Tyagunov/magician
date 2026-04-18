@@ -16,7 +16,7 @@ Create a new magician skill from a recurring pattern.
 
 ## Process
 
-1. **Understand the pattern** — ask: "What is the behavior you want to capture as a skill?"
+1. **Understand the pattern** — ask: "What is the behavior you want to capture as a skill? Describe it in a sentence or two." **End your turn. Wait for their description before naming or drafting anything.**
 2. **Name it** — one word, verb-like, lowercase (e.g., `migrate`, `localize`, `document`)
 3. **Define the scope** — what does the skill do, where does it start, where does it end
 4. **Draft the skill**:

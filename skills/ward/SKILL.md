@@ -35,7 +35,9 @@ Go end-to-end for one behavior before expanding. First test → first implementa
 
 ## What to do if you cannot write the test first
 
-The spec is incomplete. Do not guess. Ask the user to clarify what behavior is expected before writing code.
+The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [specific behavior] should do. Can you clarify the expected input and output?"
+
+**End your turn. Wait for their clarification before writing any code.**
 
 ## Completion Signal
 

@@ -14,7 +14,7 @@ Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git op
 
 ## Process (git mode)
 
-1. **Get branch name** from user: what is this feature called?
+1. **Get branch name** — ask: "What's this feature called? (I'll use it as the branch/worktree name.)" **End your turn. Wait for their answer before creating anything.**
 2. **Create worktree**:
    ```bash
    BRANCH="feature/<name>"

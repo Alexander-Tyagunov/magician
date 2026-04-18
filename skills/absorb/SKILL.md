@@ -35,7 +35,7 @@ Document rationale: "Declined: <reason> — <alternative approach if any>"
 - Simplification would reduce readability
 - Security finding is a false positive (document why)
 
-Never decline Critical or High findings without escalating to the user.
+Never decline Critical or High findings without escalating. When considering declining one, ask: "I'm considering declining [finding] because [reason]. Do you agree, or should I fix it anyway?" **End your turn. Wait for explicit confirmation before declining.**
 
 ## Summary Report
 

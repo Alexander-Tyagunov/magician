@@ -15,11 +15,16 @@ This process is blameless. The goal is to understand what happened and prevent r
 ## Process
 
 ### Phase 1: Gather Facts
-1. Ask: what was the incident? (brief description)
-2. Ask: what was the impact? (users affected, duration, data loss, revenue)
-3. Ask: when did it start and end?
 
-Collect timeline evidence:
+Ask all three questions in one message:
+> "To run a proper post-mortem, I need the basics:
+> 1. What was the incident? (brief description)
+> 2. What was the impact? (users affected, duration, data loss, revenue)
+> 3. When did it start and end? (approximate times / dates)"
+
+**End your turn. Wait for all three answers before running any git or CI commands.**
+
+Then collect timeline evidence:
 ```bash
 git log --oneline --since="<start>" --until="<end>"
 gh run list --limit 20

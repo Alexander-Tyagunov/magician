@@ -30,7 +30,7 @@ Run three specialist agents in parallel: correctness reviewer, sentinel, simplif
    Fix: remediation steps
    ...
    ```
-7. Ask: "Ready to /absorb these findings?"
+7. Ask: "Ready to `/magician:absorb` these findings, or are there any you want to discuss first?" **End your turn. Wait for their reply before closing.**
 
 ## Agent Prompt Template
 

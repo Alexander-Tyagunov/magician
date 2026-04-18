@@ -20,9 +20,13 @@ ls .circleci/config.yml 2>/dev/null
 
 ### Creating a New Pipeline
 
-1. Ask: which CI provider? (GitHub Actions / GitLab CI / CircleCI / other)
-2. Ask: what stages are needed? (lint, test, build, deploy, security scan)
-3. Ask: what environments? (staging, production)
+Ask all three questions in one message:
+> "To create your pipeline, I need a few details:
+> 1. Which CI provider? (GitHub Actions / GitLab CI / CircleCI / other)
+> 2. What stages are needed? (lint, test, build, deploy, security scan)
+> 3. What environments? (staging, production, both)"
+
+**End your turn. Wait for all answers before generating any pipeline template.**
 
 ### GitHub Actions Template
 

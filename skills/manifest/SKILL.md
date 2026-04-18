@@ -20,10 +20,10 @@ GATE 4: PR title and final go-ahead (before /seal)
 ## Process
 
 ### Phase 0: Scope Triage [GATE 1]
-1. Ask: "What do you want to build?" (one sentence description)
+1. Ask: "What do you want to build?" (one sentence description). **End your turn. Wait for their answer before assessing anything.**
 2. Assess scope — is this one coherent feature or multiple independent subsystems?
 3. If too large: help decompose into sub-features, each with its own /manifest cycle
-4. Present scope to user. **Wait for approval before proceeding.**
+4. Present scope to user. **End your turn. Wait for explicit approval before proceeding to Phase 1.**
 
 ### Phase 1: Design [GATE 2]
 5. Run /conjure — full design dialogue

@@ -10,7 +10,9 @@ Execute one task from a blueprint plan using strict TDD.
 
 ## Inputs Required
 
-Ask: which task number from the plan? If no plan exists, suggest /blueprint first.
+Ask: "Which task number should I execute? (If you don't have a plan yet, run `/magician:blueprint` first.)"
+
+**End your turn. Wait for their answer before reading the plan file or writing any code.**
 
 ## Process
 

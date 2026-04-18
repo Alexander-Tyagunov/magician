@@ -15,9 +15,13 @@ Establish a baseline measurement BEFORE making any changes. Optimization without
 ## Process
 
 ### Phase 1: Define the Target
-1. Ask: what specifically is slow? (page load, API response, query, computation)
-2. Ask: what is the acceptable performance target? (e.g., "under 200ms", "p99 < 500ms")
-3. Define the measurement method before measuring
+
+Ask both questions in one message:
+> "Before I start profiling, two quick questions:
+> 1. What specifically is slow? (page load, API response, query, computation — be as specific as possible)
+> 2. What's the acceptable performance target? (e.g., 'under 200ms', 'p99 < 500ms')"
+
+**End your turn. Wait for both answers before proceeding to Phase 2. Do not run any benchmarks until you have a defined target.**
 
 ### Phase 2: Baseline
 Measure current performance using the appropriate tool:

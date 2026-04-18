@@ -18,7 +18,7 @@ State your hypothesis and evidence BEFORE reading any code or making any change.
 1. **Describe the symptom** — exact error message, stack trace, reproduction steps
 2. **State what you believe is wrong** — one sentence: "I believe X is failing because Y"
 3. **State what evidence would confirm or refute it**
-4. Get user agreement before proceeding
+4. Ask: "Does this hypothesis match what you're seeing, or do you have a different theory?" **End your turn. Do not read any code or make any change until the user agrees or redirects.**
 
 ### Phase 2: Evidence Gathering
 5. **Read relevant code** — only the code related to the hypothesis

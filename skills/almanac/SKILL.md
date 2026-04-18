@@ -26,10 +26,12 @@ Set up the magician workspace for this project. Run once per project.
 ## Process
 
 ### 1. Workspace Mode Decision
-Ask: "Should .workspace/shared/ be committed to git (shared team context) or kept entirely local (private machine)?"
+Ask: "Should `.workspace/shared/` be committed to git (shared team context) or kept entirely local (private machine)?"
 
 - **Shared mode**: `.workspace/local/` gitignored, `.workspace/shared/` committed
 - **Private mode**: entire `.workspace/` gitignored
+
+**End your turn. Wait for their reply before creating any directories or files.**
 
 ### 2. Create Directory Structure
 ```bash
@@ -100,7 +102,7 @@ Suggest based on detected stack:
 - Go: `Allow: Bash(go *)`
 - Always: `Allow: Bash(git *)`, `Allow: Read(**)`
 
-Ask user to confirm before adding any to settings.json.
+Ask: "I'd suggest adding these permission rules to settings.json — shall I add them? (yes / no / let me choose)" **End your turn. Wait for confirmation before writing to settings.json.**
 
 ### 7. MCP Suggestions
 Based on detected archetype, suggest relevant MCPs:
@@ -108,7 +110,7 @@ Based on detected archetype, suggest relevant MCPs:
 - data: notebook MCP for Jupyter integration
 - devops: cloud provider CLI MCPs
 
-Ask: "Want me to set up any of these MCPs?"
+Ask: "Want me to set up any of these MCPs? If so, which ones?" **End your turn. Wait for their reply before proceeding to step 8.**
 
 ### 8. Save Strategy
 Record workspace mode:
