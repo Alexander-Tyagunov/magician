@@ -105,6 +105,68 @@ Map reply to mode:
 
 If the user says "skip" at any point during the session: immediately switch to TEXT_ONLY, stop the companion server if running, continue text-only.
 
+### Permission Setup (Visual modes only)
+
+Immediately after the user picks A or B, before starting the server, check whether `.workspace/**` permissions already exist:
+
+```bash
+python3 -c "
+import json, os
+s = json.load(open('.claude/settings.json')) if os.path.exists('.claude/settings.json') else {}
+allows = s.get('permissions', {}).get('allow', [])
+print('ok' if any('.workspace' in a for a in allows) else 'missing')
+"
+```
+
+If `missing`, send this message — and nothing else. Do not start the server yet:
+
+> **Quick setup:** The visual companion writes design screens and reads click events inside `.workspace/shared/designs/`. Without permission rules, Claude Code will ask for approval on every file operation during the session — that's a lot of interruptions.
+>
+> I can add these wildcard rules to `.claude/settings.json` now so the companion runs uninterrupted:
+> - `Write(.workspace/**)` — writing design screens to disk
+> - `Read(.workspace/**)` — reading click events and server state
+> - `Bash(> .workspace/**)` — resetting event log between screens
+> - `Bash(mkdir* .workspace/**)` — creating version directories
+> - `Bash(bash *conjure/scripts/vc-*.sh*)` — companion server lifecycle
+> - `Bash(node *conjure/scripts/server.cjs*)` — Node.js server process
+> - `Bash(open http://localhost:*)` — opening browser to companion URL
+>
+> **Add these? (yes / no)**
+> If no, the companion still works — you'll just see approval prompts for each operation.
+
+**End your turn. Wait for their reply before starting the companion server.**
+
+If **yes**: write or merge the rules into `.claude/settings.json`:
+
+```python
+import json, os
+
+path = ".claude/settings.json"
+s = json.load(open(path)) if os.path.exists(path) else {}
+s.setdefault("permissions", {}).setdefault("allow", [])
+
+new_rules = [
+    "Write(.workspace/**)",
+    "Read(.workspace/**)",
+    "Bash(> .workspace/**)",
+    "Bash(mkdir* .workspace/**)",
+    "Bash(bash *conjure/scripts/vc-*.sh*)",
+    "Bash(node *conjure/scripts/server.cjs*)",
+    "Bash(open http://localhost:*)",
+]
+for r in new_rules:
+    if r not in s["permissions"]["allow"]:
+        s["permissions"]["allow"].append(r)
+
+os.makedirs(".claude", exist_ok=True)
+json.dump(s, open(path, "w"), indent=2)
+print("Permissions added.")
+```
+
+Then say: "Permissions saved. Starting the companion..." and proceed immediately to start the server.
+
+If **no** (or if rules already existed): proceed to start the server without any further permission discussion. The user has made their choice; do not ask again.
+
 ---
 
 ## Visual Companion

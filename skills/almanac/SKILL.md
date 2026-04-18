@@ -96,13 +96,54 @@ If no CLAUDE.md exists, create a lean one:
 Do not write generic best practices. CLAUDE.md should only contain rules specific to this project.
 
 ### 6. Permissions Allowlist
-Suggest based on detected stack:
-- JavaScript/TypeScript: `Allow: Bash(npm *)`, `Allow: Bash(npx *)`
-- Python: `Allow: Bash(pytest *)`, `Allow: Bash(ruff *)`
-- Go: `Allow: Bash(go *)`
-- Always: `Allow: Bash(git *)`, `Allow: Read(**)`
 
-Ask: "I'd suggest adding these permission rules to settings.json — shall I add them? (yes / no / let me choose)" **End your turn. Wait for confirmation before writing to settings.json.**
+Build the suggested list based on detected stack:
+- Always: `Bash(git *)`, `Read(**)`
+- Always (workspace): `Write(.workspace/**)`, `Read(.workspace/**)`, `Bash(> .workspace/**)`, `Bash(mkdir* .workspace/**)`
+- JavaScript/TypeScript: `Bash(npm *)`, `Bash(npx *)`
+- Python: `Bash(pytest *)`, `Bash(ruff *)`
+- Go: `Bash(go *)`
+
+Present the full list as one message:
+
+> **Permission setup** — I can add these allow-rules to `.claude/settings.json` so Claude Code doesn't prompt for approval on routine operations:
+>
+> Always:
+> - `Bash(git *)` — all git commands
+> - `Read(**)` — reading any file
+> - `Write(.workspace/**)` — workspace design/spec files
+> - `Read(.workspace/**)` — workspace state files
+> - `Bash(> .workspace/**)` — resetting event logs (visual companion)
+> - `Bash(mkdir* .workspace/**)` — creating workspace directories
+>
+> [Stack-specific rules listed here]
+>
+> **Options:**
+> - **yes** — add all of the above
+> - **no** — skip, I'll approve as needed
+> - **choose** — I'll list them one by one
+
+**End your turn. Wait for confirmation before writing to settings.json.**
+
+If yes or choose: write the confirmed rules using:
+
+```python
+import json, os
+
+path = ".claude/settings.json"
+s = json.load(open(path)) if os.path.exists(path) else {}
+s.setdefault("permissions", {}).setdefault("allow", [])
+
+for r in CONFIRMED_RULES:
+    if r not in s["permissions"]["allow"]:
+        s["permissions"]["allow"].append(r)
+
+os.makedirs(".claude", exist_ok=True)
+json.dump(s, open(path, "w"), indent=2)
+print("Permissions saved.")
+```
+
+If no: continue. The user has decided; do not ask again this session.
 
 ### 7. MCP Suggestions
 Based on detected archetype, suggest relevant MCPs:
