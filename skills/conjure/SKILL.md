@@ -107,7 +107,7 @@ If the user says "skip" at any point during the session: immediately switch to T
 
 ### Permission Setup (Visual modes only)
 
-Immediately after the user picks A or B, before starting the server, check whether `.workspace/**` permissions already exist:
+Immediately after the user picks A or B, check whether permissions already exist:
 
 ```bash
 python3 -c "
@@ -118,25 +118,31 @@ print('ok' if any('.workspace' in a for a in allows) else 'missing')
 "
 ```
 
-If `missing`, send this message — and nothing else. Do not start the server yet:
+If `missing`, use the `AskUserQuestion` tool with this exact configuration — do not write any text before calling it:
 
-> **Quick setup:** The visual companion writes design screens and reads click events inside `.workspace/shared/designs/`. Without permission rules, Claude Code will ask for approval on every file operation during the session — that's a lot of interruptions.
->
-> I can add these wildcard rules to `.claude/settings.json` now so the companion runs uninterrupted:
-> - `Write(.workspace/**)` — writing design screens to disk
-> - `Read(.workspace/**)` — reading click events and server state
-> - `Bash(> .workspace/**)` — resetting event log between screens
-> - `Bash(mkdir* .workspace/**)` — creating version directories
-> - `Bash(bash *conjure/scripts/vc-*.sh*)` — companion server lifecycle
-> - `Bash(node *conjure/scripts/server.cjs*)` — Node.js server process
-> - `Bash(open http://localhost:*)` — opening browser to companion URL
->
-> **Add these? (yes / no)**
-> If no, the companion still works — you'll just see approval prompts for each operation.
+```json
+{
+  "questions": [
+    {
+      "question": "The visual companion writes design screens, reads click events, runs a local server, and takes Playwright screenshots. Add wildcard allow-rules to .claude/settings.json so Claude Code doesn't prompt for each operation?",
+      "header": "Permissions",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Add all (Recommended)",
+          "description": "Three groups of rules: (1) .workspace/** — reading/writing design screens and click events between your browser and Claude; (2) companion server — starting/stopping the local Node.js server that serves prototypes; (3) Playwright — navigating to prototypes, filling forms, taking screenshots of approved designs, and saving them as spec references. Without these, you'll be prompted on every individual action."
+        },
+        {
+          "label": "Skip",
+          "description": "Companion still works — you'll approve each file write, each server command, and each Playwright action (navigate, screenshot, form interaction) individually."
+        }
+      ]
+    }
+  ]
+}
+```
 
-**End your turn. Wait for their reply before starting the companion server.**
-
-If **yes**: write or merge the rules into `.claude/settings.json`:
+If **Add all**: write these rules to `.claude/settings.json`, then say "Permissions saved — starting the companion..." and proceed:
 
 ```python
 import json, os
@@ -153,6 +159,11 @@ new_rules = [
     "Bash(bash *conjure/scripts/vc-*.sh*)",
     "Bash(node *conjure/scripts/server.cjs*)",
     "Bash(open http://localhost:*)",
+    "mcp__playwright__browser_navigate(*)",
+    "mcp__playwright__browser_take_screenshot(*)",
+    "mcp__playwright__browser_wait_for(*)",
+    "mcp__playwright__browser_snapshot(*)",
+    "mcp__playwright__browser_close(*)",
 ]
 for r in new_rules:
     if r not in s["permissions"]["allow"]:
@@ -160,12 +171,10 @@ for r in new_rules:
 
 os.makedirs(".claude", exist_ok=True)
 json.dump(s, open(path, "w"), indent=2)
-print("Permissions added.")
+print("Permissions saved.")
 ```
 
-Then say: "Permissions saved. Starting the companion..." and proceed immediately to start the server.
-
-If **no** (or if rules already existed): proceed to start the server without any further permission discussion. The user has made their choice; do not ask again.
+If **Skip** (or rules already existed): proceed immediately to start the companion server. Do not ask again this session.
 
 ---
 
