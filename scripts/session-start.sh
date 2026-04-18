@@ -59,21 +59,27 @@ fi
 
 # ── Deep framework detection from package.json ──────────────────────────────
 if [ -f "package.json" ]; then
-  PJ=$(python3 -c "
+  eval "$(python3 << 'PYEOF' 2>/dev/null || true
 import json, sys
 try:
     d = json.load(open('package.json'))
-    deps = list({**d.get('dependencies',{}), **d.get('devDependencies',{})}.keys())
-    print(' '.join(deps))
+    deps = {**d.get('dependencies',{}), **d.get('devDependencies',{})}
+    checks = [
+        ('next',     'nextjs'),
+        ('react',    'react'),
+        ('vue',      'vue'),
+        ('nuxt',     'nuxt'),
+        ('express',  'express'),
+        ('graphql',  'graphql'),
+    ]
+    for pkg, tech in checks:
+        if pkg in deps:
+            print(f'detect_append {tech}')
+    if any(k.startswith('@prisma') for k in deps):
+        print('detect_append prisma')
 except: pass
-" 2>/dev/null || true)
-  echo "$PJ" | grep -qw "next"       && detect_append "nextjs"
-  echo "$PJ" | grep -qw "react"      && detect_append "react"
-  echo "$PJ" | grep -qw "vue"        && detect_append "vue"
-  echo "$PJ" | grep -qw "nuxt"       && detect_append "nuxt"
-  echo "$PJ" | grep -qw "express"    && detect_append "express"
-  echo "$PJ" | grep -q "@prisma"     && detect_append "prisma"
-  echo "$PJ" | grep -qw "graphql"    && detect_append "graphql"
+PYEOF
+)"
 fi
 
 # ── Deep Python framework detection ─────────────────────────────────────────
@@ -99,6 +105,22 @@ fi
 # ── Jupyter notebook detection ───────────────────────────────────────────────
 (ls *.ipynb 2>/dev/null | grep -q .) && { detect_append "jupyter"; ARCHETYPE="${ARCHETYPE:-data}"; }
 
+# ── Additional framework detection ──────────────────────────────────────────
+[ -f "Package.swift" ]                           && { detect_append "swift"; ARCHETYPE="mobile"; }
+[ -f "build.gradle" ] && grep -q "kotlin" build.gradle 2>/dev/null && detect_append "kotlin"
+[ -f "pom.xml" ] && grep -qi "spring" pom.xml 2>/dev/null         && detect_append "spring"
+[ -d ".git" ]                                    && detect_append "git"
+# node: already detected as javascript; inject node lore for server-side Node projects
+[ -f "package.json" ] && [ ! -f "tsconfig.json" ] && grep -qiE '"main"|"bin"' package.json 2>/dev/null && detect_append "node"
+
+([ -d "tests" ] || [ -d "test" ] || [ -d "spec" ] || [ -f "jest.config.js" ] || [ -f "jest.config.ts" ] || [ -f "pytest.ini" ] || [ -f "vitest.config.ts" ]) && detect_append "tdd"
+
+([ -f ".env" ] && grep -qi "postgres\|postgresql" .env 2>/dev/null) || \
+  ([ -f "docker-compose.yml" ] && grep -qi "postgres" docker-compose.yml 2>/dev/null) || \
+  ([ -f "docker-compose.yaml" ] && grep -qi "postgres" docker-compose.yaml 2>/dev/null) && detect_append "postgres"
+
+detect_append "security"
+
 # ── Lore loader ──────────────────────────────────────────────────────────────
 LORE_TEXT=""
 LORE_CHARS=0
@@ -113,7 +135,7 @@ for TECH in $(echo "$TECHS" | tr ',' '\n'); do
     LORE_TEXT="${LORE_TEXT}[${TECH}] ${FRAGMENT}
 
 "
-    LORE_CHARS=$((LORE_CHARS + FL))
+    LORE_CHARS=$((LORE_CHARS + FL + ${#TECH} + 4))
   fi
 done
 
