@@ -22,12 +22,12 @@ cat >&2 <<CAT
 ${BLUE}         *        ${RESET}
 ${BLUE}        /|\\       ${RESET}
 ${BLUE}       / | \\      ${RESET}
-${BLUE}      /  ⚽  \\     ${RESET}
+${BLUE}      /  *  \\     ${RESET}
 ${BLUE}     /_________\\  ${RESET}
-${BLUE}    /\\${RESET}  ◉    ◉  ${BLUE}/\\${RESET}${CYAN}────${RESET}🪄 ${YELLOW}✦${RESET}${GREEN}˚${RESET}${CYAN}·${RESET}${PURPLE}✧${RESET}${RED}˚${RESET}${YELLOW}·✦${RESET}${GREEN}˚${RESET}${PURPLE}·✧${RESET}
-${BLUE}   /    ═══════   \\${RESET}${CYAN}    ˚·${RESET}${YELLOW}✦${RESET}${PURPLE}·˚·${RESET}${GREEN}✧${RESET}${RED}·˚·${RESET}${YELLOW}✦${RESET}
-${BLUE}  /    ( ~~~~~)    \\${RESET}${PURPLE}  ✧${RESET}${CYAN}˚·${RESET}${YELLOW}✦${RESET}${GREEN}˚·${RESET}${RED}✧${RESET}${YELLOW}˚·${RESET}${PURPLE}✦${RESET}
-${BLUE}  \________________/${RESET}
+${BLUE}    /\\${RESET}  o    o  ${BLUE}/\\${RESET}  ${CYAN}---- * . * . * .${RESET}
+${BLUE}   /    =======   \\${RESET}  ${YELLOW}. * . * . * .${RESET}
+${BLUE}  /    ( ~~~~~ )   \\${RESET}  ${GREEN}* . * . * . *${RESET}
+${BLUE}  \\________________/${RESET}
 ${BLUE}     |   | |   |  ${RESET}
 
 CAT
@@ -190,5 +190,11 @@ if [ ! -f "$INIT_MARKER" ]; then
   FIRST_RUN_NOTE=" MAGICIAN FIRST RUN FOR THIS PROJECT: Before doing any other work, use AskUserQuestion to ask: (1) Are there any files, directories, or patterns in this project that I should NEVER read or write? Examples: proprietary algorithms, vendor directories, generated artifacts, confidential configs. If yes, write them as deny rules in settings.json under permissions.deny using glob patterns like \"Read(**/vendor/**)\" or \"Write(**/proprietary/**)\". (2) Should the workspace be shared with your team via git, or kept private to this machine? After collecting answers, create the file $INIT_MARKER to mark this project as initialized."
 fi
 
-CONTEXT="${LORE_NOTE}${CHRONICLE_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}"
+CAT_ART=$'         *        \n        /|\\\n       / | \\\n      /  *  \\\n     /_________\\  \n    /\\  o    o  /\\  ---- * . * . * .\n   /    =======   \\    . * . * . * .\n  /    ( ~~~~~ )   \\  * . * . * . *\n  \\________________/\n     |   | |   |  '
+
+CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the user by printing this block inside a code fence verbatim, then proceed to help them:
+${CAT_ART}
+✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
+
+${LORE_NOTE}${CHRONICLE_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"
