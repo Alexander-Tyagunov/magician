@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/pattern-detect.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pattern-detect.sh"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/sentinel-guard.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sentinel-guard.sh"
           }
         ]
       }
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/format.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/format.sh"
           }
         ]
       },
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/access-tracker.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/access-tracker.sh"
           }
         ]
       }
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.sh"
           }
         ]
       }
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/chronicle-stop.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/chronicle-stop.sh"
           }
         ]
       }
@@ -76,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/agent-lifecycle.sh\" start"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/agent-lifecycle.sh start"
           }
         ]
       }
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/agent-lifecycle.sh\" stop"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/agent-lifecycle.sh stop"
           }
         ]
       }
@@ -96,7 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-init.sh\""
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-init.sh"
           }
         ]
       }
