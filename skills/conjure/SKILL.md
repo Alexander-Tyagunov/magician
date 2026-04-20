@@ -57,13 +57,44 @@ Iterate on changes if requested. Only advance when user explicitly approves.
 
 If the feature has a UI, present a mockup.
 
-**If visual mode:** write the mockup screen (`$VC_SCREENS/v1/mockup.html`) as a full-document design applying frontend-design quality rules. Tell user the URL. End your turn. Iterate on versions if requested. Capture a Playwright screenshot when approved.
+**If visual mode:** write two files for every mockup — `$VC_SCREENS/v1/mockup.css` (all styles) first, then `$VC_SCREENS/v1/mockup.html` (HTML only, linking to it via `<link rel="stylesheet" href="mockup.css">`). No `<style>` blocks in the HTML. Apply frontend-design quality rules. Tell user the URL. End your turn. Iterate on versions if requested (keep paired naming: `mockup-v2.css` + `mockup-v2.html`). Capture a Playwright screenshot when approved.
 
 **If text mode:** describe the UI layout and key interactions. End with: *"Does this design direction look right?"* End your turn.
 
 Only advance when user explicitly approves the design.
 
 ---
+### GATE 3.5 — Design-Only Close (mode D only)
+
+**Skip GATE 4 entirely when mode is `DESIGN_ONLY`.**
+
+After the user approves the mockup:
+
+1. Write `$DESIGN_DIR/design-notes.md`:
+
+```markdown
+# [Feature] Design Notes
+
+**Date:** YYYY-MM-DD
+**Approach chosen:** [approach name]
+**Screens:** screens/v{n}/
+**Approved mockup:** screens/v{n}/mockup[-v{m}].html + .css
+
+To reuse this design in a future session, reference this folder when running /conjure.
+```
+
+2. Stop the visual companion:
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/conjure/scripts/vc-stop.sh" "$DESIGN_DIR"
+```
+
+3. Say:
+> "Mockup saved to `[DESIGN_DIR]`. Open `screens/v{n}/mockup.html` directly in your browser to review it — CSS is in the sibling `.css` file. Run `/conjure` in a future session and reference this folder to continue."
+
+Do **not** write a spec file. Do **not** invoke writing-plans or blueprint.
+
+---
+
 ### GATE 4 — Spec Approval
 
 Write the full spec to `.workspace/shared/specs/YYYY-MM-DD-<feature>.md`. Then say:
@@ -95,6 +126,8 @@ At GATE 0, send this message — and nothing else. Do not add clarifying questio
 > **B — Visual + Reference** — Same visual companion, but designs are advisory. Implementation can deviate with good reason.
 >
 > **C — Text only** — Skip the browser companion. Everything happens here in the terminal.
+>
+> **D — Design Only (Visual)** — Full visual dialogue (approaches → architecture → mockup) with no spec and no implementation plan. Artifacts saved to `.workspace/shared/mockups/YYYY-MM-DD-<feature>/` for reuse across sessions.
 
 End your turn. Wait for their reply before doing anything else.
 
@@ -102,6 +135,7 @@ Map reply to mode:
 - `VISUAL_STRICT` → visual companion active, designs are binding in forge
 - `VISUAL_REFERENCE` → visual companion active, designs are advisory in forge
 - `TEXT_ONLY` → no visual companion
+- `DESIGN_ONLY` → visual companion active, output saved to `.workspace/shared/mockups/`, no spec written, no writing-plans invoked
 
 If the user says "skip" at any point during the session: immediately switch to TEXT_ONLY, stop the companion server if running, continue text-only.
 
@@ -190,8 +224,12 @@ The visual companion is a local Node.js WebSocket server that serves interactive
 
 ### Starting the Companion
 
+Use the appropriate output directory based on mode:
+- Modes A/B/C: `DESIGN_DIR=".workspace/shared/designs/$(date +%Y-%m-%d)-<feature>"`
+- Mode D: `DESIGN_DIR=".workspace/shared/mockups/$(date +%Y-%m-%d)-<feature>"`
+
 ```bash
-DESIGN_DIR=".workspace/shared/designs/$(date +%Y-%m-%d)-<feature>"
+DESIGN_DIR=".workspace/shared/[designs|mockups]/$(date +%Y-%m-%d)-<feature>"
 mkdir -p "$DESIGN_DIR"
 SERVER_JSON=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/conjure/scripts/vc-start.sh" "$DESIGN_DIR" "<project-name>")
 VC_URL=$(echo "$SERVER_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['url_base'])")
@@ -356,8 +394,7 @@ graph TD
 
 ### 3. UI Mockup — Full Document
 
-For UI features, write a **full HTML document** (starts with `<!DOCTYPE html>`) to `$VC_SCREENS/v1/mockup.html`.
-The server serves it as-is and injects only the helper + connection bar.
+For UI features, write **two files** for every mockup. The server serves the HTML as-is (injecting only the helper + connection bar); the CSS file is served from the same directory, so the relative link works both via the server and when opened directly from the filesystem.
 
 Apply frontend-design quality rules — these are not optional:
 
@@ -371,6 +408,126 @@ Apply frontend-design quality rules — these are not optional:
 
 **Motion:** Add at least one CSS animation — entrance fade-up for hero text, subtle float on cards, gradient shift on backgrounds.
 
+Write the CSS file **first**, then the HTML that references it.
+
+**`$VC_SCREENS/v1/mockup.css`** — all styles, no HTML:
+
+```css
+:root {
+  --bg:      #0c0c14;
+  --surface: #13131f;
+  --border:  #1e1e32;
+  --accent:  #7c3aed;
+  --accent2: #06b6d4;
+  --text:    #f0f0f8;
+  --muted:   #6b7280;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% 20%, rgba(124,58,237,0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(6,182,212,0.08), transparent);
+}
+
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 18px 48px;
+  display: flex; align-items: center; gap: 32px;
+  background: rgba(12,12,20,0.75); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 700; }
+.nav-links { display: flex; gap: 24px; margin-left: auto; }
+.nav-links a { font-size: 14px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
+.nav-links a:hover { color: var(--text); }
+.nav-cta {
+  padding: 8px 20px; border-radius: 100px;
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 600; text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.hero {
+  padding: 160px 48px 80px;
+  display: grid; grid-template-columns: 1fr 0.9fr; gap: 60px; align-items: center;
+  max-width: 1280px; margin: 0 auto;
+}
+
+.hero-eyebrow {
+  font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent2); font-weight: 600; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 8px;
+}
+.hero-eyebrow::before { content: ''; width: 24px; height: 1px; background: var(--accent2); }
+
+.hero-title {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(40px, 5vw, 70px);
+  font-weight: 700; line-height: 1.05; letter-spacing: -2px;
+  margin-bottom: 24px;
+  animation: fadeUp 0.7s ease both;
+}
+
+.hero-title em { font-style: italic; color: var(--accent2); }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-body { font-size: 17px; color: var(--muted); line-height: 1.7; margin-bottom: 36px; }
+
+.hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+.btn-primary {
+  padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600;
+  background: var(--accent); color: #fff; text-decoration: none;
+  box-shadow: 0 4px 24px rgba(124,58,237,0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,58,237,0.5); }
+.btn-ghost {
+  padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600;
+  border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+  transition: border-color 0.2s, color 0.2s;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+
+.hero-visual { position: relative; height: 420px; }
+.card-float {
+  position: absolute;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: floatCard 6s ease-in-out infinite;
+}
+.card-float:nth-child(1) { top: 0; left: 0; width: 68%; animation-delay: 0s; }
+.card-float:nth-child(2) { bottom: 0; right: 0; width: 62%; animation-delay: -2s; }
+.card-float:nth-child(3) { top: 40%; left: 30%; width: 50%; animation-delay: -4s; z-index: 2; }
+
+@keyframes floatCard {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+.card-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.card-value { font-size: 28px; font-weight: 700; }
+.card-delta { font-size: 12px; color: var(--accent2); margin-top: 4px; }
+```
+
+**`$VC_SCREENS/v1/mockup.html`** — HTML only, no `<style>` block:
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -380,125 +537,7 @@ Apply frontend-design quality rules — these are not optional:
   <title>[Feature] Mockup v1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;1,9..144,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg:      #0c0c14;
-      --surface: #13131f;
-      --border:  #1e1e32;
-      --accent:  #7c3aed;
-      --accent2: #06b6d4;
-      --text:    #f0f0f8;
-      --muted:   #6b7280;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: 'DM Sans', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100dvh;
-      /* Radial gradient for depth */
-      background-image:
-        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(124,58,237,0.15), transparent),
-        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(6,182,212,0.08), transparent);
-    }
-
-    /* Noise grain */
-    body::after {
-      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 999;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-    }
-
-    nav {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      padding: 18px 48px;
-      display: flex; align-items: center; gap: 32px;
-      background: rgba(12,12,20,0.75); backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .nav-logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 700; }
-    .nav-links { display: flex; gap: 24px; margin-left: auto; }
-    .nav-links a { font-size: 14px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
-    .nav-links a:hover { color: var(--text); }
-    .nav-cta {
-      padding: 8px 20px; border-radius: 100px;
-      background: var(--accent); color: #fff;
-      font-size: 14px; font-weight: 600; text-decoration: none;
-      transition: opacity 0.2s;
-    }
-
-    /* Asymmetric hero */
-    .hero {
-      padding: 160px 48px 80px;
-      display: grid; grid-template-columns: 1fr 0.9fr; gap: 60px; align-items: center;
-      max-width: 1280px; margin: 0 auto;
-    }
-
-    .hero-eyebrow {
-      font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
-      color: var(--accent2); font-weight: 600; margin-bottom: 20px;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .hero-eyebrow::before { content: ''; width: 24px; height: 1px; background: var(--accent2); }
-
-    .hero-title {
-      font-family: 'Fraunces', serif;
-      font-size: clamp(40px, 5vw, 70px);
-      font-weight: 700; line-height: 1.05; letter-spacing: -2px;
-      margin-bottom: 24px;
-      animation: fadeUp 0.7s ease both;
-    }
-
-    .hero-title em { font-style: italic; color: var(--accent2); }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    .hero-body { font-size: 17px; color: var(--muted); line-height: 1.7; margin-bottom: 36px; }
-
-    .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
-    .btn-primary {
-      padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600;
-      background: var(--accent); color: #fff; text-decoration: none;
-      box-shadow: 0 4px 24px rgba(124,58,237,0.4);
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,58,237,0.5); }
-    .btn-ghost {
-      padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600;
-      border: 1px solid var(--border); color: var(--muted); text-decoration: none;
-      transition: border-color 0.2s, color 0.2s;
-    }
-    .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
-
-    /* Visual panel — overlapping cards */
-    .hero-visual {
-      position: relative; height: 420px;
-    }
-    .card-float {
-      position: absolute;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 20px; padding: 24px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-      animation: floatCard 6s ease-in-out infinite;
-    }
-    .card-float:nth-child(1) { top: 0; left: 0; width: 68%; animation-delay: 0s; }
-    .card-float:nth-child(2) { bottom: 0; right: 0; width: 62%; animation-delay: -2s; }
-    .card-float:nth-child(3) { top: 40%; left: 30%; width: 50%; animation-delay: -4s; z-index: 2; }
-
-    @keyframes floatCard {
-      0%,100% { transform: translateY(0); }
-      50%      { transform: translateY(-10px); }
-    }
-
-    .card-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
-    .card-value { font-size: 28px; font-weight: 700; }
-    .card-delta { font-size: 12px; color: var(--accent2); margin-top: 4px; }
-  </style>
+  <link rel="stylesheet" href="mockup.css">
 </head>
 <body>
   <nav>
@@ -514,7 +553,7 @@ Apply frontend-design quality rules — these are not optional:
   <section class="hero">
     <div>
       <div class="hero-eyebrow">[Category / Tagline]</div>
-      <h1 class="hero-title">[Primary headline with<br><em>italic accent word]</em></h1>
+      <h1 class="hero-title">[Primary headline with<br><em>italic accent word</em>]</h1>
       <p class="hero-body">[2–3 sentence value proposition. Be specific — no buzzwords.]</p>
       <div class="hero-ctas">
         <a class="btn-primary" href="#">[Primary CTA]</a>
@@ -542,11 +581,32 @@ Apply frontend-design quality rules — these are not optional:
 </html>
 ```
 
-**Adapt this template to the actual feature.** Replace every placeholder with real content. The floating card visual is a starting point — use it for dashboards, data-heavy features, or SaaS products. For simpler features, simplify accordingly, but keep the font pairing, color depth, and asymmetric layout.
+**Adapt both files to the actual feature.** Replace every placeholder with real content. The floating card visual is a starting point — use it for dashboards, data-heavy features, or SaaS products. For simpler features, simplify accordingly, but keep the font pairing, color depth, and asymmetric layout.
 
-### 4. Design Iteration
+### 4. Multi-Page Mockups
 
-When user requests changes to a screen, write a new file (`mockup-v2.html`, `approaches-v2.html`) — never overwrite. The server auto-reloads.
+For cross-page mockups (e.g. landing → dashboard → settings), write one CSS + HTML pair per page:
+
+```
+screens/v1/
+  home.css       home.html
+  dashboard.css  dashboard.html
+  settings.css   settings.html
+```
+
+Each HTML links to its own sibling CSS (`<link rel="stylesheet" href="home.css">`). Pages link to each other with relative hrefs (`<a href="dashboard.html">`), which works both via the server and when opened directly from the filesystem.
+
+Keep `:root` variables and font imports **identical across all CSS files** so the design system is consistent. Write all pages in one pass so variables stay in sync.
+
+### 5. Design Iteration
+
+When user requests changes to a screen, write new files — never overwrite. The server auto-reloads on any new `.html` file.
+
+For mockup revisions, always write a paired CSS + HTML: `mockup-v2.css` + `mockup-v2.html`, `mockup-v3.css` + `mockup-v3.html`, etc. The HTML must reference its own sibling CSS file (`<link rel="stylesheet" href="mockup-v2.css">`).
+
+For multi-page revision sets, keep the same pattern per page: `home-v2.css` + `home-v2.html`, `dashboard-v2.css` + `dashboard-v2.html`, etc.
+
+For fragment screens (approaches, architecture): `approaches-v2.html`, `architecture-v2.html` (no CSS file needed — styles come from the frame template).
 
 Add an iteration badge at the top of revised screens so the user sees the version:
 
@@ -575,7 +635,7 @@ To compare two versions side by side, write a comparison screen:
 </div>
 ```
 
-### 5. Bumping to a New Prototype Version
+### 6. Bumping to a New Prototype Version
 
 Bump from `v1` to `v2` when you are making a fundamentally different design (not just tweaks). Create the new version directory and tell the user the new URL:
 

@@ -137,26 +137,26 @@ flowchart TD
 
 | Skill | Purpose | Category |
 |---|---|---|
-| `/conjure` | Design dialogue — spec before any code | Core SDLC |
-| `/blueprint` | Implementation plan with parallelism map | Core SDLC |
-| `/forge` | Execute one task from a blueprint | Core SDLC |
-| `/ward` | TDD — failing test first, always | Core SDLC |
-| `/unravel` | Systematic debugging with hypothesis preflight | Core SDLC |
-| `/certify` | Verification loop — tests, types, linter, browser | Core SDLC |
-| `/summon` | Spawn parallel subagents with skill context | Orchestration |
-| `/orchestrate` | Multi-agent SDLC execution from blueprint | Orchestration |
-| `/scrutinize` | Request multi-agent code review | Orchestration |
-| `/absorb` | Integrate review findings by severity | Orchestration |
-| `/portal` | Git worktree isolation for feature work | Orchestration |
-| `/seal` | Simplify → commit → PR → loop until merged | Orchestration |
-| `/almanac` | Initialize workspace, generate lean CLAUDE.md | Workspace |
-| `/chronicle` | View and manage session learnings | Intelligence |
-| `/sentinel` | Security scan — OWASP, credentials, injection | Security |
-| `/accelerate` | Performance profiling with baseline measurement | Quality |
-| `/deploy` | CI/CD pipeline management | Quality |
-| `/inscribe` | Write a new reusable skill | Meta |
-| `/manifest` | Full autonomous SDLC — idea to merged PR | Full flow |
-| `/autopsy` | Post-mortem / incident analysis | Quality |
+| `/conjure` | Structured design dialogue with visual browser companion — 4 modes (Visual+Strict, Visual+Reference, Text-only, Design-Only); HARD-GATE: no code until spec approved | Core SDLC |
+| `/blueprint` | Converts an approved spec into a TDD task plan with parallelism map (PARALLEL vs SEQUENTIAL tasks) saved to `.workspace/shared/plans/` | Core SDLC |
+| `/forge` | Executes one task from a blueprint using strict TDD — failing test first, minimum implementation, lint+type-check, refactor, full suite, commit | Core SDLC |
+| `/ward` | Enforces red→green→refactor discipline — one behavior at a time; blocks progress if a failing test cannot be written first | Core SDLC |
+| `/unravel` | Systematic debugging with mandatory hypothesis preflight — no code changes before evidence; one change at a time, then regression test | Core SDLC |
+| `/certify` | Full verification loop — tests, types, lint, build, and Playwright browser check for UI projects; collects evidence before any success claim | Core SDLC |
+| `/summon` | Spawns parallel subagents seeded with the full skill registry; collects STATUS: DONE / BLOCKED / NEEDS_CONTEXT from each | Orchestration |
+| `/orchestrate` | Drives full multi-agent execution from a blueprint — groups parallel tasks into waves, dispatches via `/summon`, resolves conflicts, runs `/certify` at end | Orchestration |
+| `/scrutinize` | Dispatches 3 specialist reviewers in parallel (correctness, security, simplification); deduplicates and delivers a prioritized consolidated report | Orchestration |
+| `/absorb` | Processes scrutiny findings by severity — fixes Critical and High, evaluates Medium, documents declined findings; never skips Critical/High without user sign-off | Orchestration |
+| `/portal` | Creates a git worktree for isolated feature work; includes cleanup steps post-merge; respects `disableGit` preference | Orchestration |
+| `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
+| `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |
+| `/chronicle` | Views and manages session learning entries from the Stop hook; supports filtering by recency, branch, or date; can clear old entries | Intelligence |
+| `/sentinel` | Security scan — OWASP Top 10, credential detection, injection surfaces, dependency audit, git history secret scan, auth middleware spot-check | Security |
+| `/accelerate` | Performance profiling with mandatory baseline-first discipline — measures before optimizing, re-measures after; uses wrk/lighthouse/cProfile/pprof by stack | Quality |
+| `/deploy` | CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines | Quality |
+| `/inscribe` | Creates a new reusable skill; auto-triggered by the pattern detector at 3 repetitions (offer) and 5 repetitions (auto-draft) | Meta |
+| `/manifest` | Full autonomous SDLC — 4 human gates (scope, spec, plan, PR title); runs conjure → blueprint → portal → orchestrate → certify → scrutinize → absorb → seal | Full flow |
+| `/autopsy` | Blameless post-mortem — timeline from git log/CI, 5-Whys root cause, action items with owner/deadline; saved to `.workspace/shared/postmortems/` | Quality |
 
 ---
 
@@ -193,7 +193,9 @@ This detects your stack, creates `.workspace/`, generates a lean `CLAUDE.md`, an
 │   ├── context.md    team state, open decisions
 │   ├── roadmap.md    cross-session priorities
 │   ├── decisions/    architecture decision records
-│   ├── specs/        design specs from /conjure
+│   ├── specs/        design specs from /conjure (full SDLC flow)
+│   ├── mockups/      visual-only designs from /conjure Design-Only mode
+│   ├── plans/        implementation plans from /blueprint
 │   └── postmortems/  /autopsy outputs
 └── local/            ← always gitignored (your machine only)
     ├── prefs.md      personal preferences
