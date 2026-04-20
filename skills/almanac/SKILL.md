@@ -147,7 +147,76 @@ Build the suggested list based on detected stack. Then use the `AskUserQuestion`
 
 **Wait for reply before writing to settings.json.**
 
-If **Add all**: write the full set to `.claude/settings.json`:
+If **Add all**: first ask about Playwright access — use `AskUserQuestion` with this exact configuration:
+
+```json
+{
+  "questions": [
+    {
+      "question": "Which Playwright tools should Claude have access to?",
+      "header": "Playwright",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Grant all playwright",
+          "description": "mcp__playwright__* — allows all current and future Playwright tools automatically without listing each one."
+        },
+        {
+          "label": "Grant suggested (Recommended)",
+          "description": "The 5 tools used by this plugin: navigate, take_screenshot, wait_for, snapshot, close."
+        },
+        {
+          "label": "Grant specific",
+          "description": "Choose which Playwright tool groups to allow — I'll ask you to pick from grouped categories with descriptions."
+        }
+      ]
+    }
+  ]
+}
+```
+
+If **Grant specific**: follow up with:
+
+```json
+{
+  "questions": [
+    {
+      "question": "Which Playwright tool groups do you want to allow?",
+      "header": "Playwright",
+      "multiSelect": true,
+      "options": [
+        {
+          "label": "Navigation",
+          "description": "browser_navigate, browser_navigate_back, browser_wait_for, browser_tabs — browse to URLs, go back, wait for conditions, manage browser tabs"
+        },
+        {
+          "label": "Screenshots",
+          "description": "browser_take_screenshot, browser_snapshot — capture visual state and accessibility tree of pages"
+        },
+        {
+          "label": "Interaction",
+          "description": "browser_click, browser_type, browser_fill_form, browser_press_key, browser_hover, browser_drag, browser_select_option — simulate user input and mouse actions"
+        },
+        {
+          "label": "Inspection",
+          "description": "browser_evaluate, browser_run_code, browser_console_messages, browser_network_requests, browser_file_upload, browser_resize, browser_handle_dialog, browser_close — execute JS, inspect network traffic, handle dialogs, control browser state"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Determine `playwright_rules` from the answer:
+- **Grant all playwright** → `["mcp__playwright__*"]`
+- **Grant suggested** → `["mcp__playwright__browser_navigate", "mcp__playwright__browser_take_screenshot", "mcp__playwright__browser_wait_for", "mcp__playwright__browser_snapshot", "mcp__playwright__browser_close"]`
+- **Grant specific** → combine rules for each selected group:
+  - Navigation: `["mcp__playwright__browser_navigate", "mcp__playwright__browser_navigate_back", "mcp__playwright__browser_wait_for", "mcp__playwright__browser_tabs"]`
+  - Screenshots: `["mcp__playwright__browser_take_screenshot", "mcp__playwright__browser_snapshot"]`
+  - Interaction: `["mcp__playwright__browser_click", "mcp__playwright__browser_type", "mcp__playwright__browser_fill_form", "mcp__playwright__browser_press_key", "mcp__playwright__browser_hover", "mcp__playwright__browser_drag", "mcp__playwright__browser_select_option"]`
+  - Inspection: `["mcp__playwright__browser_evaluate", "mcp__playwright__browser_run_code", "mcp__playwright__browser_console_messages", "mcp__playwright__browser_network_requests", "mcp__playwright__browser_file_upload", "mcp__playwright__browser_resize", "mcp__playwright__browser_handle_dialog", "mcp__playwright__browser_close"]`
+
+Then write the full set to `.claude/settings.json`:
 
 ```python
 import json, os
@@ -155,6 +224,9 @@ import json, os
 path = ".claude/settings.json"
 s = json.load(open(path)) if os.path.exists(path) else {}
 s.setdefault("permissions", {}).setdefault("allow", [])
+
+# playwright_rules determined by AskUserQuestion above
+playwright_rules = [...]  # replace with actual list from user's answer
 
 # Always
 base = [
@@ -164,15 +236,10 @@ base = [
     "Read(.workspace/**)",
     "Bash(> .workspace/**)",
     "Bash(mkdir* .workspace/**)",
-    "mcp__playwright__browser_navigate(*)",
-    "mcp__playwright__browser_take_screenshot(*)",
-    "mcp__playwright__browser_wait_for(*)",
-    "mcp__playwright__browser_snapshot(*)",
-    "mcp__playwright__browser_close(*)",
     "Bash(bash *conjure/scripts/vc-*.sh*)",
     "Bash(node *conjure/scripts/server.cjs*)",
     "Bash(open http://localhost:*)",
-]
+] + playwright_rules
 # Stack-specific (add only what was detected)
 stack_rules = {
     "javascript": ["Bash(npm *)", "Bash(npx *)"],
