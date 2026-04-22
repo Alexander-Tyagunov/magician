@@ -43,6 +43,34 @@ fingerprint = list(dict.fromkeys(words[:25]))
 if not fingerprint:
     sys.exit(0)
 
+# --- /magic auto-invoke: research-intent keyword detection ---
+MAGIC_KEYWORDS = {
+    "research", "investigate", "analyze", "analyse", "explore",
+    "examine", "assess", "evaluate", "discover", "audit",
+    "study", "survey", "probe", "benchmark"
+}
+MAGIC_PHRASES = ["find out", "look into", "dig into", "find information", "tell me about", "learn about"]
+
+prompt_lower = prompt.lower()
+words_in_prompt = set(re.findall(r'\b[a-z]+\b', prompt_lower))
+magic_hit = words_in_prompt & MAGIC_KEYWORDS
+magic_phrase_hit = [ph for ph in MAGIC_PHRASES if ph in prompt_lower]
+
+already_invoking = any(t in prompt_lower for t in ["/magic", "magician:magic", "/conjure"])
+is_short = len(prompt.split()) < 4
+
+if (magic_hit or magic_phrase_hit) and not already_invoking and not is_short:
+    matched = list(magic_hit)[:2] or magic_phrase_hit[:1]
+    print(json.dumps({
+        "decision": "suggest",
+        "message": (
+            "[MAGICIAN] Research/analysis intent detected ({}). "
+            "Auto-activating /magic skill. Invoke magician:magic before responding to this request."
+        ).format(", ".join(str(m) for m in matched))
+    }))
+    sys.exit(0)
+# --- end /magic auto-invoke ---
+
 best_match = None
 best_score = 0.0
 for p in patterns:
