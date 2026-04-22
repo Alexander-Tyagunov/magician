@@ -19,7 +19,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-1.1.1-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -151,6 +151,7 @@ flowchart TD
 | `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
 | `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |
 | `/chronicle` | Views and manages session learning entries from the Stop hook; supports filtering by recency, branch, or date; can clear old entries | Intelligence |
+| `/magic` | Research, analysis & consulting — auto-invokes on keywords (research, investigate, analyze…); web search with academic DB targeting (Google Scholar, arXiv, PubMed, IEEE); context7 for tech library docs; local document analysis (PDF, Excel, reports); citation-aware outputs (literature review, APA/MLA/IEEE); context-sensitive next-skill navigation with graceful exit | Research |
 | `/sentinel` | Security scan — OWASP Top 10, credential detection, injection surfaces, dependency audit, git history secret scan, auth middleware spot-check | Security |
 | `/accelerate` | Performance profiling with mandatory baseline-first discipline — measures before optimizing, re-measures after; uses wrk/lighthouse/cProfile/pprof by stack | Quality |
 | `/deploy` | CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines | Quality |
