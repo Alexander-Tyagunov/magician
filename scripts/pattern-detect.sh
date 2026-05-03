@@ -62,8 +62,7 @@ is_short = len(prompt.split()) < 4
 if (magic_hit or magic_phrase_hit) and not already_invoking and not is_short:
     matched = list(magic_hit)[:2] or magic_phrase_hit[:1]
     print(json.dumps({
-        "decision": "suggest",
-        "message": (
+        "additionalContext": (
             "[MAGICIAN] Research/analysis intent detected ({}). "
             "Auto-activating /magic skill. Invoke magician:magic before responding to this request."
         ).format(", ".join(str(m) for m in matched))
@@ -89,13 +88,11 @@ if best_match:
     count = best_match["count"]
     if count == 3:
         print(json.dumps({
-            "decision": "ask",
-            "message": "I've seen this type of request 3 times now. Would you like me to create a reusable skill for it using /inscribe?"
+            "additionalContext": "I've seen this type of request 3 times now. Would you like me to create a reusable skill for it using /inscribe?"
         }))
     elif count == 5:
         print(json.dumps({
-            "decision": "ask",
-            "message": "This pattern has come up 5 times. I'll draft a skill — invoke /inscribe to review and save it."
+            "additionalContext": "This pattern has come up 5 times. I'll draft a skill — invoke /inscribe to review and save it."
         }))
 else:
     patterns.append({

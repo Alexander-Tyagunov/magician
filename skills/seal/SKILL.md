@@ -21,7 +21,15 @@ Dispatch simplifier agent (`agents/simplifier.md`) for a final simplification sw
 ### 2. Final Certify
 Run /certify. All checks must pass before continuing.
 
-### 3. Commit
+### 3. Update Documentation
+Before committing, update docs to reflect the shipped feature:
+- **CLAUDE.md** — add or update any changed commands, env vars, architecture notes, or setup steps
+- **README.md** — update feature list, screenshots, or usage examples if the change is user-visible
+- Any other docs that reference the changed code (API docs, architecture diagrams, etc.)
+
+Keep updates minimal and accurate — document what changed, not the implementation details.
+
+### 4. Commit
 ```bash
 git add -A
 git commit -m "feat: <feature description>
@@ -31,12 +39,12 @@ git commit -m "feat: <feature description>
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
-### 4. Push
+### 5. Push
 ```bash
 git push -u origin <branch>
 ```
 
-### 5. Create PR
+### 6. Create PR
 Ask: "What should the PR title be?" **End your turn. Wait for their answer before running any `gh` command.**
 
 Once you have the title:
@@ -57,16 +65,16 @@ EOF
 )"
 ```
 
-### 6. Monitor CI
+### 7. Monitor CI
 ```bash
 gh pr checks --watch
 ```
 Wait for all checks to pass. If any fail: read the failure, fix, push, wait again.
 
-### 7. Review Comments
+### 8. Review Comments
 If reviewers add comments: use /absorb to process them, then /certify, then push.
 
-### 8. Merge (if auto-merge not enabled)
+### 9. Merge (if auto-merge not enabled)
 ```bash
 gh pr merge --squash --delete-branch
 ```

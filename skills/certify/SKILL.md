@@ -51,10 +51,18 @@ After all checks pass, write a brief evidence summary:
 ```
 
 ## For UI Projects
-If the project has a UI, run the dev server and manually verify:
-- [ ] Golden path works end-to-end
-- [ ] Edge cases handled gracefully
-- [ ] No console errors
+If the project has a UI:
+1. Start the dev server (e.g. `npm run dev`, `yarn dev`) in the background
+2. Auto-open the browser to the local URL:
+   ```bash
+   # detect and open
+   URL=$(grep -E '"dev"' package.json | grep -oE 'localhost:[0-9]+' | head -1 || echo "localhost:3000")
+   open "http://$URL" 2>/dev/null || xdg-open "http://$URL" 2>/dev/null || true
+   ```
+3. Manually verify (or use Playwright if available):
+   - [ ] Golden path works end-to-end
+   - [ ] Edge cases handled gracefully
+   - [ ] No console errors
 
 ## Completion Signal
 

@@ -55,7 +55,76 @@ Iterate on changes if requested. Only advance when user explicitly approves.
 ---
 ### GATE 3 — UI Design (skip if no UI involved)
 
-If the feature has a UI, present a mockup.
+If the feature has a UI:
+
+**Design personality gate — BEFORE any CSS or mockup:**
+
+This step prevents all mockups from looking the same. Do it every time, without exception.
+
+1. **Research context** — silently scan: existing CSS/Tailwind config, any brand assets, README, the product's name and purpose, target audience from spec. Note the tone: serious B2B tool? Playful consumer app? Developer utility? Financial product?
+
+2. **Commit to a bold aesthetic direction** — choose ONE from this list (or derive your own that fits the project):
+   - Brutally minimal — extreme whitespace, monochrome, single accent, nothing decorative
+   - Editorial / magazine — strong typographic hierarchy, oversized headlines, asymmetric layouts
+   - Luxury / refined — muted palette, serif headlines, subtle shadows, controlled density
+   - Retro-futuristic — geometric shapes, high contrast, bold angles, neon accent on dark
+   - Playful / toy-like — rounded everything, saturated pastels, bouncy micro-animations
+   - Industrial / utilitarian — dense layout, monospace type, low chrome, data-forward
+   - Organic / natural — earthy tones, fluid shapes, soft textures, warm neutrals
+   - Brutalist / raw — clashing fonts, visible structure, unexpected color collisions
+   - Art deco / geometric — symmetry, ornamental borders, gold/black, structured grids
+
+   **NEVER default to:** Inter/Roboto/system fonts, purple gradients on white, generic card layouts, Space Grotesk, "clean modern SaaS look." These produce identical output across every project.
+
+3. **Vary light/dark** — alternate between light and dark base themes across sessions. Do not always choose dark.
+
+4. **State your direction** — tell the user in one sentence: "I'm going with [direction] — [one-line rationale tied to the product]." Do not ask for approval; move forward. If they want something different they'll say so.
+
+**Brand book (first-time setup):** After committing to a direction, check whether `.workspace/shared/brand.md` exists. If not, create it now — the brand book must capture the *chosen aesthetic personality*, not just mechanical values:
+
+```markdown
+# Brand Book
+
+## Personality
+[One sentence: the aesthetic direction and why it fits this product]
+
+## Colors
+- Primary: #<hex>
+- Secondary: #<hex>
+- Background: #<hex>
+- Surface: #<hex>
+- Text: #<hex>
+- Accent: #<hex>
+- Error: #<hex>
+
+## Typography
+- Display font: <name + source — must be distinctive, not Inter/Roboto>
+- Body font: <name + source>
+- Heading scale: <sizes>
+- Body: <size/line-height>
+
+## Spatial style
+[Dense | Airy | Extreme whitespace | Controlled density]
+
+## Spacing scale
+Base: 4px — 4 / 8 / 16 / 24 / 32 / 48 / 64
+
+## Border radius: <value — 0px for sharp/brutalist, 4px for refined, 24px for playful>
+
+## Shadows: <none | subtle | dramatic>
+
+## Motion character
+[None | Subtle fades | Bouncy | Staggered reveals | Dramatic]
+
+## Component character
+- Button: <shape, weight, hover behavior>
+- Input: <border style, focus treatment>
+- Card: <elevation, border, background>
+```
+
+Derive from existing design tokens if present. Otherwise build from the chosen personality direction. Tell the user: "Brand book created at `.workspace/shared/brand.md` — all future mockups for this project reference it." All subsequent mockup CSS must stay consistent with this brand book.
+
+**Present a mockup.**
 
 **If visual mode:** write two files for every mockup — `$VC_SCREENS/v1/mockup.css` (all styles) first, then `$VC_SCREENS/v1/mockup.html` (HTML only, linking to it via `<link rel="stylesheet" href="mockup.css">`). No `<style>` blocks in the HTML. Apply frontend-design quality rules. Tell user the URL. End your turn. Iterate on versions if requested (keep paired naming: `mockup-v2.css` + `mockup-v2.html`). Capture a Playwright screenshot when approved.
 

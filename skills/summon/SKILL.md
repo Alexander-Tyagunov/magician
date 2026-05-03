@@ -20,8 +20,8 @@ Available skills: /conjure (design), /blueprint (planning), /forge (task executi
 /ward (TDD), /unravel (debugging), /certify (verification), /summon (spawn agents),
 /orchestrate (multi-agent run), /scrutinize (code review), /absorb (integrate review),
 /portal (git worktree), /seal (ship PR), /manifest (full SDLC), /almanac (workspace init),
-/chronicle (session history), /sentinel (security scan), /accelerate (performance),
-/deploy (CI/CD), /inscribe (write skills), /autopsy (post-mortem)
+/chronicle (session history), /magic (research & consulting), /sentinel (security scan),
+/accelerate (performance), /deploy (CI/CD), /inscribe (write skills), /autopsy (post-mortem)
 
 ## Process
 
