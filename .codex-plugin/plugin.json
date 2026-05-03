@@ -1,0 +1,45 @@
+{
+  "name": "magician",
+  "version": "2.0.0",
+  "description": "Full-stack SDLC plugin with dynamic project inspection, team memory, self-learning, and parallel agent orchestration.",
+  "author": {
+    "name": "Alexander Tyagunov",
+    "email": "tyagunov.alex@gmail.com",
+    "url": "https://github.com/Alexander-Tyagunov"
+  },
+  "homepage": "https://github.com/Alexander-Tyagunov/magician",
+  "repository": "https://github.com/Alexander-Tyagunov/magician",
+  "license": "MIT",
+  "keywords": [
+    "sdlc",
+    "agents",
+    "tdd",
+    "planning",
+    "workspace",
+    "verification",
+    "code-review",
+    "self-learning",
+    "security",
+    "orchestration"
+  ],
+  "skills": "./.codex-plugin/skills/",
+  "interface": {
+    "displayName": "Magician",
+    "shortDescription": "Autonomous SDLC workflows for coding agents",
+    "longDescription": "Use Magician to inspect projects, design features, create TDD implementation plans, coordinate parallel agents, verify changes, review code, and ship pull requests.",
+    "developerName": "Alexander Tyagunov",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Set up Magician in this workspace.",
+      "Design and ship this feature with Magician.",
+      "Verify this branch before opening a PR."
+    ],
+    "brandColor": "#6C63FF",
+    "screenshots": []
+  }
+}

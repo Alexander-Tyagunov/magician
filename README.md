@@ -15,11 +15,11 @@
 
 # magician
 
-**Full-stack SDLC plugin for Claude Code**
+**Full-stack SDLC plugin for Claude Code and Codex**
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-1.3.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -163,17 +163,60 @@ flowchart TD
 
 ## Installation
 
+Magician supports both Claude Code and Codex. The Claude Code path installs the native Claude plugin package. The Codex path installs the Codex adapter package from `.codex-plugin/`, which points back to the same Magician source skills and translates Claude-specific behavior to Codex behavior.
+
+### Claude Code
+
+Install directly from GitHub:
+
 ```
 /plugin install github:Alexander-Tyagunov/magician
 ```
 
+If you prefer the marketplace flow, add the repo as a marketplace and then install the plugin:
+
+```
+/plugin marketplace add https://github.com/Alexander-Tyagunov/magician
+/plugin install magician@magician
+```
+
+Restart Claude Code after installation if prompted.
+
+### Codex
+
+Install through Codex plugin marketplace support:
+
+```bash
+codex plugin marketplace add Alexander-Tyagunov/magician
+```
+
+Restart Codex after adding the source. In the Codex app, open Plugins and enable Magician if the UI asks for confirmation.
+
+For local development or branch testing, add this checkout directly:
+
+```bash
+codex plugin marketplace add /absolute/path/to/magician
+```
+
+Codex loads adapter skills from `.codex-plugin/skills/`. These adapters preserve Magician's workflow gates while mapping Claude Code-specific instructions to Codex tools, approvals, Browser Use, and local file editing.
+
+For Codex-specific details, see `.codex/INSTALL.md`.
+
 ### After install — initialize your workspace
+
+Claude Code:
 
 ```
 /almanac
 ```
 
-This detects your stack, creates `.workspace/`, generates a lean `CLAUDE.md`, and suggests relevant MCPs.
+Codex:
+
+```text
+Set up Magician in this workspace.
+```
+
+This loads the `almanac` workflow, detects your stack, creates `.workspace/`, generates the appropriate agent instructions for your environment, and suggests relevant MCPs.
 
 ---
 
