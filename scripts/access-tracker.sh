@@ -68,17 +68,14 @@ for ancestor in [str(p.parent), str(p.parent.parent)]:
     if by_parent[ancestor] == 3 and ancestor not in suggested:
         suggested.append(ancestor)
         rel = os.path.relpath(ancestor)
-        print(json.dumps({
-            "decision": "ask",
-            "message": (
-                f"I've now read 3 or more files from `{rel}/`. "
-                f"Two options worth considering:\n"
-                f"• If this directory contains proprietary or sensitive code, add "
-                f"`\"Read(**/{rel}/**)\"` to the deny list in settings.json.\n"
-                f"• If broad access here is intentional and you want to suppress "
-                f"future prompts, that's fine too — just let me know."
-            )
-        }))
+        print(
+            f"I've now read 3 or more files from `{rel}/`. "
+            f"Two options worth considering:\n"
+            f"• If this directory contains proprietary or sensitive code, add "
+            f"`\"Read(**/{rel}/**)\"` to the deny list in settings.json.\n"
+            f"• If broad access here is intentional and you want to suppress "
+            f"future prompts, that's fine too — just let me know."
+        )
         break  # one suggestion per read event
 
 # Persist, cap at 1000 paths

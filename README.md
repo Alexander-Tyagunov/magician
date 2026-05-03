@@ -19,7 +19,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -163,16 +163,7 @@ flowchart TD
 
 ## Installation
 
-### Add the marketplace and install
-
-```bash
-/plugin marketplace add https://github.com/Alexander-Tyagunov/magician
-/plugin install magician@magician-marketplace
 ```
-
-### Or install directly
-
-```bash
 /plugin install github:Alexander-Tyagunov/magician
 ```
 

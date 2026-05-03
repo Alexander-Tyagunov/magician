@@ -9,7 +9,7 @@ FILE_PATH=$(python3 - "$INPUT" <<'PYEOF'
 import json, sys
 try:
     d = json.loads(sys.argv[1])
-    inp = d.get("input", d)
+    inp = d.get("tool_input", d.get("input", d))
     print(inp.get("file_path", inp.get("path", "")) if isinstance(inp, dict) else "")
 except:
     pass
