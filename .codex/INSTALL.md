@@ -15,7 +15,16 @@ Add the Magician plugin source:
 codex plugin marketplace add Alexander-Tyagunov/magician
 ```
 
-Restart Codex after adding the source. In the Codex app, open Plugins and enable Magician if the UI asks for confirmation.
+Restart Codex after adding the source. In the Codex app, open Plugins and enable Magician.
+
+If Magician does not appear in the Plugins UI after adding the marketplace, add this block to `~/.codex/config.toml`:
+
+```toml
+[plugins."magician@magician"]
+enabled = true
+```
+
+Restart Codex or start a new Codex thread after enabling the plugin. Codex loads plugins at session startup, so an already-open thread may not show newly enabled skills.
 
 ## Local Checkout Installation
 

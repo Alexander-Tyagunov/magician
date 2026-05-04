@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Codex plugin support via `.codex-plugin/plugin.json`, including Codex marketplace metadata, capabilities, keywords, and default prompts.
 - 21 Codex adapter skills under `.codex-plugin/skills/`, one for each Magician source skill, so Codex can invoke the same SDLC workflows without changing Claude Code behavior.
 - `.codex-plugin/references/codex-adapter.md`: shared Codex translation layer for Claude Code-specific tool names, approvals, subagents, browser automation, web access, file editing, MCP setup, and completion rules.
-- `.codex/INSTALL.md`: standalone Codex installation, verification, update, uninstall, and design-capability notes.
-- README installation instructions for both Claude Code and Codex.
+- `.codex/INSTALL.md`: standalone Codex installation, enablement, verification, update, uninstall, and design-capability notes.
+- README installation instructions for both Claude Code and Codex, including the `magician@magician` enablement fallback for Codex.
 
 ### Changed
 - Bumped plugin release metadata to `2.0.0`.
