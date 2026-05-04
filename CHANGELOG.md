@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] — 2026-05-03
+
+### Fixed
+- README: installation instructions corrected — `github:` shorthand does not resolve; correct flow is `/plugin marketplace add https://github.com/Alexander-Tyagunov/magician` then `/plugin install magician@magician-marketplace`
+- README: wizard cat mascot reworked — replaced blank `o o` eyes and neutral whiskers with `^.^` happy expression and `~(u)~` smile; added curling tail (`/~`); redesigned to uniform 15-char line width so art centers correctly in GitHub view mode
+- `.agents/plugins/marketplace.json`: fixed canonical Codex plugin marketplace path
+- `.codex/INSTALL.md`: clarified Codex plugin enablement steps
+
 ## [2.0.0] — 2026-05-03
 
 ### Added
