@@ -1,16 +1,15 @@
 <div align="center">
 
 ```
-         *        
-        /|\       
-       / | \      
-      /  *  \     
-    /_________\   
-   /\  o   o  /\   ---- * . * . * .
-  /   ~~~~~~~   \   . * . * . * .
-  /  ( ~~~~~ )  \  * . * . * . *
-  \_____________/
-    |   | |   |  
+       *       
+      /|\      
+     / | \     
+    /  *  \    
+   /_______\   
+  /^  ^.^  ^\  
+  \  ~(u)~  /  
+   \_______/~  
+     |   |  /  
 ```
 
 # magician
@@ -167,17 +166,11 @@ Magician supports both Claude Code and Codex. The Claude Code path installs the 
 
 ### Claude Code
 
-Install directly from GitHub:
-
-```
-/plugin install github:Alexander-Tyagunov/magician
-```
-
-If you prefer the marketplace flow, add the repo as a marketplace and then install the plugin:
+Add the repo as a marketplace source, then install:
 
 ```
 /plugin marketplace add https://github.com/Alexander-Tyagunov/magician
-/plugin install magician@magician
+/plugin install magician@magician-marketplace
 ```
 
 Restart Claude Code after installation if prompted.
