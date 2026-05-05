@@ -170,7 +170,7 @@ Add the repo as a marketplace source, then install:
 
 ```
 /plugin marketplace add https://github.com/Alexander-Tyagunov/magician
-/plugin install magician@magician-marketplace
+/plugin install magician@magician
 ```
 
 Restart Claude Code after installation if prompted.
