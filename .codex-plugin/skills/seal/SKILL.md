@@ -1,6 +1,6 @@
 ---
 name: seal
-description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge
+description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
 ---
 
 # /seal — Codex Adapter

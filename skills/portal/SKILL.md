@@ -1,7 +1,8 @@
 ---
 name: portal
-description: Creates a git worktree for isolated feature work — skips git operations if disableGit is set
-keep-coding-instructions: true
+description: Creates a git worktree for isolated feature work (and documents cleanup post-merge); respects the disableGit preference. Use to isolate a feature on its own branch/worktree.
+allowed-tools: Bash(git worktree:*), Bash(git branch:*), Bash(mkdir:*), Read
+argument-hint: [feature-name]
 ---
 
 # /portal — Git Worktree Isolation

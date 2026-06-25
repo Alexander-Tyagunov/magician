@@ -1,6 +1,6 @@
 ---
 name: portal
-description: Creates a git worktree for isolated feature work — skips git operations if disableGit is set
+description: Creates a git worktree for isolated feature work (and documents cleanup post-merge); respects the disableGit preference. Use to isolate a feature on its own branch/worktree.
 ---
 
 # /portal — Codex Adapter

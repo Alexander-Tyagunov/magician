@@ -1,7 +1,7 @@
 ---
 name: certify
-description: Full verification loop — tests, types, lint, and evidence collection before any PR
-keep-coding-instructions: true
+description: Full verification loop — tests, types, lint, build, and a Playwright browser check for UI projects; collects evidence before any success claim. Use to verify a change is actually green.
+allowed-tools: Bash, Read, Glob, Grep
 ---
 
 # /certify — Verification Loop

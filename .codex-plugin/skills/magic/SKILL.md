@@ -1,6 +1,6 @@
 ---
 name: magic
-description: Use when user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, doc search, web search, and guided output delivery
+description: Use when the user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, library-doc search, web search, and guided output delivery.
 ---
 
 # /magic — Codex Adapter

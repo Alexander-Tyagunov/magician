@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Runs a full security scan — OWASP Top 10, credential detection, injection surfaces, dependency audit
+description: Security scan — OWASP Top 10, credential/secret detection, injection surfaces, dependency audit, git-history secret scan, auth spot-check. Read-only; produces a severity-ranked report. Use to audit a codebase for vulnerabilities.
 ---
 
 # /sentinel — Codex Adapter

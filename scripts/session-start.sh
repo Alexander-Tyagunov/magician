@@ -161,6 +161,16 @@ except: pass
   [ -n "$SUMMARY" ] && CHRONICLE_NOTE=" Last session: $SUMMARY"
 fi
 
+# ── Global references injection (cross-session memory) ────────────────────────
+REFERENCES_NOTE=""
+REF_FILE="$PLUGIN_DATA/references.md"
+if [ -f "$REF_FILE" ]; then
+  REF_BODY=$(head -c 2000 "$REF_FILE" 2>/dev/null || true)
+  [ -n "$REF_BODY" ] && REFERENCES_NOTE=" Remembered references — a passive, user-curated index. Consult ONLY when directly relevant to the current task; do NOT resurface unrelated past items or treat them as active goals:
+${REF_BODY}"
+fi
+REMEMBER_HINT=" If the user mentions a repository, project, or idea worth keeping for future sessions, offer to remember it — saved to the global reference store via /chronicle, only with their confirmation."
+
 # ── Workspace strategy check ─────────────────────────────────────────────────
 STRATEGY_NOTE=""
 STRATEGY_FILE="$PLUGIN_DATA/workspace-strategy.json"
@@ -196,5 +206,5 @@ CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the 
 ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
-${LORE_NOTE}${CHRONICLE_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}"
+${LORE_NOTE}${CHRONICLE_NOTE}${REFERENCES_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${REMEMBER_HINT}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"

@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: CI/CD pipeline management — create, update, and monitor pipelines for GitHub Actions, GitLab CI, CircleCI
+description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
 ---
 
 # /deploy — Codex Adapter

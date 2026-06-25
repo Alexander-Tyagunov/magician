@@ -1,6 +1,6 @@
 ---
 name: almanac
-description: Initializes the workspace system — directory structure, CLAUDE.md, permissions, MCP suggestions
+description: One-time workspace setup — creates .workspace/ structure, .gitignore entries, a lean CLAUDE.md, a permissions allowlist, and suggests relevant MCPs. Run once per project.
 ---
 
 # /almanac — Codex Adapter

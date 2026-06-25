@@ -1,7 +1,8 @@
 ---
 name: blueprint
-description: Converts an approved spec into a TDD task plan with explicit parallelism map
-keep-coding-instructions: true
+description: Converts an approved spec into a TDD task plan with a parallelism map (PARALLEL vs SEQUENTIAL), saved to .workspace/shared/plans/. Use after a spec is approved, before implementation.
+allowed-tools: Read, Write, Glob
+argument-hint: [spec-file-path]
 ---
 
 # /blueprint — Task Planning
@@ -16,7 +17,7 @@ If the spec file path is not clear from context, ask: "Which spec should I plan 
 
 ## Process
 
-1. **Read the spec** — understand all requirements, components, and constraints
+1. **Read the spec** — understand all requirements, components, and constraints. Also read any related research in `.workspace/shared/research/` (from `/magic`) to ground approach and library choices; if a key approach is unresearched, suggest running `/magic` first.
 2. **Map file structure** — list every file to create/modify with its responsibility
 3. **Decompose into tasks** — each task: one component, 2–5 minutes of work, starts with a failing test
 4. **Build parallelism map** — mark each task: PARALLEL (no shared files, no dependency) or SEQUENTIAL (depends on task N)
@@ -55,4 +56,6 @@ A task is PARALLEL-safe if:
 
 ## After Approval
 
-Say: "Blueprint ready. Run /orchestrate to dispatch parallel agents, or /forge to execute tasks one by one."
+Say: "Blueprint ready. Run /orchestrate to dispatch parallel agents, or /ward task <N> to execute tasks one by one."
+
+> Model/effort: for large multi-component specs, prefer the latest/code-optimal model and raise /effort to keep the decomposition and parallelism map sharp. See [lore/models.md](../../lore/models.md).

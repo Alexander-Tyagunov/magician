@@ -1,12 +1,15 @@
 ---
 name: manifest
 description: Full autonomous SDLC — design, plan, implement, review, and ship with 4 human approval gates
-keep-coding-instructions: true
+disable-model-invocation: true
+argument-hint: [one-sentence feature description]
 ---
 
 # /manifest — Full Autonomous SDLC
 
 The complete end-to-end development flow. Four human gates. Everything else runs autonomously.
+
+A full SDLC run is large — prefer the latest model and a high reasoning effort (`/effort high`, or `xhigh` for big features). If the session is on an older model, suggest upgrading before starting. See [lore/models.md](../../lore/models.md).
 
 ## Gates (Human Approval Required)
 
@@ -27,6 +30,7 @@ GATE 4: PR title and final go-ahead (before /seal)
 
 ### Phase 1: Design [GATE 2]
 5. Run /conjure — full design dialogue
+   - First, if the feature needs external research (library choice, prior art, API capabilities), run /magic — it saves findings to `.workspace/shared/research/`, which /conjure then reads. Optional; skip when the design is well understood.
 6. Write spec to `.workspace/shared/specs/`
 7. **Wait for spec approval.**
 
@@ -50,13 +54,12 @@ GATE 4: PR title and final go-ahead (before /seal)
 14. Run /certify — tests, types, lint, build, evidence collected
 
 ### Phase 6: Review
-15. Run /scrutinize — 3 specialist reviewers in parallel
-16. Run /absorb — fix critical and high findings
+15. Run /scrutinize — 3 specialist reviewers in parallel, then fix critical/high findings (review + remediation are one skill)
 
 ### Phase 7: Ship [GATE 4]
-17. Run /certify again — clean state after review fixes
-18. Ask user for PR title. **Wait for approval.**
-19. Run /seal — simplify, commit, PR, monitor CI, merge
+16. Run /certify again — clean state after review fixes
+17. Ask user for PR title. **Wait for approval.**
+18. Run /seal — simplify, commit, PR, monitor CI, merge
 
 ## Autonomous Continuation
 

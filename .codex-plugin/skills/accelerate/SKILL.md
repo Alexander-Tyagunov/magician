@@ -1,6 +1,6 @@
 ---
 name: accelerate
-description: Performance profiling with mandatory baseline-first discipline — no optimization without measurement
+description: Systematic performance profiling and optimization with a mandatory baseline-first gate — measure before changing, re-measure after. Use when something is slow or you need to hit a latency/throughput target.
 ---
 
 # /accelerate — Codex Adapter

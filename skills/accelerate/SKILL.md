@@ -1,12 +1,15 @@
 ---
 name: accelerate
-description: Performance profiling with mandatory baseline-first discipline — no optimization without measurement
-keep-coding-instructions: true
+description: Systematic performance profiling and optimization with a mandatory baseline-first gate — measure before changing, re-measure after. Use when something is slow or you need to hit a latency/throughput target.
+allowed-tools: Bash, Read, Edit
+argument-hint: [what is slow] [target, e.g. p99<500ms]
 ---
 
 # /accelerate — Performance Profiling
 
 Profile and optimize performance systematically. No optimization without measurement.
+
+Scale [/effort](../../lore/models.md) to the optimization scope: low for a single hot path, high for cross-cutting work.
 
 <HARD-GATE>
 Establish a baseline measurement BEFORE making any changes. Optimization without a baseline is guesswork.

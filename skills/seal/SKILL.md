@@ -1,22 +1,23 @@
 ---
 name: seal
-description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge
-keep-coding-instructions: true
+description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
+allowed-tools: Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr checks:*), Bash(gh pr merge:*), Bash(gh pr view:*), Read, Edit, Task
+argument-hint: [pr-title]
 ---
 
 # /seal — Ship to Production
 
-Take a certified feature branch through to a merged PR.
+Take a certified feature branch through to a merged PR. This skill performs irreversible actions (push, PR, merge) — it asks for the PR title and waits before any `gh` command.
 
 ## Pre-flight
 
 - Confirm /certify has been run and passed
-- Confirm /scrutinize + /absorb cycle is complete (or explicitly skipped by user)
+- Confirm the /scrutinize review + remediation cycle is complete (or explicitly skipped by user)
 
 ## Process
 
 ### 1. Simplifier Pass
-Dispatch simplifier agent (`agents/simplifier.md`) for a final simplification sweep. Fix any Important findings. Skip Low suggestions unless trivial.
+Dispatch the simplifier via `Task` with subagent type `magician:simplifier` for a final simplification sweep. Give it a self-contained prompt: the goal, the changed files (with diff), and the return format (see [lore/subagent-context.md](../../lore/subagent-context.md)). Fix any Important findings. Skip Low suggestions unless trivial.
 
 ### 2. Final Certify
 Run /certify. All checks must pass before continuing.
@@ -36,7 +37,7 @@ git commit -m "feat: <feature description>
 
 <bullet list of what was built>
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
 ### 5. Push
@@ -72,7 +73,7 @@ gh pr checks --watch
 Wait for all checks to pass. If any fail: read the failure, fix, push, wait again.
 
 ### 8. Review Comments
-If reviewers add comments: use /absorb to process them, then /certify, then push.
+If reviewers add comments: use /scrutinize to process and remediate them, then /certify, then push.
 
 ### 9. Merge (if auto-merge not enabled)
 ```bash

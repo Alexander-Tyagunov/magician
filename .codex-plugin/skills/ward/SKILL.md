@@ -1,6 +1,6 @@
 ---
 name: ward
-description: Enforces TDD discipline — red/green/refactor cycle, one behavior at a time
+description: TDD engine and enforcer — red/green/refactor, one behavior at a time. Use while implementing any feature or bugfix, or to execute a specific blueprint task with TDD.
 ---
 
 # /ward — Codex Adapter

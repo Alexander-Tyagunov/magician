@@ -1,7 +1,8 @@
 ---
 name: almanac
-description: Initializes the workspace system — directory structure, CLAUDE.md, permissions, MCP suggestions
-keep-coding-instructions: true
+description: One-time workspace setup — creates .workspace/ structure, .gitignore entries, a lean CLAUDE.md, a permissions allowlist, and suggests relevant MCPs. Run once per project.
+allowed-tools: Bash(mkdir:*), Bash(git add:*), Bash(git commit:*), Bash(python3:*), Read, Write, AskUserQuestion
+disable-model-invocation: true
 ---
 
 # /almanac — Workspace Initialization
@@ -27,35 +28,13 @@ Set up the magician workspace for this project. Run once per project.
 
 ### 1. Workspace Mode Decision
 
-Use the `AskUserQuestion` tool with this configuration — do not write any text before calling it:
+Use the `AskUserQuestion` tool with the **Workspace Mode** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
 
-```json
-{
-  "questions": [
-    {
-      "question": "Should .workspace/shared/ be committed to git?",
-      "header": "Workspace",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Shared (Recommended)",
-          "description": "Specs, designs, roadmap, and decisions live in .workspace/shared/ and commit to git. Team members pull the same context. Only per-machine prefs stay in .workspace/local/ (always gitignored)."
-        },
-        {
-          "label": "Private",
-          "description": "The entire .workspace/ directory is gitignored. Context stays on this machine only — no sharing with teammates via git."
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Wait for reply before creating any directories or files.**
+**Wait for reply before creating any directories or files.** Remember the selected mode (Shared or Private) — it controls steps 3, 8, and 9.
 
 ### 2. Create Directory Structure
 ```bash
-mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/postmortems
+mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems
 mkdir -p .workspace/local
 ```
 
@@ -117,155 +96,13 @@ Do not write generic best practices. CLAUDE.md should only contain rules specifi
 
 ### 6. Permissions Allowlist
 
-Build the suggested list based on detected stack. Then use the `AskUserQuestion` tool — do not write any text before calling it:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Add permission rules to .claude/settings.json so Claude Code doesn't prompt for approval on routine operations?",
-      "header": "Permissions",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Add all (Recommended)",
-          "description": "Three groups: (1) Core — git commands and reading any project file; (2) Workspace — writing specs, designs, and decision records to .workspace/**, reading session state, resetting event logs between visual companion screens; (3) Stack tools — the build/test/lint commands for your detected stack (npm, pytest, go, etc.). These cover everything Magician does routinely so you never see an approval prompt mid-flow."
-        },
-        {
-          "label": "Choose",
-          "description": "I'll show each group separately so you can pick which ones to add."
-        },
-        {
-          "label": "Skip",
-          "description": "No rules added. You'll approve each git command, file read, and workspace write individually."
-        }
-      ]
-    }
-  ]
-}
-```
+Build the suggested list based on detected stack. Then use the `AskUserQuestion` tool with the **Permissions** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
 
 **Wait for reply before writing to settings.json.**
 
-If **Add all**: first ask about Playwright access — use `AskUserQuestion` with this exact configuration:
+If **Add all**: first ask about Playwright access using the **Playwright** configurations in [references/setup-questions.md](references/setup-questions.md), then write the full set to `.claude/settings.json` using the script in [references/settings-writer.md](references/settings-writer.md).
 
-```json
-{
-  "questions": [
-    {
-      "question": "Which Playwright tools should Claude have access to?",
-      "header": "Playwright",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Grant all playwright",
-          "description": "mcp__playwright__* — allows all current and future Playwright tools automatically without listing each one."
-        },
-        {
-          "label": "Grant suggested (Recommended)",
-          "description": "The 5 tools used by this plugin: navigate, take_screenshot, wait_for, snapshot, close."
-        },
-        {
-          "label": "Grant specific",
-          "description": "Choose which Playwright tool groups to allow — I'll ask you to pick from grouped categories with descriptions."
-        }
-      ]
-    }
-  ]
-}
-```
-
-If **Grant specific**: follow up with:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which Playwright tool groups do you want to allow?",
-      "header": "Playwright",
-      "multiSelect": true,
-      "options": [
-        {
-          "label": "Navigation",
-          "description": "browser_navigate, browser_navigate_back, browser_wait_for, browser_tabs — browse to URLs, go back, wait for conditions, manage browser tabs"
-        },
-        {
-          "label": "Screenshots",
-          "description": "browser_take_screenshot, browser_snapshot — capture visual state and accessibility tree of pages"
-        },
-        {
-          "label": "Interaction",
-          "description": "browser_click, browser_type, browser_fill_form, browser_press_key, browser_hover, browser_drag, browser_select_option — simulate user input and mouse actions"
-        },
-        {
-          "label": "Inspection",
-          "description": "browser_evaluate, browser_run_code, browser_console_messages, browser_network_requests, browser_file_upload, browser_resize, browser_handle_dialog, browser_close — execute JS, inspect network traffic, handle dialogs, control browser state"
-        }
-      ]
-    }
-  ]
-}
-```
-
-Determine `playwright_rules` from the answer:
-- **Grant all playwright** → `["mcp__playwright__*"]`
-- **Grant suggested** → `["mcp__playwright__browser_navigate", "mcp__playwright__browser_take_screenshot", "mcp__playwright__browser_wait_for", "mcp__playwright__browser_snapshot", "mcp__playwright__browser_close"]`
-- **Grant specific** → combine rules for each selected group:
-  - Navigation: `["mcp__playwright__browser_navigate", "mcp__playwright__browser_navigate_back", "mcp__playwright__browser_wait_for", "mcp__playwright__browser_tabs"]`
-  - Screenshots: `["mcp__playwright__browser_take_screenshot", "mcp__playwright__browser_snapshot"]`
-  - Interaction: `["mcp__playwright__browser_click", "mcp__playwright__browser_type", "mcp__playwright__browser_fill_form", "mcp__playwright__browser_press_key", "mcp__playwright__browser_hover", "mcp__playwright__browser_drag", "mcp__playwright__browser_select_option"]`
-  - Inspection: `["mcp__playwright__browser_evaluate", "mcp__playwright__browser_run_code", "mcp__playwright__browser_console_messages", "mcp__playwright__browser_network_requests", "mcp__playwright__browser_file_upload", "mcp__playwright__browser_resize", "mcp__playwright__browser_handle_dialog", "mcp__playwright__browser_close"]`
-
-Then write the full set to `.claude/settings.json`:
-
-```python
-import json, os
-
-path = ".claude/settings.json"
-s = json.load(open(path)) if os.path.exists(path) else {}
-s.setdefault("permissions", {}).setdefault("allow", [])
-
-# playwright_rules determined by AskUserQuestion above
-playwright_rules = [...]  # replace with actual list from user's answer
-
-# Always
-base = [
-    "Bash(git *)",
-    "Read(**)",
-    "Write(.workspace/**)",
-    "Read(.workspace/**)",
-    "Bash(> .workspace/**)",
-    "Bash(mkdir* .workspace/**)",
-    "Bash(bash *conjure/scripts/vc-*.sh*)",
-    "Bash(node *conjure/scripts/server.cjs*)",
-    "Bash(open http://localhost:*)",
-] + playwright_rules
-# Stack-specific (add only what was detected)
-stack_rules = {
-    "javascript": ["Bash(npm *)", "Bash(npx *)"],
-    "python":     ["Bash(pytest *)", "Bash(ruff *)", "Bash(pip *)"],
-    "go":         ["Bash(go *)"],
-    "rust":       ["Bash(cargo *)"],
-    "java":       ["Bash(mvn *)", "Bash(gradle *)"],
-}
-# DETECTED_STACK comes from inspector additionalContext
-detected = []  # fill from inspector context
-for tech, rules in stack_rules.items():
-    if tech in detected:
-        base.extend(rules)
-
-for r in base:
-    if r not in s["permissions"]["allow"]:
-        s["permissions"]["allow"].append(r)
-
-os.makedirs(".claude", exist_ok=True)
-json.dump(s, open(path, "w"), indent=2)
-print("Permissions saved.")
-```
-
-If **Choose**: present each group with its own `AskUserQuestion` call (core, workspace, stack tools) — one at a time, wait for each reply.
-
-If **Skip**: continue. Do not ask again this session.
+If **Choose** or **Skip**: follow the guidance in [references/setup-questions.md](references/setup-questions.md).
 
 ### 7. MCP Suggestions
 Based on detected archetype, suggest relevant MCPs:
@@ -276,16 +113,20 @@ Based on detected archetype, suggest relevant MCPs:
 Ask: "Want me to set up any of these MCPs? If so, which ones?" **End your turn. Wait for their reply before proceeding to step 8.**
 
 ### 8. Save Strategy
-Record workspace mode:
+Record the workspace mode chosen in step 1. Set `WS_MODE` to the user's actual selection (`shared` or `private`) — do not hardcode it:
 ```bash
+# WS_MODE is "shared" or "private" from the step 1 answer.
+WS_MODE=shared   # ← replace with the user's actual choice
 python3 -c "
-import json, os
-data = {'ignored': 'true', 'mode': 'shared'}
+import json, os, sys
+mode = sys.argv[1]
+# SHARED: only .workspace/local/ is gitignored. PRIVATE: whole .workspace/ is gitignored.
+data = {'mode': mode, 'ignored': 'false' if mode == 'shared' else 'true'}
 path = os.path.expanduser('~/.local/share/magician/workspace-strategy.json')
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(data, open(path,'w'))
-print('Strategy saved.')
-"
+print('Strategy saved:', data)
+" "$WS_MODE"
 ```
 
 ### 9. Commit (if shared mode)

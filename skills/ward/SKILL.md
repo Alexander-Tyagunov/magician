@@ -1,44 +1,58 @@
 ---
 name: ward
-description: Enforces TDD discipline — red/green/refactor cycle, one behavior at a time
-keep-coding-instructions: true
+description: TDD engine and enforcer — red/green/refactor, one behavior at a time. Use while implementing any feature or bugfix, or to execute a specific blueprint task with TDD.
+allowed-tools: Read, Edit, Write, Bash
+argument-hint: [behavior to implement | task <N>]
 ---
 
-# /ward — TDD Enforcement
+# /ward — TDD Engine
 
-Enforce strict red → green → refactor discipline for any implementation work.
+Enforce strict red → green → refactor discipline for all implementation work. (This skill absorbed the former `/forge` — general TDD and per-task blueprint execution are one engine.)
+
+## Effort
+
+Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task. See [lore/models.md](../../lore/models.md).
+
+## Two modes
+
+- **Freeform** (`/ward <behavior>`): drive TDD for whatever you're implementing now.
+- **Task mode** (`/ward task <N>`): execute task N from the current blueprint plan in `.workspace/shared/plans/`. Read the task text from the plan file first; if the plan isn't clear from context, ask which plan file. **End your turn and wait** if you must ask.
 
 ## The Law
 
-1. **RED** — Write a failing test that describes exactly one behavior. Run it. Confirm it fails with a meaningful message (not a compile error).
-2. **GREEN** — Write the minimum code to make the test pass. Ugly is fine. Do not add untested logic.
+1. **RED** — Write a failing test describing exactly one behavior. Run it. Confirm it fails with a meaningful message (not a compile error).
+2. **GREEN** — Write the minimum code to pass. Ugly is fine. Add no untested logic.
 3. **REFACTOR** — Clean up implementation and tests. No behavior change. All tests stay green.
 4. Repeat for the next behavior.
 
-## Vertical Tracer Bullets
+## Vertical tracer bullets
 
-Go end-to-end for one behavior before expanding. First test → first implementation → works. Then add the next behavior.
+Go end-to-end for one behavior before expanding: first test → first implementation → works → next behavior.
 
-## What Counts as One Behavior
+## What counts as one behavior
 
-- One function doing one thing
-- One API endpoint with one response case
-- One UI component in one state
-- NOT: "the whole auth system"
+One function doing one thing · one API endpoint with one response case · one UI component in one state. NOT "the whole auth system".
 
-## Test Quality Rules
+## Test quality rules
 
-- Test names describe the behavior: `test_returns_404_when_user_not_found`
+- Test names describe behavior: `test_returns_404_when_user_not_found`
 - Test observable behavior, not implementation internals
-- No `assertTrue(true)` — tests that always pass are worse than no tests
-- One assertion per concept (not per line)
+- No `assertTrue(true)` — always-pass tests are worse than none
+- One assertion per concept
 
-## What to do if you cannot write the test first
+## If you cannot write the test first
 
-The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [specific behavior] should do. Can you clarify the expected input and output?"
+The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [behavior] should do. Clarify the expected input and output?" **End your turn. Wait for clarification before writing code.**
 
-**End your turn. Wait for their clarification before writing any code.**
+## Per task (task mode only)
+
+After the behavior(s) for the task are green and refactored:
+1. Run lint and type-check — fix any issues.
+2. Run the full test suite — no regressions.
+3. Commit with a conventional commit message.
+4. Mark the task complete in the plan file (`- [ ]` → `- [x]`).
 
 ## Completion Signal
 
-When all planned behaviors have tests and implementations: "All behaviors covered. Run /certify."
+- Freeform: "All behaviors covered. Run /certify."
+- Task mode: "Task N complete. Next: /ward task N+1, or /certify if all tasks done."

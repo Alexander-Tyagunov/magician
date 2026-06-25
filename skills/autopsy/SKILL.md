@@ -1,7 +1,9 @@
 ---
 name: autopsy
-description: Post-mortem analysis for incidents — timeline reconstruction, 5 Whys root cause, action items
-keep-coding-instructions: true
+description: Blameless post-mortem / RCA — gathers facts, reconstructs a timeline, runs 5-Whys, defines action items, writes the post-mortem file and commits it. Use after an incident or outage.
+allowed-tools: Bash(git log:*), Bash(git add:*), Bash(git commit:*), Bash(gh run list:*), Write, Read
+disable-model-invocation: true
+argument-hint: [incident name or description]
 ---
 
 # /autopsy — Post-Mortem Analysis
@@ -95,6 +97,10 @@ Save to `.workspace/shared/postmortems/YYYY-MM-DD-<incident-name>.md`:
 git add .workspace/shared/postmortems/
 git commit -m "docs: add post-mortem for <incident>"
 ```
+
+### Phase 7: Remember the Incident (optional)
+
+Offer to remember this incident in the global reference store via `/chronicle`: one line capturing **what + date + postmortem path**. Only do this with explicit user confirmation.
 
 ## Completion Signal
 

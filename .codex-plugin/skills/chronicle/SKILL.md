@@ -1,6 +1,6 @@
 ---
 name: chronicle
-description: View and manage accumulated session learnings from the Stop hook chronicle
+description: View session-learning history AND manage the global reference store (repos, projects, ideas remembered across every session). Use to review past sessions or to remember/recall/forget a reference.
 ---
 
 # /chronicle — Codex Adapter

@@ -1,7 +1,9 @@
 ---
 name: deploy
-description: CI/CD pipeline management — create, update, and monitor pipelines for GitHub Actions, GitLab CI, CircleCI
-keep-coding-instructions: true
+description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
+allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(ls:*), Read, Write, Edit
+disable-model-invocation: true
+argument-hint: [create|monitor|fix] [provider]
 ---
 
 # /deploy — CI/CD Management
@@ -63,7 +65,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Security scan
-        run: bin/magician-scan .
+        # magician-scan is provided by the magician plugin (on PATH when the
+        # plugin is enabled). Make it optional so the job degrades gracefully
+        # in repos where the binary is not installed.
+        run: command -v magician-scan >/dev/null 2>&1 && magician-scan . || echo "magician-scan not present, skipping"
 ```
 
 ### GitLab CI Template
@@ -88,7 +93,10 @@ build:
 
 security:
   stage: security
-  script: [bin/magician-scan .]
+  # magician-scan is provided by the magician plugin (on PATH when the plugin
+  # is enabled). Optional — degrades gracefully if the binary is not present.
+  script:
+    - command -v magician-scan >/dev/null 2>&1 && magician-scan . || echo "magician-scan not present, skipping"
 ```
 
 ### Monitoring a Pipeline

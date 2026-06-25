@@ -1,6 +1,6 @@
 ---
 name: scrutinize
-description: Dispatches 3 specialist reviewers (correctness, security, simplification) and consolidates findings
+description: Multi-agent code review AND remediation — dispatches correctness, security, and simplification reviewers in parallel, consolidates findings, then fixes criticals/highs. Use when reviewing a diff or PR before shipping.
 ---
 
 # /scrutinize — Codex Adapter

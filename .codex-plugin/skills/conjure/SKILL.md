@@ -1,6 +1,6 @@
 ---
 name: conjure
-description: Structured design dialogue with visual companion — produces an approved spec and design artifacts before any implementation begins
+description: Structured design dialogue with a visual companion — produces an approved spec and design artifacts before any implementation begins. Use at the start of a feature, before writing code.
 ---
 
 # /conjure — Codex Adapter

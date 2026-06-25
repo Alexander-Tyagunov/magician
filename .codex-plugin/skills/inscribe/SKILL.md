@@ -1,6 +1,6 @@
 ---
 name: inscribe
-description: Creates a new reusable skill — can be triggered automatically by the pattern detector at 5 repetitions
+description: Creates a new reusable skill — can be suggested by the pattern detector after repeated requests. Use to scaffold a new SKILL.md.
 ---
 
 # /inscribe — Codex Adapter

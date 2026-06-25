@@ -1,6 +1,6 @@
 ---
 name: certify
-description: Full verification loop — tests, types, lint, and evidence collection before any PR
+description: Full verification loop — tests, types, lint, build, and a Playwright browser check for UI projects; collects evidence before any success claim. Use to verify a change is actually green.
 ---
 
 # /certify — Codex Adapter

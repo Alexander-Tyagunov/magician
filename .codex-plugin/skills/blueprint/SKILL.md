@@ -1,6 +1,6 @@
 ---
 name: blueprint
-description: Converts an approved spec into a TDD task plan with explicit parallelism map
+description: Converts an approved spec into a TDD task plan with a parallelism map (PARALLEL vs SEQUENTIAL), saved to .workspace/shared/plans/. Use after a spec is approved, before implementation.
 ---
 
 # /blueprint — Codex Adapter

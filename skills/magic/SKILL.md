@@ -1,7 +1,8 @@
 ---
 name: magic
-description: Use when user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, doc search, web search, and guided output delivery
-keep-coding-instructions: true
+description: Use when the user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, library-doc search, web search, and guided output delivery.
+allowed-tools: WebSearch, WebFetch, Read, Write, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs
+argument-hint: [topic or research question]
 ---
 
 # /magic — Research, Analysis & Consulting
@@ -11,6 +12,14 @@ Structured research and consulting workflow. Uses web search, document analysis,
 <HARD-GATE>
 EVERY consultation, clarification, and decision MUST use the AskUserQuestion tool. Do NOT ask questions in plain prose — always invoke AskUserQuestion so the user sees the structured prompt UI. This applies to every gate in this skill without exception.
 </HARD-GATE>
+
+## Standalone & pipeline use
+
+`/magic` is a **standalone** skill — run it any time to research, analyze, or consult; no pipeline required, nothing changes about the flow below when used alone.
+
+It also plugs into the SDLC chain without losing context:
+- **Feeds the pipeline:** inside a magician workspace (`.workspace/` present), saved research goes to `.workspace/shared/research/<topic>-<date>.md` — a first-class artifact, like specs and plans. Phase 5 hands that **path** (not just a summary) to the next stage, so design/planning/debugging start informed.
+- **Fed by the pipeline:** `/conjure`, `/blueprint`, `/unravel`, and `/manifest` read `.workspace/shared/research/` and suggest `/magic` when a decision needs external evidence.
 
 ## Auto-Invocation
 
@@ -39,119 +48,13 @@ Do NOT ask for anything already clear from the message.
 
 ### Step 0.2 — Source selection (AskUserQuestion)
 
-**Before showing this question**, apply these rules based on Step 0.1 classification:
-- **Academic/scientific** → pre-select Web Search; hide "Tech Library Docs"; description should mention academic databases
-- **Document/file/business** → hide "Tech Library Docs" entirely — it would only confuse
-- **Software/tech library** → show all three options
-- **General/strategic** → show Web Search and My Documents/Files; show Tech Library Docs only if topic could plausibly involve a framework
-
-**For academic/scientific topics**, use this configuration (Web Search description targets academic databases):
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which sources should I search?",
-      "header": "Research Sources",
-      "multiSelect": true,
-      "options": [
-        {
-          "label": "Academic & Web Search",
-          "description": "Search Google Scholar, arXiv, PubMed, IEEE Xplore, ACM Digital Library, ResearchGate, and general web — for papers, journals, studies, and references"
-        },
-        {
-          "label": "My Documents / Files",
-          "description": "Read and analyze files you provide — existing papers, notes, drafts, datasets. Uses the Read tool, no external service needed."
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For financial / business / document / file topics** (no software library involved), use this configuration — Tech Library Docs is absent:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which sources should I search?",
-      "header": "Research Sources",
-      "multiSelect": true,
-      "options": [
-        {
-          "label": "Web Search",
-          "description": "Search the internet for current articles, news, reports, and documentation"
-        },
-        {
-          "label": "My Documents / Files",
-          "description": "Read and analyze files you provide — Excel, PDF, Word, CSV, reports, articles, any text-based file. Uses the Read tool, no external service needed."
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For software / tech library topics and general/strategic topics** where a framework could plausibly be involved, use this configuration (all three options):
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which sources should I search?",
-      "header": "Research Sources",
-      "multiSelect": true,
-      "options": [
-        {
-          "label": "Web Search",
-          "description": "Search the internet for current articles, news, reports, and documentation"
-        },
-        {
-          "label": "Tech Library Docs (context7)",
-          "description": "For software questions only — search official docs for npm packages, Java/Spring/Maven libraries, Python modules, framework APIs, version compatibility. NOT for business documents or general research."
-        },
-        {
-          "label": "My Documents / Files",
-          "description": "Read and analyze files you provide — Excel, PDF, Word, CSV, reports, articles, any text-based file. Uses the Read tool, no external service needed."
-        }
-      ]
-    }
-  ]
-}
-```
-
-Wait for the response before proceeding.
+Read [references/questions.md](references/questions.md) → "Phase 0 — Source selection". Pick the variant matching the Step 0.1 classification and deliver it via AskUserQuestion. Wait for the response before proceeding.
 
 ### Step 0.3 — Research depth (AskUserQuestion)
 
-Use AskUserQuestion with this configuration:
+Read [references/questions.md](references/questions.md) → "Phase 0 — Research depth" and deliver that block via AskUserQuestion.
 
-```json
-{
-  "questions": [
-    {
-      "question": "How thorough should the research be?",
-      "header": "Research Depth",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Quick overview",
-          "description": "Fast scan of top sources — best for time-sensitive needs or initial exploration"
-        },
-        {
-          "label": "Standard depth",
-          "description": "Thorough research across selected sources with cross-referenced synthesis"
-        },
-        {
-          "label": "Deep dive",
-          "description": "Exhaustive multi-angle analysis with gap identification — takes longer"
-        }
-      ]
-    }
-  ]
-}
-```
+> **Model & effort:** the depth choice maps onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (`xhigh` for exhaustive sweeps). If the session is on an older model than ideal, suggest an upgrade rather than switching silently. See [lore/models.md](../../lore/models.md).
 
 ---
 
@@ -178,67 +81,11 @@ except Exception:
 " 2>/dev/null || echo "missing"
 ```
 
-If output is `missing`, use AskUserQuestion:
-
-```json
-{
-  "questions": [
-    {
-      "question": "context7 MCP is not installed. It enables searching official library and framework documentation. Install it?",
-      "header": "Install context7?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Yes — install context7",
-          "description": "Adds context7 to Claude Code: claude mcp add --transport http context7 https://mcp.context7.com/mcp"
-        },
-        {
-          "label": "Skip for now",
-          "description": "Continue without library documentation search"
-        }
-      ]
-    }
-  ]
-}
-```
-
-If user selects "Yes — install context7", run:
-```bash
-claude mcp add --transport http context7 https://mcp.context7.com/mcp
-```
-Then confirm: "context7 installed — library docs now available."
-
-If "Skip": continue without context7, note the limitation in findings.
+If output is `missing`, read [references/questions.md](references/questions.md) → "Phase 1 — context7 not installed" and deliver that block via AskUserQuestion. On "Yes" run the `claude mcp add` command and confirm; on "Skip" continue and note the limitation in findings.
 
 ### Step 1.2 — Document paths (if selected)
 
-If user selected "My Documents / Files", use AskUserQuestion:
-
-```json
-{
-  "questions": [
-    {
-      "question": "How would you like to provide the documents?",
-      "header": "Document Source",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "I'll type the paths in the terminal",
-          "description": "Paste or type file paths in your next message — I'll read them with the Read tool"
-        },
-        {
-          "label": "Paths are already in my request",
-          "description": "Use the file paths or filenames I already referenced above"
-        }
-      ]
-    }
-  ]
-}
-```
-
-Wait for file paths if user chose the first option. Extract paths from the user's next message.
-
-> **Note:** Reading local documents uses the built-in Read tool — no external service or MCP required. This works for any text-readable file: `.pdf`, `.xlsx`, `.csv`, `.docx`, `.md`, `.txt`, financial reports, articles, meeting notes, etc.
+If user selected "My Documents / Files", read [references/questions.md](references/questions.md) → "Phase 1 — Document source" and deliver that block via AskUserQuestion. Wait for file paths if the user chose to type them; extract paths from the next message. Reading local documents uses the built-in Read tool — no external service required.
 
 ---
 
@@ -273,8 +120,8 @@ Synthesize web findings into a running outline.
 ### Step 2.2 — Tech Library Docs via context7 (if selected and topic is software/tech)
 
 For each library or framework relevant to the topic:
-1. Resolve the library ID: call `mcp__context7-global__resolve-library-id` with the library name
-2. Query the docs: call `mcp__context7-global__query-docs` with the resolved ID and a focused query
+1. Resolve the library ID: call `mcp__context7__resolve-library-id` with the library name
+2. Query the docs: call `mcp__context7__query-docs` with the resolved ID and a focused query
 3. Extract relevant sections and cross-reference with other findings
 
 **Only use this step for genuine software library/framework questions** — e.g. "what Spring Boot version supports Java 21?", "what's the correct Axios API for interceptors?". Do NOT invoke context7 for business reports, financial documents, articles, or any non-library topic.
@@ -303,149 +150,11 @@ Cross-reference all findings. Identify:
 
 ### Step 3.1 — Choose output format (AskUserQuestion)
 
-**For academic/scientific topics**, use this configuration (citation-aware formats surfaced first):
-
-```json
-{
-  "questions": [
-    {
-      "question": "How should I present the findings?",
-      "header": "Output Format",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Literature review",
-          "description": "Structured academic review: Introduction, thematic sections, synthesis of sources, gaps identified, conclusion — with in-text citations and reference list"
-        },
-        {
-          "label": "Annotated bibliography",
-          "description": "Each source listed with full citation + 2–3 sentence annotation on relevance, methodology, and key findings"
-        },
-        {
-          "label": "Research outline",
-          "description": "Structured outline for a thesis chapter, paper, or report — with section headings, key points per section, and source assignments"
-        },
-        {
-          "label": "Summary with citations",
-          "description": "Concise findings summary with properly formatted citations (ask for citation style: APA, MLA, IEEE, Harvard, Chicago)"
-        },
-        {
-          "label": "Visual design via /conjure",
-          "description": "Invoke /conjure for a research poster, presentation slides, or visual summary design"
-        }
-      ]
-    }
-  ]
-}
-```
-
-If academic format chosen, also ask for citation style via AskUserQuestion:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which citation style should I use?",
-      "header": "Citation Style",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "APA (7th edition)",
-          "description": "Common in social sciences, psychology, education"
-        },
-        {
-          "label": "MLA",
-          "description": "Common in humanities, literature, language studies"
-        },
-        {
-          "label": "IEEE",
-          "description": "Common in engineering, electronics, computer science"
-        },
-        {
-          "label": "Harvard",
-          "description": "Common in UK universities and natural sciences"
-        },
-        {
-          "label": "Chicago / Turabian",
-          "description": "Common in history, arts, some social sciences"
-        },
-        {
-          "label": "No formal citation needed",
-          "description": "Include source URLs and titles informally"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For all other topics**, use this configuration:
-
-```json
-{
-  "questions": [
-    {
-      "question": "How should I present the findings?",
-      "header": "Output Format",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Markdown report",
-          "description": "Structured document with sections: Executive Summary, Key Findings, Details, Sources"
-        },
-        {
-          "label": "Executive summary",
-          "description": "Concise 1-page overview of the most important findings and recommendations"
-        },
-        {
-          "label": "Data tables",
-          "description": "Tabular format — ideal for metrics, financial figures, feature comparisons"
-        },
-        {
-          "label": "Visual design via /conjure",
-          "description": "Invoke /conjure for an interactive visual presentation or dashboard design"
-        },
-        {
-          "label": "Bullet notes",
-          "description": "Fast, unformatted key points — best for quick handoff or further processing"
-        }
-      ]
-    }
-  ]
-}
-```
-
-If user selects "Visual design via /conjure" in either config: invoke `/conjure` now, passing context about the research topic and findings outline so conjure starts informed. Return here after spec approval.
+Read [references/questions.md](references/questions.md) → "Phase 3 — Output format". Pick the academic or all-other-topics variant (and the citation-style follow-up when an academic format is chosen) and deliver it via AskUserQuestion. If the user selects "Visual design via /conjure", invoke `/conjure` with the topic and findings outline, then return here.
 
 ### Step 3.2 — Persistence decision (AskUserQuestion)
 
-```json
-{
-  "questions": [
-    {
-      "question": "What should happen with the output?",
-      "header": "Save & Commit",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Show here only",
-          "description": "Display findings in the terminal — no file created"
-        },
-        {
-          "label": "Save to file",
-          "description": "Write findings to a markdown file in the current directory"
-        },
-        {
-          "label": "Save and commit to git",
-          "description": "Write to file and create a git commit with a descriptive message"
-        }
-      ]
-    }
-  ]
-}
-```
-
-If saving: determine an appropriate filename from the topic (e.g., `research-q3-results-2026-04-21.md`).
+Read [references/questions.md](references/questions.md) → "Phase 3 — Persistence decision" and deliver that block via AskUserQuestion. If saving: determine an appropriate filename from the topic. **Inside a magician workspace (`.workspace/` exists), default to `.workspace/shared/research/<topic>-<date>.md`** (creating the dir if needed) so the findings become a pipeline artifact; otherwise save to the cwd or a path the user gives.
 
 ---
 
@@ -465,37 +174,7 @@ Write findings to the agreed filename using the Write tool.
 
 ### Step 4.3 — Commit (if requested)
 
-Use AskUserQuestion to confirm commit message:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Confirm the git commit message for this research output:",
-      "header": "Commit Message",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "docs: add research findings",
-          "description": "Standard docs commit — appropriate for research outputs and reports"
-        },
-        {
-          "label": "I'll provide a custom message",
-          "description": "Type your preferred commit message in the terminal"
-        }
-      ]
-    }
-  ]
-}
-```
-
-After confirmation (using the chosen or user-provided message):
-```bash
-git add {filename}
-git commit -m "{confirmed message}
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-```
+Read [references/questions.md](references/questions.md) → "Phase 4 — Commit message", deliver that block via AskUserQuestion, then run the `git add`/`git commit` it specifies with the confirmed message.
 
 ---
 
@@ -509,7 +188,7 @@ Before asking anything, look at what was just researched and classify it:
 |---|---|---|
 | Academic / scientific | thesis, paper, literature review, citation, study, diploma | /conjure (research poster or slides), /magic again (next research angle) |
 | Financial / business | revenue, Q1–Q4, KPIs, margins, market share | /conjure (dashboard), /blueprint (action plan) |
-| Technical feature / API | endpoints, SDK, library, integration | /blueprint (plan), /conjure (design), /forge (implement) |
+| Technical feature / API | endpoints, SDK, library, integration | /blueprint (plan), /conjure (design), /ward (implement) |
 | Bug / incident | error, failure, crash, regression, issue | /unravel (debug), /sentinel (security angle) |
 | Security / vulnerability | CVE, injection, auth, permissions, exposure | /sentinel (full scan) |
 | Performance / scalability | latency, throughput, memory, profiling | /accelerate (profile) |
@@ -520,205 +199,19 @@ Select the 2 most contextually relevant skills. Always include "Dig deeper" and 
 
 ### Step 5.2 — Propose next steps (AskUserQuestion)
 
-Construct and call AskUserQuestion with context-aware options. The question text should reflect what was actually found — not generic. Examples:
-
-**For academic/scientific research:**
-```json
-{
-  "questions": [
-    {
-      "question": "Good foundation of sources. What's the next step for your work?",
-      "header": "What's Next?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Research another angle or topic",
-          "description": "Continue building the literature base — start a new /magic search on a related aspect"
-        },
-        {
-          "label": "Design a presentation or poster with /conjure",
-          "description": "Turn findings into a visual research poster, slide deck, or summary design"
-        },
-        {
-          "label": "Dig deeper into one source or claim",
-          "description": "Focus on a specific paper, finding, or gap identified in the research"
-        },
-        {
-          "label": "Done — that's what I needed",
-          "description": "End the session"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For financial/business research:**
-```json
-{
-  "questions": [
-    {
-      "question": "Solid analysis — Q3 numbers are in. What's the next move?",
-      "header": "What's Next?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Visualize with /conjure",
-          "description": "Design an executive dashboard or slide deck from these findings"
-        },
-        {
-          "label": "Build an action plan with /blueprint",
-          "description": "Turn key findings into a prioritized implementation plan"
-        },
-        {
-          "label": "Dig deeper into one area",
-          "description": "Focus the research on a specific metric, risk, or segment"
-        },
-        {
-          "label": "Done — that's what I needed",
-          "description": "End the session"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For technical feature/API research:**
-```json
-{
-  "questions": [
-    {
-      "question": "Research complete. Ready to move from investigation to action?",
-      "header": "What's Next?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Plan implementation with /blueprint",
-          "description": "Convert findings into a TDD task plan with parallelism map"
-        },
-        {
-          "label": "Design the UI/API with /conjure",
-          "description": "Run a structured design dialogue to produce an approved spec"
-        },
-        {
-          "label": "Dig deeper into one area",
-          "description": "Investigate a specific part of the findings further"
-        },
-        {
-          "label": "Done — that's what I needed",
-          "description": "End the session"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For bug/incident research:**
-```json
-{
-  "questions": [
-    {
-      "question": "Root cause identified. Ready to dig in?",
-      "header": "What's Next?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Debug systematically with /unravel",
-          "description": "Run hypothesis-driven debugging with mandatory preflight — no random code changes"
-        },
-        {
-          "label": "Security scan with /sentinel",
-          "description": "Check if this bug has security implications across the codebase"
-        },
-        {
-          "label": "Dig deeper into one area",
-          "description": "Investigate a specific aspect of the findings further"
-        },
-        {
-          "label": "Done — that's what I needed",
-          "description": "End the session"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For security research:**
-```json
-{
-  "questions": [
-    {
-      "question": "Security findings noted. Want a full scan?",
-      "header": "What's Next?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Full security scan with /sentinel",
-          "description": "OWASP Top 10, credential detection, injection surface — full codebase sweep"
-        },
-        {
-          "label": "Plan the remediation with /blueprint",
-          "description": "Create a prioritized fix plan from the identified vulnerabilities"
-        },
-        {
-          "label": "Dig deeper into one area",
-          "description": "Investigate a specific vulnerability or surface area further"
-        },
-        {
-          "label": "Done — that's what I needed",
-          "description": "End the session"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**For architecture/design research:**
-```json
-{
-  "questions": [
-    {
-      "question": "Good picture of the landscape. Time to make it concrete?",
-      "header": "What's Next?",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Design with /conjure",
-          "description": "Structured design dialogue with visual companion — produces an approved spec"
-        },
-        {
-          "label": "Plan the build with /blueprint",
-          "description": "Turn the architecture findings into a TDD task plan"
-        },
-        {
-          "label": "Dig deeper into one area",
-          "description": "Investigate a specific component or decision further"
-        },
-        {
-          "label": "Done — that's what I needed",
-          "description": "End the session"
-        }
-      ]
-    }
-  ]
-}
-```
-
-Use these as templates — adapt the question text to reflect the actual topic researched.
+Read [references/next-steps.md](references/next-steps.md). Pick the template matching the research type, adapt the question text to reflect what was actually found (not generic), and deliver it via AskUserQuestion.
 
 ### Step 5.3 — Act on selection
 
+When handing off, pass the **saved research artifact path** (if saved, e.g. `.workspace/shared/research/<topic>-<date>.md`) plus a 2–3 sentence summary, so the next stage reads the full findings with zero context loss (see [lore/subagent-context.md](../../lore/subagent-context.md)).
+
 | Selection | Action |
 |---|---|
-| /conjure | Invoke `/conjure` — pass the research topic and a 2–3 sentence findings summary as context so conjure starts informed |
-| /blueprint | Invoke `/blueprint` — pass findings as the feature spec/requirements input |
-| /unravel | Invoke `/unravel` — pass the identified bug/incident as the starting point |
+| /conjure | Invoke `/conjure` — pass the research artifact path + topic + a 2–3 sentence summary so design starts informed |
+| /blueprint | Invoke `/blueprint` — pass the research artifact path as spec/requirements input |
+| /unravel | Invoke `/unravel` — pass the identified bug/incident and the research artifact path as the starting point |
 | /sentinel | Invoke `/sentinel` — no extra context needed, it scans the codebase |
-| /accelerate | Invoke `/accelerate` — pass performance concerns identified in findings as focus areas |
+| /accelerate | Invoke `/accelerate` — pass performance concerns from findings (and the artifact path) as focus areas |
 | Dig deeper | Use AskUserQuestion to ask which area, then return to Phase 2 with a focused query |
 | Done | Go to Step 5.4 |
 

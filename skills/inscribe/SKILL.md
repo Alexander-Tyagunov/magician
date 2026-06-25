@@ -1,7 +1,9 @@
 ---
 name: inscribe
-description: Creates a new reusable skill — can be triggered automatically by the pattern detector at 5 repetitions
-keep-coding-instructions: true
+description: Creates a new reusable skill — can be suggested by the pattern detector after repeated requests. Use to scaffold a new SKILL.md.
+allowed-tools: Read, Write, Edit, Bash(mkdir:*), Bash(git add:*), Bash(git commit:*)
+disable-model-invocation: true
+argument-hint: [skill-name or pattern description]
 ---
 
 # /inscribe — Write New Skills
@@ -23,9 +25,18 @@ Create a new magician skill from a recurring pattern.
 
 ```
 ---
+# Required: a specific description naming the trigger context (used for auto-invocation)
+description: <one sentence; name when/why to use this skill and the trigger context>
+# Optional: short slug name (defaults to the directory name)
 name: <name>
-description: <one sentence describing what this skill does>
-keep-coding-instructions: true
+# Recommended: scope tools to reduce permission prompts, e.g. Read, Edit, Bash(git:*)
+# allowed-tools: <comma-separated tools>
+# For side-effectful or standalone skills, prevent silent auto-invocation:
+# disable-model-invocation: true
+# Optional: hint shown for arguments
+# argument-hint: [arg description]
+# For heavy read-only skills, run in a forked context to keep the main thread lean:
+# context: fork
 ---
 
 # /<name> — <Title>
@@ -61,7 +72,8 @@ git commit -m "feat: add /<name> skill"
 
 ## Skill Quality Checklist
 
-- [ ] Has `keep-coding-instructions: true` in frontmatter
+- [ ] Frontmatter uses only valid fields (description, name, allowed-tools, disable-model-invocation, argument-hint, context) and has a specific description
+- [ ] SKILL.md stays lean (<~250 lines); heavy reference material lives in references/ and is linked
 - [ ] Has a clear completion signal
 - [ ] Process steps are concrete and actionable (not vague)
 - [ ] Does not duplicate an existing skill

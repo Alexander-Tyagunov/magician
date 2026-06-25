@@ -1,6 +1,6 @@
 ---
 name: autopsy
-description: Post-mortem analysis for incidents — timeline reconstruction, 5 Whys root cause, action items
+description: Blameless post-mortem / RCA — gathers facts, reconstructs a timeline, runs 5-Whys, defines action items, writes the post-mortem file and commits it. Use after an incident or outage.
 ---
 
 # /autopsy — Codex Adapter

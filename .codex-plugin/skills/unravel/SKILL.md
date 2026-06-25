@@ -1,6 +1,6 @@
 ---
 name: unravel
-description: Systematic debugging with mandatory hypothesis preflight — no random code changes
+description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use for any bug, test failure, or unexpected behavior.
 ---
 
 # /unravel — Codex Adapter

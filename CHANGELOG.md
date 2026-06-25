@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-06-25
+
+Modernization for the 2026 Claude Code era (skills/agents best practices, model/effort currency, cross-session memory, and the multiplayer/agent-teams workflow). **Breaking:** three skills were merged away.
+
+### Breaking
+- Merged 21 → 18 skills:
+  - `/absorb` → folded into `/scrutinize` (now reviews **and** remediates Critical/High findings).
+  - `/forge` → folded into `/ward` (now also runs `/ward task <N>` to execute a single blueprint task end-to-end with TDD).
+  - `/summon` → folded into `/orchestrate` (parallel fan-out is part of wave coordination).
+- `/manifest` chain updated accordingly (… → orchestrate → certify → scrutinize → seal).
+
+### Added
+- `lore/models.md` — model & effort currency guidance: never hardcode versions; prefer the latest tier (Opus 4.8 daily, Fable 5 for code), scale `/effort` to task size, and suggest upgrading when the session is on an older model.
+- `lore/subagent-context.md` — a self-contained **context contract** for every subagent spawn and skill handoff (subagents/teammates don't inherit conversation history), preventing context loss in parallel/async work.
+- **Global reference memory** — `$CLAUDE_PLUGIN_DATA/references.md` (repos, projects, ideas) loaded into every session by the SessionStart hook and managed via `/chronicle` (`remember`/`references`/`forget`); saved only with user confirmation.
+- `monitors/monitors.json` + `scripts/ci-watch.sh` — a background CI-red watcher that starts on first `/deploy` and degrades quietly when `gh`/remote are absent.
+- Agent definitions (`reviewer`, `sentinel`, `simplifier`, `verifier`) now have `description` (enables auto-delegation and agent-team reuse), scoped `tools`, a `model` tier, and a context-completeness guard.
+- `/magic` stays standalone but is now pipeline-integrated: research saves to a first-class `.workspace/shared/research/` artifact, and handoffs pass the artifact **path** into `/conjure`, `/blueprint`, and `/unravel`. Those skills (and `/manifest`'s design phase) read that directory and suggest `/magic` when a decision needs external evidence. `/almanac` now creates `research/` (and `plans/`).
+
+### Changed
+- Removed the undocumented/no-op `keep-coding-instructions` field from all skills and from `/inscribe`'s generated template + checklist.
+- Added modern frontmatter across skills: `allowed-tools` (fewer auto-mode prompts), `disable-model-invocation` on standalone side-effecting skills only (never on in-chain pipeline stages), `argument-hint`, and `context: fork` for `/sentinel`.
+- Split oversized skills via progressive disclosure: `/conjure` 874 → 198, `/magic` 738 → 221, `/almanac` 300 → 140 lines (reference material moved to `references/`).
+- `/orchestrate` now dispatches concurrent subagents with self-contained prompts and is aware of native dynamic workflows, nested subagents, and agent teams.
+
+### Fixed
+- `/magic`: corrected MCP tool names `mcp__context7-global__*` → `mcp__context7__*` (calls previously failed).
+- `/almanac`: workspace-strategy save now reflects the user's actual shared/private choice instead of hardcoding `mode='shared'`.
+- `/scrutinize` and `/seal`: dispatch review agents via `Task` subagent types (`magician:reviewer|sentinel|simplifier`) instead of reading `agents/<role>.md` by a path that didn't resolve from the project directory.
+- `/chronicle`: `clear N` now honors the user-supplied N instead of a hardcoded 30-day cutoff.
+- Removed hardcoded `Claude Sonnet 4.6` commit trailers (now generic `Claude`).
+- README: security section now credits the enforced `PreToolUse` guard (plugin `settings.json` permission rules are advisory, not enforced).
+
 ## [2.0.1] — 2026-05-03
 
 ### Fixed

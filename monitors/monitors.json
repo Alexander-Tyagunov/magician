@@ -1,0 +1,8 @@
+[
+  {
+    "name": "ci-watch",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/ci-watch.sh",
+    "description": "Watches GitHub Actions for newly failed runs (CI red) on this repo and pings Claude",
+    "when": "on-skill-invoke:deploy"
+  }
+]
