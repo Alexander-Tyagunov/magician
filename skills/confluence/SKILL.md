@@ -28,7 +28,8 @@ Run **`confluence whoami`**. If it prints your name → connected. If config is 
 | Read a page (metadata + URL) | `confluence get <id>` |
 | Read a page's content | `confluence get <id> body` |
 | Search (CQL) | `confluence search "<CQL>"` — cap with `CONFLUENCE_MAX=N` |
-| Children, comments, labels, **writes**, anything else | `confluence raw <METHOD> <path> [json-body]` |
+| Child pages | `confluence children <id>` |
+| Comments, labels, **writes**, anything else | `confluence raw <METHOD> <path> [json-body]` |
 
 The page id comes from the URL (`…/pages/<id>/…` or `viewpage.action?pageId=<id>`). Request bodies for create/update and CQL examples are in [reference.md](reference.md).
 

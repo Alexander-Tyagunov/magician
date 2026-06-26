@@ -22,17 +22,22 @@ Run **`jira myself`**. If it prints your name → connected, proceed. If it erro
 
 ## Commands (use the CLI)
 
+Prefer the **one-shot** commands below — they need no JQL and collapse multi-step queries into a single call (faster, less screen space):
+
 | Need | Command |
 |---|---|
 | Verify / who am I | `jira myself` |
+| My open work | `jira mine` |
+| My pending in the active sprint | `jira sprint <boardId>` *(active sprint + my not-done, in one call)* |
 | Read a ticket | `jira get <KEY>` |
-| Search (JQL) | `jira search "<JQL>"` — cap with `JIRA_MAX=N`; always add `ORDER BY` |
-| My open work | `jira search "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"` |
+| A ticket's comments | `jira comments <KEY>` |
+| Find a board id by name | `jira board <name>` |
+| Search (JQL) | `jira search "<JQL>"` — cap with `JIRA_MAX=N`; add `ORDER BY` |
 | Available transitions | `jira transitions <KEY>` |
 | Browse URL | `jira url <KEY>` |
-| Boards / sprints, links, **writes**, anything else | `jira raw <METHOD> <rest/path> [json-body]` |
+| Sprints by other criteria, links, **writes**, anything else | `jira raw <METHOD> <rest/path> [json-body]` |
 
-Examples for `jira raw`: active sprint → `jira raw GET "rest/agile/1.0/board/<id>/sprint?state=active"`; sprint issues → `jira raw GET "rest/agile/1.0/sprint/<id>/issue?maxResults=50"`. Field ids, link-type ids, and request bodies are in [reference.md](reference.md).
+Resolve the user's board id from memory (e.g. "my board") and pass it to `jira sprint`. Examples for `jira raw`: sprint issues → `jira raw GET "rest/agile/1.0/sprint/<id>/issue?maxResults=50"`. Field ids, link-type ids, and request bodies are in [reference.md](reference.md).
 
 ## Effort
 

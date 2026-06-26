@@ -29,7 +29,7 @@ def api(method, path, body=None, timeout=45):
     if not TOKEN:
         die("no token (set CONFLUENCE_API_TOKEN / CONFLUENCE_PAT / CONFLUENCE_PROD_PAT) — run setup.")
     # Shell out to curl so corporate CA trust (keychain) is used. Still one `confluence` command.
-    cmd = ["curl", "-sS", "--max-time", str(timeout), "-X", method,
+    cmd = ["curl", "-sS", "--compressed", "--max-time", str(timeout), "-X", method,
            "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
     if body is not None:
         cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
@@ -96,14 +96,24 @@ def c_raw(a):
     print(json.dumps(api(a[0].upper(), a[1], body), indent=2)[:6000])
 
 
-CMDS = {"whoami": c_whoami, "get": c_get, "search": c_search, "cql": c_search, "raw": c_raw}
+def c_children(a):
+    if not a:
+        die("usage: confluence children <id>")
+    res = api("GET", f"content/{a[0]}/child/page?limit=" + os.environ.get("CONFLUENCE_MAX", "50")).get("results", [])
+    print(f"children: {len(res)}")
+    for x in res:
+        print(f'  {x.get("id")}  {x.get("title","")}')
+
+
+CMDS = {"whoami": c_whoami, "get": c_get, "search": c_search, "cql": c_search,
+        "children": c_children, "raw": c_raw}
 
 
 def main():
     av = sys.argv[1:]
     if not av or av[0] in ("help", "-h", "--help"):
         print(__doc__)
-        print("commands: whoami | get <id> [body] | search <CQL> | raw <METHOD> <path> [json-body]", file=sys.stderr)
+        print("commands: whoami | get <id> [body] | search <CQL> | children <id> | raw <METHOD> <path> [json-body]", file=sys.stderr)
         return
     fn = CMDS.get(av[0])
     if not fn:

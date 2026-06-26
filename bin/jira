@@ -5,7 +5,7 @@ Config via env: JIRA_BASE_URL, a token (JIRA_API_TOKEN | JIRA_PAT | JIRA_PROD_PA
 and JIRA_EMAIL for Cloud (Basic auth + API v3). Server/Data-Center uses Bearer + API v2.
 One clean command per call so a single `Bash(jira:*)` allow rule covers everything.
 """
-import os, sys, json, base64, subprocess, urllib.parse
+import os, sys, json, re, base64, subprocess, urllib.parse
 
 BASE = (os.environ.get("JIRA_BASE_URL") or "").rstrip("/")
 TOKEN = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_PAT") or os.environ.get("JIRA_PROD_PAT") or ""
@@ -31,7 +31,7 @@ def api(method, path, body=None, timeout=45):
         die("no token (set JIRA_API_TOKEN / JIRA_PAT / JIRA_PROD_PAT) — run setup.")
     # Shell out to curl so the system/corporate CA trust (keychain) is used — Python's
     # urllib doesn't trust corporate roots that curl does. Still one `jira` command to the Bash tool.
-    cmd = ["curl", "-sS", "--max-time", str(timeout), "-X", method,
+    cmd = ["curl", "-sS", "--compressed", "--max-time", str(timeout), "-X", method,
            "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
     if body is not None:
         cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
@@ -113,15 +113,64 @@ def c_url(a):
     print(f"{BASE}/browse/{a[0]}")
 
 
+def c_mine(a):
+    # my open work — one predefined query, no JQL to compose
+    c_search(["assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"])
+
+
+def c_board(a):
+    if not a:
+        die("usage: jira board <name>")
+    d = api("GET", "rest/agile/1.0/board?name=" + urllib.parse.quote(" ".join(a)))
+    for b in d.get("values", []):
+        loc = (b.get("location") or {}).get("projectKey", "")
+        print(f'  {b.get("id")}  {b.get("type","")}  {b.get("name","")}{" ["+loc+"]" if loc else ""}')
+
+
+def c_sprint(a):
+    # active sprint of a board + MY not-done issues in it — both REST calls in ONE invocation
+    board = a[0] if a else os.environ.get("JIRA_BOARD", "")
+    if not board:
+        die("usage: jira sprint <boardId>  (find it: jira board <name>; or set JIRA_BOARD)")
+    vals = api("GET", f"rest/agile/1.0/board/{board}/sprint?state=active").get("values", [])
+    if not vals:
+        die(f"no active sprint on board {board}")
+    sp = vals[0]
+    print(f'active sprint: {sp.get("id")} — {sp.get("name")}')
+    q = urllib.parse.urlencode({
+        "jql": f'sprint = {sp.get("id")} AND assignee = currentUser() AND statusCategory != Done ORDER BY status ASC',
+        "maxResults": os.environ.get("JIRA_MAX", "50"),
+        "fields": "summary,status,issuetype"})
+    d = api("GET", f"rest/api/{V}/search?{q}")
+    print(f'my pending: {d.get("total")}')
+    for i in d.get("issues", []):
+        f = i["fields"]
+        print(f'  {i["key"]:<12} [{_name(f.get("status"))}] {_name(f.get("issuetype"))} · {f.get("summary","")[:66]}')
+
+
+def c_comments(a):
+    if not a:
+        die("usage: jira comments <KEY>")
+    cs = ((api("GET", f"rest/api/{V}/issue/{a[0]}?fields=comment").get("fields") or {}).get("comment") or {}).get("comments", [])
+    print(f"comments: {len(cs)}")
+    for c in cs[-10:]:
+        au = (c.get("author") or {}).get("displayName", "")
+        body = c.get("body", "")
+        body = re.sub(r"\s+", " ", body).strip()[:140] if isinstance(body, str) else "[rich text — use jira get]"
+        print(f'  [{(c.get("created") or "")[:10]}] {au}: {body}')
+
+
 CMDS = {"myself": c_myself, "get": c_get, "search": c_search, "jql": c_search,
-        "transitions": c_transitions, "raw": c_raw, "url": c_url}
+        "transitions": c_transitions, "raw": c_raw, "url": c_url,
+        "mine": c_mine, "board": c_board, "sprint": c_sprint, "comments": c_comments}
 
 
 def main():
     av = sys.argv[1:]
     if not av or av[0] in ("help", "-h", "--help"):
         print(__doc__)
-        print("commands: myself | get <KEY> | search <JQL> | transitions <KEY> | url <KEY> | "
+        print("commands: myself | mine | sprint <boardId> | get <KEY> | comments <KEY> | "
+              "search <JQL> | transitions <KEY> | board <name> | url <KEY> | "
               "raw <METHOD> <rest/path> [json-body]", file=sys.stderr)
         return
     fn = CMDS.get(av[0])

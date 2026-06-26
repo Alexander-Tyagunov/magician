@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] — 2026-06-26
+
+Performance & ergonomics for the Jira/Confluence CLIs.
+
+### Added
+- One-shot Jira commands that collapse common multi-step queries into a single call — no JQL to compose, fewer model→tool round-trips: `jira mine` (my open work), `jira sprint <boardId>` (active sprint **+** my not-done, resolved in one call instead of two), `jira comments <KEY>`, `jira board <name>`; plus `confluence children <id>`.
+
+### Changed
+- CLIs request gzip (`curl --compressed`) and minimal field sets, keeping responses and on-screen output compact. (`jira get` ≈ 5 lines; a sprint view ≈ 10.)
+
 ## [3.3.0] — 2026-06-26
 
 `/jira` and `/confluence` now run through bundled CLIs — quieter, faster, less screen noise.
