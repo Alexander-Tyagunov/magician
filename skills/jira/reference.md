@@ -2,24 +2,11 @@
 
 Loaded on demand from [SKILL.md](SKILL.md). All calls are `curl` to the Jira REST API — no MCP. Keep each call's timeout sane (reads ~10s; writes ~30–60s).
 
-## Auth
+## Auth & the CLI
 
-Two schemes; pick by deployment:
+The bundled **`jira` CLI** handles auth and the base URL from the environment — **do not build `curl` by hand**. It reads `JIRA_BASE_URL`, a token (`JIRA_API_TOKEN` / `JIRA_PAT` / `JIRA_PROD_PAT`), and `JIRA_EMAIL`. With `JIRA_EMAIL` set → Cloud (Basic auth, API v3); otherwise → Server/DC (Bearer, API v2). Override the version with `JIRA_API_VERSION`. Verify with `jira myself`; `401` = bad/rotated token, connection failure = base URL / VPN.
 
-| Deployment | API base | Auth header | curl |
-|---|---|---|---|
-| **Cloud** (`*.atlassian.net`) | `/rest/api/3` | Basic, `email:api_token` | `-u "$JIRA_EMAIL:$TOKEN"` |
-| **Server / Data Center** | `/rest/api/2` | Bearer PAT | `-H "Authorization: Bearer $TOKEN"` |
-
-Detect: if `JIRA_EMAIL` is set → Cloud/Basic (v3); else → Server/DC/Bearer (v2). Override with `JIRA_API_VERSION` if needed. Build the auth + base once:
-```bash
-BASE="${JIRA_BASE_URL%/}"
-TOKEN="${JIRA_API_TOKEN:-${JIRA_PAT:-${JIRA_PROD_PAT:-}}}"
-if [ -n "${JIRA_EMAIL:-}" ]; then AUTH=(-u "$JIRA_EMAIL:$TOKEN"); V="${JIRA_API_VERSION:-3}";
-else AUTH=(-H "Authorization: Bearer $TOKEN"); V="${JIRA_API_VERSION:-2}"; fi
-api(){ curl -sS --max-time "${3:-30}" "${AUTH[@]}" -H "Accept: application/json" "$BASE/rest/api/$V/$1" ${2:+-H "Content-Type: application/json" -d "$2"}; }
-```
-**Never print `$TOKEN`.** Verify connectivity: `api myself` → returns your account; `401` = bad/rotated token, connection hang/refuse = network/VPN.
+The REST paths below are exactly what **`jira raw <METHOD> <path> [json-body]`** expects (the path is appended to `<base>/`). Use the named CLI commands (`get`, `search`, `transitions`, `url`) for the common reads; use `jira raw` for boards/sprints, links, and all writes. So "`GET issue/{key}`" below means `jira raw GET rest/api/2/issue/{key}` — or just `jira get {key}`.
 
 ## Reads & JQL
 

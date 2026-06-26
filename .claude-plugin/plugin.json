@@ -1,6 +1,6 @@
 {
   "name": "magician",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "Full-stack SDLC plugin with dynamic project inspection, cross-session reference memory, self-learning, and parallel agent orchestration",
   "author": {
     "name": "Alexander Tyagunov",

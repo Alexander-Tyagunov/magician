@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""magician confluence helper — direct Confluence REST over HTTPS, no MCP.
+
+Config via env: CONFLUENCE_BASE_URL (Cloud includes /wiki), a token
+(CONFLUENCE_API_TOKEN | CONFLUENCE_PAT | CONFLUENCE_PROD_PAT), and CONFLUENCE_EMAIL for Cloud (Basic).
+Server/Data-Center uses Bearer. One clean command per call → one `Bash(confluence:*)` allow rule.
+"""
+import os, sys, json, re, base64, subprocess, urllib.parse
+
+BASE = (os.environ.get("CONFLUENCE_BASE_URL") or "").rstrip("/")
+TOKEN = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("CONFLUENCE_PAT") or os.environ.get("CONFLUENCE_PROD_PAT") or ""
+EMAIL = os.environ.get("CONFLUENCE_EMAIL") or ""
+
+
+def die(msg, code=1):
+    print(f"confluence: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _auth():
+    if EMAIL:
+        return "Basic " + base64.b64encode(f"{EMAIL}:{TOKEN}".encode()).decode()
+    return "Bearer " + TOKEN
+
+
+def api(method, path, body=None, timeout=45):
+    if not BASE:
+        die("CONFLUENCE_BASE_URL not set — run the confluence skill setup (setup.md).")
+    if not TOKEN:
+        die("no token (set CONFLUENCE_API_TOKEN / CONFLUENCE_PAT / CONFLUENCE_PROD_PAT) — run setup.")
+    # Shell out to curl so corporate CA trust (keychain) is used. Still one `confluence` command.
+    cmd = ["curl", "-sS", "--max-time", str(timeout), "-X", method,
+           "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
+    if body is not None:
+        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+    cmd += ["-w", "\n%{http_code}", f"{BASE}/rest/api/{path}"]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+    except subprocess.TimeoutExpired:
+        die("request timed out — check VPN / base URL.")
+    if p.returncode != 0:
+        die(f"connection failed — {p.stderr.strip()[:200]} (check CONFLUENCE_BASE_URL and VPN).")
+    out = p.stdout
+    nl = out.rfind("\n")
+    code, payload = out[nl + 1:].strip(), out[:nl]
+    if not code.isdigit():
+        die(f"unexpected response: {out[:200]}")
+    if int(code) >= 400:
+        die(f"HTTP {code} on {method} {path} — {payload[:400]}")
+    return json.loads(payload) if payload.strip() else {}
+
+
+def _weburl(d):
+    links = d.get("_links", {})
+    base = links.get("base") or BASE
+    return base + links.get("webui", "")
+
+
+def _text(html, limit=600):
+    t = re.sub(r"<[^>]+>", " ", html or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    return (t[:limit] + "…") if len(t) > limit else t
+
+
+def c_whoami(a):
+    d = api("GET", "user/current")
+    print(f'{d.get("displayName")} ({d.get("username") or d.get("accountId","")})')
+
+
+def c_get(a):
+    if not a:
+        die("usage: confluence get <id> [body]")
+    d = api("GET", f"content/{a[0]}?expand=space,version,body.storage")
+    print(f'{d.get("title")} | space: {(d.get("space") or {}).get("key")} | v{(d.get("version") or {}).get("number")}')
+    print(f'  {_weburl(d)}')
+    if len(a) > 1 and a[1] == "body":
+        print()
+        print(_text(((d.get("body") or {}).get("storage") or {}).get("value", ""), 4000))
+
+
+def c_search(a):
+    if not a:
+        die("usage: confluence search <CQL>")
+    q = urllib.parse.urlencode({"cql": " ".join(a), "limit": os.environ.get("CONFLUENCE_MAX", "25"), "expand": "space"})
+    d = api("GET", f"content/search?{q}")
+    res = d.get("results", [])
+    print(f"results: {len(res)}")
+    for x in res:
+        print(f'  {x.get("id","")}  [{(x.get("space") or {}).get("key","")}] {x.get("type","")} · {x.get("title","")}')
+
+
+def c_raw(a):
+    if len(a) < 2:
+        die("usage: confluence raw <METHOD> <path> [json-body]  (path is after rest/api/)")
+    body = json.loads(a[2]) if len(a) > 2 and a[2] else None
+    print(json.dumps(api(a[0].upper(), a[1], body), indent=2)[:6000])
+
+
+CMDS = {"whoami": c_whoami, "get": c_get, "search": c_search, "cql": c_search, "raw": c_raw}
+
+
+def main():
+    av = sys.argv[1:]
+    if not av or av[0] in ("help", "-h", "--help"):
+        print(__doc__)
+        print("commands: whoami | get <id> [body] | search <CQL> | raw <METHOD> <path> [json-body]", file=sys.stderr)
+        return
+    fn = CMDS.get(av[0])
+    if not fn:
+        die(f"unknown command '{av[0]}' (try: confluence help)")
+    fn(av[1:])
+
+
+if __name__ == "__main__":
+    main()

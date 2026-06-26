@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""magician jira helper — direct Jira REST over HTTPS, no MCP.
+
+Config via env: JIRA_BASE_URL, a token (JIRA_API_TOKEN | JIRA_PAT | JIRA_PROD_PAT),
+and JIRA_EMAIL for Cloud (Basic auth + API v3). Server/Data-Center uses Bearer + API v2.
+One clean command per call so a single `Bash(jira:*)` allow rule covers everything.
+"""
+import os, sys, json, base64, subprocess, urllib.parse
+
+BASE = (os.environ.get("JIRA_BASE_URL") or "").rstrip("/")
+TOKEN = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_PAT") or os.environ.get("JIRA_PROD_PAT") or ""
+EMAIL = os.environ.get("JIRA_EMAIL") or ""
+V = os.environ.get("JIRA_API_VERSION") or ("3" if EMAIL else "2")
+
+
+def die(msg, code=1):
+    print(f"jira: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _auth():
+    if EMAIL:
+        return "Basic " + base64.b64encode(f"{EMAIL}:{TOKEN}".encode()).decode()
+    return "Bearer " + TOKEN
+
+
+def api(method, path, body=None, timeout=45):
+    if not BASE:
+        die("JIRA_BASE_URL not set — run the jira skill setup (setup.md).")
+    if not TOKEN:
+        die("no token (set JIRA_API_TOKEN / JIRA_PAT / JIRA_PROD_PAT) — run setup.")
+    # Shell out to curl so the system/corporate CA trust (keychain) is used — Python's
+    # urllib doesn't trust corporate roots that curl does. Still one `jira` command to the Bash tool.
+    cmd = ["curl", "-sS", "--max-time", str(timeout), "-X", method,
+           "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
+    if body is not None:
+        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+    cmd += ["-w", "\n%{http_code}", f"{BASE}/{path}"]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+    except subprocess.TimeoutExpired:
+        die("request timed out — check VPN / base URL.")
+    if p.returncode != 0:
+        die(f"connection failed — {p.stderr.strip()[:200]} (check JIRA_BASE_URL and VPN).")
+    out = p.stdout
+    nl = out.rfind("\n")
+    code, payload = out[nl + 1:].strip(), out[:nl]
+    if not code.isdigit():
+        die(f"unexpected response: {out[:200]}")
+    if int(code) >= 400:
+        die(f"HTTP {code} on {method} {path} — {payload[:400]}")
+    return json.loads(payload) if payload.strip() else {}
+
+
+def _name(o):
+    return (o or {}).get("name") or (o or {}).get("displayName") or ""
+
+
+def c_myself(a):
+    d = api("GET", f"rest/api/{V}/myself")
+    print(f'{d.get("displayName")} <{d.get("emailAddress","")}>')
+
+
+def c_get(a):
+    if not a:
+        die("usage: jira get <KEY>")
+    d = api("GET", f"rest/api/{V}/issue/{a[0]}"
+            "?fields=summary,status,issuetype,assignee,reporter,priority,resolution,updated,parent")
+    f = d.get("fields", {})
+    print(f'{d.get("key")} — {f.get("summary","")}')
+    print(f'  status: {_name(f.get("status"))} | resolution: {_name(f.get("resolution")) or "Unresolved"}')
+    print(f'  type: {_name(f.get("issuetype"))} | priority: {_name(f.get("priority"))} '
+          f'| assignee: {_name(f.get("assignee")) or "Unassigned"} | reporter: {_name(f.get("reporter"))}')
+    print(f'  updated: {(f.get("updated") or "")[:16].replace("T"," ")}')
+    p = f.get("parent")
+    if p:
+        print(f'  parent: {p.get("key")} - {(p.get("fields") or {}).get("summary","")}')
+    print(f'  {BASE}/browse/{d.get("key")}')
+
+
+def c_search(a):
+    if not a:
+        die("usage: jira search <JQL>")
+    q = urllib.parse.urlencode({"jql": " ".join(a),
+                                "maxResults": os.environ.get("JIRA_MAX", "50"),
+                                "fields": "summary,status,assignee,issuetype"})
+    d = api("GET", f"rest/api/{V}/search?{q}")
+    print(f'total: {d.get("total")}')
+    for i in d.get("issues", []):
+        f = i["fields"]
+        print(f'  {i["key"]:<12} [{_name(f.get("status"))}] '
+              f'{_name(f.get("assignee")) or "-"} · {f.get("summary","")[:70]}')
+
+
+def c_transitions(a):
+    if not a:
+        die("usage: jira transitions <KEY>")
+    d = api("GET", f"rest/api/{V}/issue/{a[0]}/transitions")
+    for t in d.get("transitions", []):
+        print(f'  {t["id"]} → {t["name"]}')
+
+
+def c_raw(a):
+    if len(a) < 2:
+        die("usage: jira raw <METHOD> <rest/path> [json-body]")
+    body = json.loads(a[2]) if len(a) > 2 and a[2] else None
+    print(json.dumps(api(a[0].upper(), a[1], body), indent=2)[:6000])
+
+
+def c_url(a):
+    if not a:
+        die("usage: jira url <KEY>")
+    print(f"{BASE}/browse/{a[0]}")
+
+
+CMDS = {"myself": c_myself, "get": c_get, "search": c_search, "jql": c_search,
+        "transitions": c_transitions, "raw": c_raw, "url": c_url}
+
+
+def main():
+    av = sys.argv[1:]
+    if not av or av[0] in ("help", "-h", "--help"):
+        print(__doc__)
+        print("commands: myself | get <KEY> | search <JQL> | transitions <KEY> | url <KEY> | "
+              "raw <METHOD> <rest/path> [json-body]", file=sys.stderr)
+        return
+    fn = CMDS.get(av[0])
+    if not fn:
+        die(f"unknown command '{av[0]}' (try: jira help)")
+    fn(av[1:])
+
+
+if __name__ == "__main__":
+    main()

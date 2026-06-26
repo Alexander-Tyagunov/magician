@@ -35,12 +35,8 @@ Never type, echo, generate, or write the token value. You may write the **non-se
 
 5. **Reload** — `env` applies to new sessions; have the user start a new session (or `export` for an immediate test).
 
-6. **Verify** (no secret printed):
-   ```bash
-   BASE="${CONFLUENCE_BASE_URL%/}"; TOKEN="${CONFLUENCE_API_TOKEN:-${CONFLUENCE_PAT:-${CONFLUENCE_PROD_PAT:-}}}"
-   if [ -n "${CONFLUENCE_EMAIL:-}" ]; then A=(-u "$CONFLUENCE_EMAIL:$TOKEN"); else A=(-H "Authorization: Bearer $TOKEN"); fi
-   curl -sS --max-time 15 -o /dev/null -w "%{http_code}\n" "${A[@]}" "$BASE/rest/api/space?limit=1"
-   ```
-   `200` → success. `401/403` → token wrong/rotated or insufficient scope. Connection failure → base URL wrong or network/VPN.
+6. **Verify**: run **`confluence whoami`** (the `confluence` CLI is on PATH when the plugin is enabled). Prints your name on success; `401` → token, connection failure → base URL / VPN.
+
+7. **(Optional) allow it everywhere**: the skill already pre-allows the `confluence` CLI via `allowed-tools`. To allow it when other skills call it too, add `"Bash(confluence:*)"` to `permissions.allow` in `~/.claude/settings.json` once.
 
 Once verified, continue with the user's original request.

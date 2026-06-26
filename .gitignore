@@ -11,3 +11,6 @@ Thumbs.db
 
 # Test artifacts
 /tmp/magician-test/
+
+__pycache__/
+*.pyc

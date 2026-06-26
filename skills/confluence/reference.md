@@ -2,16 +2,11 @@
 
 Loaded on demand from [SKILL.md](SKILL.md). All calls are `curl` to the Confluence REST API — no MCP.
 
-## Auth
+## Auth & the CLI
 
-Same scheme as Jira. Build base + auth once:
-```bash
-BASE="${CONFLUENCE_BASE_URL%/}"     # Cloud includes /wiki; Server/DC may include a context path
-TOKEN="${CONFLUENCE_API_TOKEN:-${CONFLUENCE_PAT:-${CONFLUENCE_PROD_PAT:-}}}"
-if [ -n "${CONFLUENCE_EMAIL:-}" ]; then AUTH=(-u "$CONFLUENCE_EMAIL:$TOKEN"); else AUTH=(-H "Authorization: Bearer $TOKEN"); fi
-capi(){ curl -sS --max-time "${3:-30}" "${AUTH[@]}" -H "Accept: application/json" "$BASE/rest/api/$1" ${2:+-H "Content-Type: application/json" -d "$2"}; }
-```
-**Never print `$TOKEN`.** Verify: `capi "user/current"` (Server/DC) or on Cloud `GET .../wiki/rest/api/user/current` — `401` = bad/rotated token. The REST root is `$BASE/rest/api` on both Cloud (where `$BASE` ends in `/wiki`) and Server/DC.
+The bundled **`confluence` CLI** handles auth and the base URL from the environment — **do not build `curl` by hand**. It reads `CONFLUENCE_BASE_URL` (Cloud includes `/wiki`; Server/DC may include a context path), a token (`CONFLUENCE_API_TOKEN` / `CONFLUENCE_PAT` / `CONFLUENCE_PROD_PAT`), and `CONFLUENCE_EMAIL` (set → Cloud Basic; else Server/DC Bearer). Verify with `confluence whoami`; `401` = bad/rotated token.
+
+The REST paths below are what **`confluence raw <METHOD> <path> [json-body]`** expects — the path is appended to `<base>/rest/api/`. Use the named commands (`get`, `search`, `whoami`) for common reads; use `confluence raw` for children/comments/labels and all writes.
 
 ## Page ids & URLs
 

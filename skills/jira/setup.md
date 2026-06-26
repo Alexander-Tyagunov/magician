@@ -36,12 +36,8 @@ Never type, echo, generate, or write the token value. API tokens / PATs are secr
 
 5. **Reload.** `env` from settings is applied to new sessions — tell the user to start a new session (or restart Claude Code) so the variables load. (Within this session, they can `export` the vars in the shell for an immediate test.)
 
-6. **Verify** (no secret printed):
-   ```bash
-   BASE="${JIRA_BASE_URL%/}"; TOKEN="${JIRA_API_TOKEN:-${JIRA_PAT:-${JIRA_PROD_PAT:-}}}"
-   if [ -n "${JIRA_EMAIL:-}" ]; then A=(-u "$JIRA_EMAIL:$TOKEN"); V="${JIRA_API_VERSION:-3}"; else A=(-H "Authorization: Bearer $TOKEN"); V="${JIRA_API_VERSION:-2}"; fi
-   curl -sS --max-time 15 -o /dev/null -w "%{http_code}\n" "${A[@]}" "$BASE/rest/api/$V/myself"
-   ```
-   `200` → success (show the resolved display name from a full `myself` call). `401/403` → token wrong/rotated or insufficient scope. Connection failure → base URL wrong or network/VPN.
+6. **Verify**: run **`jira myself`** (the `jira` CLI is on PATH when the plugin is enabled). It prints your name on success; `401` → token wrong/rotated, connection failure → base URL wrong or VPN.
+
+7. **(Optional) allow it everywhere**: the `jira` skill already pre-allows the `jira` CLI via its `allowed-tools`, so there are no prompts while the skill runs. If you also want it allowed when other skills call it (e.g. `/magic`), add `"Bash(jira:*)"` to `permissions.allow` in `~/.claude/settings.json` once.
 
 Once verified, continue with the user's original request.
