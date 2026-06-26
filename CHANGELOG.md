@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] — 2026-06-26
+
+Respect users who don't use an integration.
+
+### Added
+- **Integration opt-out memory** (`lore/integration-prefs.md`): when the user says they don't use Jira/Confluence (or declines setup with "don't ask again"), `/jira`, `/confluence`, `/magic`, and `/divine` stop *proactively* suggesting it — stored per-user in `integration-prefs.json`. A direct request later re-enables it. The auto-trigger hook also no longer nudges toward a service the user says they don't have ("I don't have jira" → no suggestion).
+
 ## [3.2.0] — 2026-06-26
 
 Direct-HTTP **Jira & Confluence** skills (no MCP / no proxy) and the **`/divine`** code-review skill.

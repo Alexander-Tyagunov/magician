@@ -8,7 +8,7 @@ Never type, echo, generate, or write the token value. You may write the **non-se
 
 ## Steps
 
-1. **Confirm intent** (AskUserQuestion): "Set up Confluence access now? One-time — create a token and save it to your Claude settings." Options: *Set it up* / *Not now*.
+1. **Confirm intent** (AskUserQuestion): "Set up Confluence access now? One-time — create a token and save it to your Claude settings." Options: *Set it up* / *Not now* (skip this time) / *No, I don't use Confluence — don't ask again*. On the last option, record the opt-out per [lore/integration-prefs.md](../../lore/integration-prefs.md) (`"confluence":"disabled"`) and confirm you won't bring it up again unless they ask. Don't continue setup.
 
 2. **Collect non-secret config**:
    - **Base URL** — Cloud: `https://<site>.atlassian.net/wiki` (include `/wiki`). Server/DC: `https://confluence.<company>.com` (plus any context path).

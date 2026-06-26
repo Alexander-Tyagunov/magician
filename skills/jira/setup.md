@@ -8,7 +8,7 @@ Never type, echo, generate, or write the token value. API tokens / PATs are secr
 
 ## Steps
 
-1. **Confirm intent** (AskUserQuestion): "Set up Jira access now? It's a one-time step — create a token and save it to your Claude settings." Options: *Set it up* / *Not now* (skip and tell them the skill needs it).
+1. **Confirm intent** (AskUserQuestion): "Set up Jira access now? It's a one-time step — create a token and save it to your Claude settings." Options: *Set it up* / *Not now* (skip this time) / *No, I don't use Jira — don't ask again*. On the last option, record the opt-out per [lore/integration-prefs.md](../../lore/integration-prefs.md) (`"jira":"disabled"`) and confirm you won't bring it up again unless they ask. Don't continue setup.
 
 2. **Collect non-secret config** (AskUserQuestion or a direct question):
    - **Base URL** — `https://<site>.atlassian.net` (Cloud) or `https://jira.<company>.com` (Server/Data Center).

@@ -20,7 +20,7 @@ EVERY consultation, clarification, and decision MUST use the AskUserQuestion too
 It also plugs into the SDLC chain without losing context:
 - **Feeds the pipeline:** inside a magician workspace (`.workspace/` present), saved research goes to `.workspace/shared/research/<topic>-<date>.md` — a first-class artifact, like specs and plans. Phase 5 hands that **path** (not just a summary) to the next stage, so design/planning/debugging start informed.
 - **Fed by the pipeline:** `/conjure`, `/blueprint`, `/unravel`, and `/manifest` read `.workspace/shared/research/` and suggest `/magic` when a decision needs external evidence.
-- **Internal sources:** for the user's own Jira tickets/epics/boards or Confluence pages, use the `magician:jira` / `magician:confluence` skills (direct HTTP REST, no MCP; they run one-time setup if not configured) instead of web search. Fold what they return into the findings like any other source.
+- **Internal sources:** for the user's own Jira tickets/epics/boards or Confluence pages, use the `magician:jira` / `magician:confluence` skills (direct HTTP REST, no MCP; they run one-time setup if not configured) instead of web search. Fold what they return into the findings like any other source. **Skip a source the user has opted out of** ([lore/integration-prefs.md](../../lore/integration-prefs.md)) — don't suggest setting it up.
 
 ## Auto-Invocation
 

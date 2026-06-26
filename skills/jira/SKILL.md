@@ -23,6 +23,8 @@ TOKEN="${JIRA_API_TOKEN:-${JIRA_PAT:-${JIRA_PROD_PAT:-}}}"   # first one set win
 ```
 If `JIRA_BASE_URL` or a token is missing, **run setup**: read [setup.md](setup.md) and walk the user through creating a token and saving it to `~/.claude/settings.json` `env`. NEVER type, echo, or write the token value yourself — the user pastes it; you only verify. After setup, confirm with a `myself` call before doing the requested task.
 
+**Opt-out (respect it):** if the user previously opted out of Jira (see [lore/integration-prefs.md](../../lore/integration-prefs.md)) and this run came from a *proactive* suggestion (e.g. another skill wanted a ticket), stay silent. A **direct** request — invoking this skill, "check jira", "set up jira" — overrides and clears the opt-out. If the user says they don't use Jira or declines setup with "don't ask again", record the opt-out and don't bring it up again until they ask.
+
 Auth is **Bearer** for Server/Data-Center PATs and **Basic** (email + API token) for Cloud — see [reference.md](reference.md#auth). Build the `curl` auth args once and reuse them.
 
 ## Capabilities

@@ -58,13 +58,16 @@ review_trigger = bool(
     or re.search(r'\b(review|audit|evaluat\w+|assess\w*|critiqu\w+|look at|go over)\b[^.?!]{0,40}\b(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes|branch|commit|this code)\b', prompt_lower)
     or re.search(r'\b(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes)\b[^.?!]{0,40}\b(review|audit|evaluat\w+|assess\w*|critiqu\w+)\b', prompt_lower)
 )
-# Jira / Confluence intent — take precedence over /magic research
-jira_trigger = bool(
+# Jira / Confluence intent — take precedence over /magic research.
+# Negation guard: don't nudge toward a service the user says they don't have/use.
+def _neg(svc):
+    return bool(re.search(r"(?:\b(?:no|not|never|without|none|cannot|lack)\b|n['’]?t)[^.!?]{0,25}\b" + svc + r"\b", prompt_lower))
+jira_trigger = (not _neg("jira")) and bool(
     re.search(r'\bjira\b', prompt_lower)
     or re.search(r'\b(my|the)\s+(board|sprint|backlog)\b', prompt_lower)
     or re.search(r'\btickets?\b', prompt_lower)
 )
-confluence_trigger = bool(
+confluence_trigger = (not _neg("confluence")) and bool(
     re.search(r'\bconfluence\b', prompt_lower)
     or re.search(r'\bwiki\s+(page|space|doc)\b', prompt_lower)
 )

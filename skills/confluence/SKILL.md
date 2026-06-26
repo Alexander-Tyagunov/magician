@@ -23,6 +23,8 @@ TOKEN="${CONFLUENCE_API_TOKEN:-${CONFLUENCE_PAT:-${CONFLUENCE_PROD_PAT:-}}}"
 ```
 If `CONFLUENCE_BASE_URL` or a token is missing, **run setup**: read [setup.md](setup.md) and walk the user through creating a token and saving it to `~/.claude/settings.json` `env`. NEVER type, echo, or write the token value — the user pastes it; you only verify. Confirm with a `current-user` call before the task.
 
+**Opt-out (respect it):** if the user previously opted out of Confluence (see [lore/integration-prefs.md](../../lore/integration-prefs.md)) and this run came from a *proactive* suggestion, stay silent. A **direct** request — invoking this skill, "search confluence", "set up confluence" — overrides and clears the opt-out. If the user says they don't use Confluence or declines setup with "don't ask again", record the opt-out and don't bring it up again until they ask.
+
 Auth is **Bearer** for Server/DC PATs and **Basic** (email + API token) for Cloud — same scheme as Jira; details in [reference.md](reference.md#auth).
 
 ## Capabilities
