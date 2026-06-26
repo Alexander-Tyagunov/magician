@@ -18,7 +18,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-3.1.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-3.2.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -133,7 +133,7 @@ flowchart TD
 
 ## Skills
 
-18 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
+21 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
 
 | Skill | Purpose | Category |
 |---|---|---|
@@ -144,6 +144,9 @@ flowchart TD
 | `/certify` | Full verification loop — tests, types, lint, build, and Playwright browser check for UI projects; collects evidence before any success claim | Core SDLC |
 | `/orchestrate` | Drives multi-agent implementation from a blueprint — groups parallel tasks into waves, dispatches concurrent subagents with self-contained prompts, resolves conflicts, runs `/certify`. Aware of native dynamic workflows, nested subagents & agent teams. *(merged the former `/summon`)* | Orchestration |
 | `/scrutinize` | Dispatches 3 specialist reviewers in parallel (correctness, security, simplification), consolidates findings, then remediates Critical/High. *(merged the former `/absorb`)* | Orchestration |
+| `/divine` | Standalone, research-grounded **code review** — auto-triggers on "review this PR/MR" / "do a code review". Detects change context (GitHub PR · GitLab MR · branch · working tree) + intent + CI gates, gates **depth** (Quick simple-logic → Exhaustive PRD/docs/data + blast-radius across affected services & infra), grounds via `/magic`, runs 4 lenses in parallel, adversarially verifies findings, emits a severity-ranked report with impact + fix + traceability. Can optionally spin an agent to **implement fixes + commit**, and run **unattended via `/loop`** to monitor repos for new PRs/MRs. Stack/company-agnostic | Review |
+| `/jira` | Work with Jira over its **REST API directly** (no MCP/proxy — independent of any gateway). Read/search (JQL), create/comment/transition/link/worklog, MR investigation, clone; per-action write gates, bulk-write playbook, INVEST/Gherkin authoring, first-run token setup. Cloud + Server/DC. Auto-triggers on jira intent | Integration |
+| `/confluence` | Work with Confluence over its **REST API directly** (no MCP/proxy). Read/search (CQL), sections, create/update/comment/label; write gates, macro-aware authoring, first-run token setup. Cloud + Server/DC. Auto-triggers on confluence intent | Integration |
 | `/portal` | Creates a git worktree for isolated feature work; includes cleanup steps post-merge; respects `disableGit` preference | Orchestration |
 | `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
 | `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |

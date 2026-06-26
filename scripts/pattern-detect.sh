@@ -52,6 +52,22 @@ MAGIC_KEYWORDS = {
 MAGIC_PHRASES = ["find out", "look into", "dig into", "find information", "tell me about", "learn about"]
 
 prompt_lower = prompt.lower()
+# code-review intent (a review verb near a PR/MR/diff/branch noun) — takes precedence over /magic research
+review_trigger = bool(
+    re.search(r'\b(code review|do a (?:code )?review)\b', prompt_lower)
+    or re.search(r'\b(review|audit|evaluat\w+|assess\w*|critiqu\w+|look at|go over)\b[^.?!]{0,40}\b(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes|branch|commit|this code)\b', prompt_lower)
+    or re.search(r'\b(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes)\b[^.?!]{0,40}\b(review|audit|evaluat\w+|assess\w*|critiqu\w+)\b', prompt_lower)
+)
+# Jira / Confluence intent — take precedence over /magic research
+jira_trigger = bool(
+    re.search(r'\bjira\b', prompt_lower)
+    or re.search(r'\b(my|the)\s+(board|sprint|backlog)\b', prompt_lower)
+    or re.search(r'\btickets?\b', prompt_lower)
+)
+confluence_trigger = bool(
+    re.search(r'\bconfluence\b', prompt_lower)
+    or re.search(r'\bwiki\s+(page|space|doc)\b', prompt_lower)
+)
 words_in_prompt = set(re.findall(r'\b[a-z]+\b', prompt_lower))
 magic_hit = words_in_prompt & MAGIC_KEYWORDS
 magic_phrase_hit = [ph for ph in MAGIC_PHRASES if ph in prompt_lower]
@@ -59,7 +75,7 @@ magic_phrase_hit = [ph for ph in MAGIC_PHRASES if ph in prompt_lower]
 already_invoking = any(t in prompt_lower for t in ["/magic", "magician:magic", "/conjure"])
 is_short = len(prompt.split()) < 4
 
-if (magic_hit or magic_phrase_hit) and not already_invoking and not is_short:
+if (magic_hit or magic_phrase_hit) and not already_invoking and not is_short and not review_trigger and not jira_trigger and not confluence_trigger:
     matched = list(magic_hit)[:2] or magic_phrase_hit[:1]
     print(json.dumps({
         "additionalContext": (
@@ -69,6 +85,39 @@ if (magic_hit or magic_phrase_hit) and not already_invoking and not is_short:
     }))
     sys.exit(0)
 # --- end /magic auto-invoke ---
+
+# --- /divine auto-invoke: code-review intent (review_trigger computed above, before /magic) ---
+already_reviewing = any(t in prompt_lower for t in ["/divine", "magician:divine", "/scrutinize"])
+
+if review_trigger and not already_reviewing:
+    print(json.dumps({
+        "additionalContext": (
+            "[MAGICIAN] Code-review intent detected. Auto-activating /divine — establish change "
+            "context, ask the user how deep via AskUserQuestion, then run the multi-lens review. "
+            "Invoke magician:divine before responding."
+        )
+    }))
+    sys.exit(0)
+# --- end /divine auto-invoke ---
+
+# --- /jira & /confluence auto-invoke ---
+if jira_trigger and not any(t in prompt_lower for t in ["/jira", "magician:jira"]):
+    print(json.dumps({
+        "additionalContext": (
+            "[MAGICIAN] Jira intent detected. Use the magician:jira skill (direct HTTP REST, no MCP; "
+            "it runs first-time setup if Jira isn't configured) for this request."
+        )
+    }))
+    sys.exit(0)
+if confluence_trigger and not any(t in prompt_lower for t in ["/confluence", "magician:confluence"]):
+    print(json.dumps({
+        "additionalContext": (
+            "[MAGICIAN] Confluence intent detected. Use the magician:confluence skill (direct HTTP REST, no MCP; "
+            "it runs first-time setup if Confluence isn't configured) for this request."
+        )
+    }))
+    sys.exit(0)
+# --- end /jira & /confluence auto-invoke ---
 
 best_match = None
 best_score = 0.0
