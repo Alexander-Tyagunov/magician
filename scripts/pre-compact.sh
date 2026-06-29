@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
-# PreCompact hook — saves observable session state to workspace before compaction.
+# PreCompact hook — capture a high-fidelity resume capsule before compaction.
+#
+# PreCompact can only BLOCK compaction (not steer or inject context), so we use it
+# purely to CAPTURE: bin/ctx writes a structured capsule (goal, open threads, decisions,
+# changed files, artifact paths, recent learnings) to a global per-project store and arms
+# re-injection for the next prompt (and on resume). Re-injection happens in pattern-detect
+# (UserPromptSubmit) and session-start — the events that actually support additionalContext.
+# Works WITHOUT a .workspace/ (unlike the old stub); degrades silently on any error.
 
 set -euo pipefail
 
-WORKSPACE_LOCAL=".workspace/local"
-SESSION_FILE="$WORKSPACE_LOCAL/session.md"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+INPUT=$(cat 2>/dev/null || printf '{}')
 
-[ -d "$WORKSPACE_LOCAL" ] || exit 0
+{ read -r SID; read -r TPATH; read -r TRIG; } < <(printf '%s' "$INPUT" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+print(d.get('session_id', 'default') or 'default')
+print(d.get('transcript_path', '') or '')
+print(d.get('trigger', 'manual') or 'manual')
+" 2>/dev/null) || { SID=default; TPATH=""; TRIG=manual; }
 
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-CHANGED=$(git diff --name-only HEAD 2>/dev/null | head -10 || echo "none")
-STAGED=$(git diff --name-only --cached 2>/dev/null | head -10 || echo "none")
+"$PLUGIN_ROOT/bin/ctx" capsule --session "${SID:-default}" --transcript "${TPATH:-}" \
+  --trigger "${TRIG:-manual}" >/dev/null 2>&1 || true
 
-cat > "$SESSION_FILE" <<SESSION
-# Session State — saved at compaction
-
-**Timestamp:** $TIMESTAMP
-**Branch:** $BRANCH
-
-## Modified files (unstaged)
-$CHANGED
-
-## Staged files
-$STAGED
-
-## Notes
-Context was compacted. Resume by checking git status and recent git log.
-SESSION
+exit 0

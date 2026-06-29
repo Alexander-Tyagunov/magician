@@ -1,16 +1,30 @@
 ---
 name: chronicle
-description: View session-learning history AND manage the global reference store (repos, projects, ideas remembered across every session). Use to review past sessions or to remember/recall/forget a reference.
-allowed-tools: Bash(ls:*), Bash(python3:*), Bash(cat:*), Read, Write, Edit
-argument-hint: [last N | branch X | since DATE | clear N | remember <fact> | references | forget <text>]
+description: Memory & context steward — view session-learning history, manage the global reference store (repos, projects, ideas), AND manage live context (size status, post-compaction resume capsule, project learnings, promotion). Use to review past sessions, remember/recall/forget a reference, check context size, resume after compaction, or capture/consolidate learnings.
+allowed-tools: Bash(ls:*), Bash(python3:*), Bash(cat:*), Bash(ctx:*), Bash(stat:*), Read, Write, Edit
+argument-hint: [status | resume | learn <fact> [--global] | consolidate | last N | remember <fact> | references | forget <text> | clear N]
 ---
 
-# /chronicle — Session History & Global References
+# /chronicle — Memory, History & Context Steward
 
-Two stores, both global to this machine (survive across all projects and sessions):
+Three stores, all global to this machine (survive across all projects and sessions):
 
 - **Session history** — `~/.local/share/magician/chronicle/` — one JSON per session (written by the Stop hook).
 - **Global references** — `~/.local/share/magician/references.md` — repos, projects, and ideas worth remembering. Loaded into context at every session start.
+- **Context state & project learnings** — driven by the bundled **`ctx`** CLI (size tracking, resume capsule, per-project learnings). The honest limits and internals are in [references/context-mgmt.md](references/context-mgmt.md).
+
+## Context self-management (`ctx`)
+
+The plugin tracks context size every prompt and captures a resume capsule before any compaction (so nothing is lost) — automatically, via hooks. These subcommands expose it:
+
+| Command | Does |
+|---|---|
+| `/chronicle status` | `ctx pct --transcript <transcript_path>` → current context %; plus last capsule + project learnings count. The transcript path comes from the hook environment; if unknown, say so. |
+| `/chronicle resume` | `ctx resume --keep` → print the latest resume capsule (goal, open threads, decisions, changed files, artifact paths) to restore bearings after a compaction. |
+| `/chronicle learn "<fact>" [--global]` | `ctx learn --add "<fact>"` (project) or `--global` (promote to references.md). **Confirm before `--global`.** |
+| `/chronicle consolidate` | `ctx consolidate` → show recurring project learnings; offer to promote high-frequency ones to global references (**confirm each**) and prune stale ones. |
+
+Honest limits (never overclaim): a plugin can't read a live token count (we parse the transcript's latest `usage` — accurate, one turn stale), and **can't force or steer compaction** — only the user/auto-threshold compacts. We warn before it balloons and make loss impossible via the capsule. Details: [references/context-mgmt.md](references/context-mgmt.md).
 
 ## Session history
 
@@ -65,10 +79,10 @@ To **forget**, show the matching lines, confirm, then remove them with an Edit.
 
 ## Process
 
-1. Parse the request from `$ARGUMENTS` (or ask): `last N`, `branch X`, `since DATE`, `clear N`, `remember <fact>`, `references`, `forget <text>`. **If you must ask, end your turn and wait.**
-2. For reads (history view, `references`): run the command and present results.
-3. For `remember`: classify the fact as Repository / Project / Idea, state what you'll save, **wait for confirmation**, then append.
-4. For `forget` / `clear`: show what will be removed and **wait for an explicit yes** before deleting (this is permanent).
+1. Parse the request from `$ARGUMENTS` (or ask): `status`, `resume`, `learn <fact> [--global]`, `consolidate`, `last N`, `branch X`, `since DATE`, `clear N`, `remember <fact>`, `references`, `forget <text>`. **If you must ask, end your turn and wait.**
+2. For reads (history view, `references`, `status`, `resume`): run the command and present results.
+3. For `remember` / `learn --global`: classify the fact, state what you'll save, **wait for confirmation**, then append (global store persists across all projects). Project-scoped `learn` (no `--global`) needs no confirmation — it's local and cheap.
+4. For `forget` / `clear` / `consolidate` pruning: show what will be removed and **wait for an explicit yes** before deleting (this is permanent).
 
 ## Clearing old chronicles (uses the N you were given)
 

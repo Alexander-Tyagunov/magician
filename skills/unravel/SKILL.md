@@ -1,6 +1,6 @@
 ---
 name: unravel
-description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use for any bug, test failure, or unexpected behavior.
+description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use whenever a problem is reported or something misbehaves — "I have a bug / it's broken / not working / crashing", an error/exception/stack trace, a regression, a test failure, or a production issue/outage when the app is deployed. Grounds the investigation with /magic + the knowledge graph (kg query/blast) for comprehensive root-cause research.
 allowed-tools: Read, Grep, Glob, Bash
 argument-hint: <bug or error description>
 ---

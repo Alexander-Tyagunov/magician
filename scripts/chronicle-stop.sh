@@ -59,4 +59,9 @@ with open(entry_file, "w") as f:
 print(f"Chronicle written: {entry_file}", file=sys.stderr)
 PYEOF
 
+# Extract commit-derived learnings into the per-project store (before we drop the
+# session-start marker, which bin/ctx uses to scope `git log --since`). Best-effort.
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+"$PLUGIN_ROOT/bin/ctx" learn --from-git >/dev/null 2>&1 || true
+
 rm -f "$START_TIME_FILE"

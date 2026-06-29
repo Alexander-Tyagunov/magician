@@ -244,9 +244,21 @@ print(f"No knowledge-graph index for this repo ({n} files). If this session will
 PYEOF
 )
 
+# ── Resume capsule (re-inject after a prior compaction, on --resume/--continue) ──
+RESUME_NOTE=""
+CAPSULE=$("$PLUGIN_ROOT/bin/ctx" resume --on-start 2>/dev/null || true)
+[ -n "$CAPSULE" ] && RESUME_NOTE=" RESUME-AFTER-COMPACTION — restore your bearings from this capsule, then continue (read the referenced paths instead of re-exploring):
+${CAPSULE}"
+
+# ── Project memory (recent learnings for THIS project, distinct from global refs) ──
+LEARN_NOTE=""
+LEARNINGS=$("$PLUGIN_ROOT/bin/ctx" learn --list --n 3 2>/dev/null || true)
+[ -n "$LEARNINGS" ] && LEARN_NOTE=" PROJECT MEMORY — recent learnings for this project (consult only when relevant):
+${LEARNINGS}"
+
 CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the user by printing this block inside a code fence verbatim, then proceed to help them:
 ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
-${LORE_NOTE}${CHRONICLE_NOTE}${REFERENCES_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${REMEMBER_HINT}"
+${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${REMEMBER_HINT}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"

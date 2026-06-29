@@ -50,12 +50,27 @@ else:
 paths      = data.get("paths", [])
 by_parent  = data.get("by_parent", {})
 suggested  = data.get("suggested", [])
+large_sug  = data.get("large_suggested", [])
 
 # Deduplicate: only track each unique path once
 if file_path in paths:
     sys.exit(0)
 
 paths.append(file_path)
+
+# One-time nudge on large code reads — for recurring lookups, kg targets the lines.
+_CODE = ("py", "js", "jsx", "ts", "tsx", "java", "go", "rs", "rb", "cpp", "cc",
+         "c", "h", "cs", "php", "kt", "swift", "scala")
+try:
+    _sz = os.path.getsize(file_path)
+except Exception:
+    _sz = 0
+if _sz > 20000 and file_path not in large_sug and file_path.rsplit(".", 1)[-1] in _CODE:
+    large_sug.append(file_path)
+    _rel = os.path.relpath(file_path)
+    print(f"Large read (`{_rel}`, ~{_sz // 1000}KB). For recurring lookups in big files, "
+          f"`kg query \"<what you need>\"` returns the relevant file:line ranges — cheaper than "
+          f"re-reading the whole file (keeps context small).")
 
 # Count accesses grouped by immediate parent and grandparent
 p = Path(file_path)
@@ -82,6 +97,7 @@ for ancestor in [str(p.parent), str(p.parent.parent)]:
 data["paths"]     = paths[-1000:]
 data["by_parent"] = by_parent
 data["suggested"] = suggested
+data["large_suggested"] = large_sug[-500:]
 
 with open(access_file, "w") as f:
     json.dump(data, f, indent=2)
