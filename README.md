@@ -18,7 +18,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-3.3.1-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-3.4.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -133,7 +133,7 @@ flowchart TD
 
 ## Skills
 
-21 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
+22 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
 
 | Skill | Purpose | Category |
 |---|---|---|
@@ -147,6 +147,7 @@ flowchart TD
 | `/divine` | Standalone, research-grounded **code review** — auto-triggers on "review this PR/MR" / "do a code review". Detects change context (GitHub PR · GitLab MR · branch · working tree) + intent + CI gates, gates **depth** (Quick simple-logic → Exhaustive PRD/docs/data + blast-radius across affected services & infra), grounds via `/magic`, runs 4 lenses in parallel, adversarially verifies findings, emits a severity-ranked report with impact + fix + traceability. Can optionally spin an agent to **implement fixes + commit**, and run **unattended via `/loop`** to monitor repos for new PRs/MRs. Stack/company-agnostic | Review |
 | `/jira` | Work with Jira over its **REST API directly** via a bundled **`jira` CLI** (no MCP/proxy; one command per call → no per-request prompts). Read/search (JQL), create/comment/transition/link/worklog, MR investigation, clone; per-action write gates, bulk-write playbook, INVEST/Gherkin authoring, first-run token setup. Cloud + Server/DC. Auto-triggers on jira intent | Integration |
 | `/confluence` | Work with Confluence over its **REST API directly** via a bundled **`confluence` CLI** (no MCP/proxy). Read/search (CQL), page bodies, create/update/comment/label; write gates, macro-aware authoring, first-run token setup. Cloud + Server/DC. Auto-triggers on confluence intent | Integration |
+| `/knowledge-graph` | Local code **knowledge-graph + cache** via a bundled **`kg` CLI** (no MCP/network; stdlib by default). Indexes a repo into a SQLite/FTS5 graph of symbols + import/reference edges at `~/.claude/magician/knowledge-graph/`; serves ranked `file:line` (BM25 + Personalized PageRank), `neighbors`, and change **blast-radius** so agents retrieve targeted code instead of grepping whole files — fewer tokens, faster, shared across agents with no context loss. `status`/`reset`, incremental `refresh`, content cache, opt-in resident `daemon`. `/magic` & `/divine` use it. Suggested (not auto-built) on unindexed repos | Intelligence |
 | `/portal` | Creates a git worktree for isolated feature work; includes cleanup steps post-merge; respects `disableGit` preference | Orchestration |
 | `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
 | `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |
@@ -259,6 +260,7 @@ Security is infrastructure, not advice.
 
 - **PreToolUse guard** — `sentinel-guard.sh` blocks pipe-to-shell, `eval` on dynamic content, `rm -rf` on absolute paths, credential/secret file reads, and the lethal trifecta (private data + network + execution) before the command runs. This is the enforced layer (plugin `settings.json` permission rules are advisory — `/almanac` offers to write project deny rules into your own settings).
 - **`magician-scan`** — standalone CLI for CI pipelines: `magician-scan .` (on `PATH` when the plugin is enabled)
+- **`kg`** — local code knowledge-graph + cache CLI: `kg init` then `kg query "<topic>"` / `kg blast <file>` (on `PATH` when the plugin is enabled; stdlib by default, global store at `~/.claude/magician/knowledge-graph/`)
 - **Workspace isolation** — `.workspace/local/` is always gitignored; per-machine secrets never reach git
 
 ---

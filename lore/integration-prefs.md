@@ -1,13 +1,13 @@
 # Integration preferences — opt-out memory
 
-Some users don't use a given integration (Jira, Confluence, …) and don't want to be asked about it. Respect that: once a user says they don't have it, or declines setup with "don't ask again", **stop proactively suggesting it**.
+Some users don't use a given integration (Jira, Confluence, …) and don't want to be asked about it. Respect that: once a user says they don't have it, or declines setup with "don't ask again", **stop proactively suggesting it**. The same applies to the local **knowledge-graph** index (key `knowledge-graph`) — if a user declines building one with "don't ask again", stop nudging.
 
 ## Store
 
 `${CLAUDE_PLUGIN_DATA:-$HOME/.local/share/magician}/integration-prefs.json`
 
 ```json
-{ "jira": "disabled", "confluence": "disabled" }
+{ "jira": "disabled", "confluence": "disabled", "knowledge-graph": "disabled" }
 ```
 A key set to `"disabled"` = the user opted out. Absent key = ask normally. Read it:
 ```bash

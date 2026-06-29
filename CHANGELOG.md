@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] — 2026-06-28
+
+**Knowledge-graph optimization layer** — targeted, cheap, fast code retrieval.
+
+### Added
+- `/knowledge-graph` + bundled **`kg` CLI** (`bin/kg`, on PATH when the plugin is enabled): a local, global, per-repo **code knowledge graph + cache** at `~/.claude/magician/knowledge-graph/` so skills/agents retrieve a ranked set of `file:line` ranges (BM25 + Personalized PageRank over a SQLite/FTS5 graph of symbols and their import/reference edges) instead of grepping and reading whole files — fewer tokens, faster search, and a durable shared map that survives hand-offs between agents/pipelines/teams with **no context loss**. Commands: `check · init · refresh · status [--json] · query · neighbors · blast · stale · cache · daemon · reset`. Pre-allowed via `allowed-tools: Bash(kg:*)` — no per-request prompts.
+- **Tiered performance, lightweight by default.** Tier 0 is pure stdlib (`sqlite3`+FTS5, regex parser, in-memory CSR traversal, content-addressed cache, fast hashing; optional `KG_JOBS` parallel parsing for very large trees). Tier 1 auto-uses native accelerators *iff already installed* (`tree-sitter` parsing, `numpy` PageRank, `ctags`) with silent fallback. Tier 2 is opt-in: a resident daemon (`kg daemon`) that keeps the graph in RAM to skip the per-call graph load (win grows with graph size) and a pluggable `KG_BACKEND` (cozo/kuzu/duckdb) escape hatch for million-node monorepos. No required network calls or dependencies; embeddings are opt-in only.
+- **Auto-suggestion for existing repos**: a throttled, opt-out-aware SessionStart nudge offers to build an index on unindexed git repos (>150 files, once per repo per 7 days) — never auto-builds. Opt-out via `integration-prefs.json` key `knowledge-graph`.
+
+### Changed
+- `/magic` now queries the knowledge graph (`kg query`) as a first-class **internal codebase source** before broad greps; `/divine` uses `kg blast` to establish change **blast-radius** for reviewers. Both degrade gracefully when no index exists and respect the opt-out. Codex adapter included.
+
 ## [3.3.1] — 2026-06-26
 
 Performance & ergonomics for the Jira/Confluence CLIs.

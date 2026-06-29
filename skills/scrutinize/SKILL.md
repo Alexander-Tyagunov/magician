@@ -15,17 +15,18 @@ Scale review depth to the change size: a tiny diff needs little; a large changes
 
 ## Phase 1 — Review
 
-1. **Collect review scope** — files changed since the branch diverged (base defaults to `main`, or `$ARGUMENTS`):
+1. **Collect review scope and write the diff once** — files changed since the branch diverged (base defaults to `main`, or `$ARGUMENTS`). Write the diff to a single patch artifact so it isn't duplicated across agent prompts:
    ```bash
    git diff main...HEAD --name-only
-   git diff main...HEAD
+   DIFF=".workspace/shared/diffs/review.patch"; [ -d .workspace ] || DIFF="$(git rev-parse --git-dir)/magician-review.patch"
+   mkdir -p "$(dirname "$DIFF")"; git diff main...HEAD > "$DIFF"; echo "$DIFF"
    ```
 2. **Dispatch 3 specialist agents simultaneously** — in ONE message, make three `Task` calls using these subagent types (do NOT read agent files by path; the plugin registers them):
    - `magician:reviewer` — correctness and edge cases
    - `magician:sentinel` — security vulnerabilities
    - `magician:simplifier` — over-engineering
 
-   **Context contract (no context loss):** each `Task` prompt MUST be self-contained — the agents see none of this conversation. Include in every prompt: the goal ("review this change for <lens>"), the full list of changed files WITH their diff/contents, the project conventions/lore in play, and the required output format below. See [lore/subagent-context.md](../../lore/subagent-context.md). If an agent returns `NEEDS_CONTEXT`, add the missing input and re-dispatch.
+   **Context contract (no context loss, no re-dump):** each `Task` prompt MUST be self-contained — the agents see none of this conversation. Pass the **patch artifact PATH** from step 1 (each agent `Read`s it) plus the changed-file list, the goal ("review this change for <lens>"), the conventions/lore in play, and the output format below. Do **not** paste the full diff into each prompt — that copies a large payload into the parent's context N times and bloats every agent prompt; pass the path once. See [lore/subagent-context.md](../../lore/subagent-context.md). If an agent returns `NEEDS_CONTEXT`, add the missing input and re-dispatch.
 
    Each agent returns findings as:
    ```

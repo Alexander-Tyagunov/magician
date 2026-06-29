@@ -15,7 +15,11 @@ Don't let lenses silently inherit the session model — set each `Task`'s tier a
 
 ## The context contract (mandatory)
 
-Each agent sees **none** of this conversation. Every `Task` prompt must be self-contained (see [lore/subagent-context.md](../../../lore/subagent-context.md)). Build each prompt from this template:
+Each agent sees **none** of this conversation. Every `Task` prompt must be self-contained (see [lore/subagent-context.md](../../../lore/subagent-context.md)).
+
+**Prep once, pass by reference (don't re-dump):** before dispatching, write the diff a single time to a patch artifact (`.workspace/shared/diffs/<ref>.patch` if `.workspace/` exists, else `"$(git rev-parse --git-dir)/magician-review.patch"`) and — if a kg index exists — compute the impact set with `kg blast`/`kg neighbors` on the changed files. Pass both **by path / as a compact list** to every lens. Pasting the full diff (or whole-file contents) into each prompt copies a large payload into the parent's context once per lens and bloats every agent prompt — pass the patch path instead; agents `Read` it.
+
+Build each prompt from this template:
 
 ```
 You are reviewing a code change for <LENS> only.
@@ -26,8 +30,10 @@ CHANGE INTENT: <1–2 sentences: what this PR/MR is supposed to do>
 TICKETS / REQUIREMENTS: <linked issues + acceptance criteria / DoD, or "none">
 GROUNDING: <path to .workspace/shared/research/<artifact>.md if any, plus key external facts the reviewer needs — e.g. "per the API spec, status code X means Y">
 
-SCOPE — changed files (review ONLY these; read surrounding code as needed for context):
-<for each file: path, and its diff hunks; for heavily-changed files, the full current contents>
+SCOPE — review ONLY the changed files; read surrounding code as needed for context:
+- DIFF: read the patch at <path to the .patch artifact written above> (do not expect it inline).
+- CHANGED FILES: <path list>
+- IMPACT / blast radius: <compact file:line list from kg blast/neighbors of the changed files, or "no kg index" — so you grasp downstream effects without re-reading the whole codebase>
 
 CONVENTIONS: <house style / lint rules / patterns this repo follows>
 OUT OF SCOPE: <anything deliberately excluded per the ticket>
@@ -45,7 +51,7 @@ CONFIDENCE: High | Medium | Low
 If you lack context to review safely, return exactly: NEEDS_CONTEXT: <what you need>.
 ```
 
-Tailor the GOAL/looks-for line per lens. Keep SCOPE complete — a reviewer that only sees a diff hunk will flag issues already handled in the unchanged surrounding lines.
+Tailor the GOAL/looks-for line per lens. Reviewers have repo access — instruct each to read the surrounding (unchanged) code around every hunk (and the blast-radius files), not just the diff, so they don't flag issues already handled nearby.
 
 ## Severity rubric (keep lenses consistent)
 

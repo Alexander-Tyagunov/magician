@@ -24,7 +24,7 @@ State your hypothesis and evidence BEFORE reading any code or making any change.
 4. Ask: "Does this hypothesis match what you're seeing, or do you have a different theory?" **End your turn. Do not read any code or make any change until the user agrees or redirects.**
 
 ### Phase 2: Evidence Gathering
-5. **Read relevant code** — only the code related to the hypothesis
+5. **Read relevant code** — only the code related to the hypothesis. If a knowledge-graph index exists, `kg query "<symptom/error/symbol>"` to jump straight to the relevant `file:line` (and `kg neighbors`/`kg blast` to see what interacts with it) instead of broad greps — then read just those ranges.
 6. **Add targeted logging/assertions** if needed — not scattered throughout
 7. **Run the failing case** — capture exact output
    - If the bug involves an unfamiliar error, library, or framework behavior, use `/magic` (context7 + web) to gather external evidence — known issues, version-specific bugs, correct API usage — and fold it into the hypothesis ranking in Phase 3.

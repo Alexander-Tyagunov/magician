@@ -1,7 +1,7 @@
 ---
 name: magic
 description: Use when the user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, library-doc search, web search, and guided output delivery.
-allowed-tools: WebSearch, WebFetch, Read, Write, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs
+allowed-tools: WebSearch, WebFetch, Read, Write, AskUserQuestion, Bash(kg:*), mcp__context7__resolve-library-id, mcp__context7__query-docs
 argument-hint: [topic or research question]
 ---
 
@@ -21,6 +21,7 @@ It also plugs into the SDLC chain without losing context:
 - **Feeds the pipeline:** inside a magician workspace (`.workspace/` present), saved research goes to `.workspace/shared/research/<topic>-<date>.md` — a first-class artifact, like specs and plans. Phase 5 hands that **path** (not just a summary) to the next stage, so design/planning/debugging start informed.
 - **Fed by the pipeline:** `/conjure`, `/blueprint`, `/unravel`, and `/manifest` read `.workspace/shared/research/` and suggest `/magic` when a decision needs external evidence.
 - **Internal sources:** for the user's own Jira tickets/epics/boards or Confluence pages, use the `magician:jira` / `magician:confluence` skills (direct HTTP REST, no MCP; they run one-time setup if not configured) instead of web search. Fold what they return into the findings like any other source. **Skip a source the user has opted out of** ([lore/integration-prefs.md](../../lore/integration-prefs.md)) — don't suggest setting it up.
+- **The codebase itself:** when the question is about the user's own repo, query the **knowledge graph** first — `kg check` then `kg query "<topic>"` (and `kg neighbors`/`kg blast` for relationships) — and `Read` the ranked `file:line` ranges it returns, instead of broad greps. It's a first-class internal source: cheaper, faster, and shared across agents with no context loss. If there's no index, fall back to grep/Read and offer once to build one (`kg init`) — opt-out aware ([lore/integration-prefs.md](../../lore/integration-prefs.md), key `knowledge-graph`). Details: [knowledge-graph skill](../knowledge-graph/references/retrieval.md).
 
 ## Auto-Invocation
 

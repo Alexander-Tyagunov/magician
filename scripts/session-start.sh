@@ -202,9 +202,51 @@ fi
 
 CAT_ART=$'         *        \n        /|\\\n       / | \\\n      /  *  \\\n    /_________\\   \n   /\\  o   o  /\\   ---- * . * . * .\n  /   ~~~~~~~   \\   . * . * . * .\n  /  ( ~~~~~ )  \\  * . * . * . *\n  \\_____________/\n    |   | |   |  '
 
+# ── Knowledge-graph suggestion (throttled, opt-out-aware, never auto-builds) ──
+KG_NOTE=$(python3 - "$PLUGIN_DATA" <<'PYEOF' 2>/dev/null || true
+import os, sys, json, hashlib, subprocess, time
+plugin_data = sys.argv[1]
+mag_home = os.environ.get("MAGICIAN_HOME") or os.path.join(os.path.expanduser("~"), ".claude", "magician")
+try:
+    root = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True, timeout=5).stdout.strip()
+except Exception:
+    root = ""
+if not root:
+    sys.exit(0)                                   # not a git repo → no nudge
+root = os.path.realpath(root)
+h = hashlib.sha256(root.encode()).hexdigest()[:12]   # must match `kg`'s repohash
+if os.path.exists(os.path.join(mag_home, "knowledge-graph", "repos", h, "meta.json")):
+    sys.exit(0)                                   # already indexed
+try:
+    if json.load(open(os.path.join(plugin_data, "integration-prefs.json"))).get("knowledge-graph") == "disabled":
+        sys.exit(0)                               # opted out
+except Exception:
+    pass
+marker = os.path.join(plugin_data, "kg-suggest", h)
+try:
+    if time.time() - os.path.getmtime(marker) < 7 * 86400:
+        sys.exit(0)                               # nudged within 7 days
+except Exception:
+    pass
+try:
+    n = len(subprocess.run(["git", "-C", root, "ls-files"],
+                           capture_output=True, text=True, timeout=15).stdout.splitlines())
+except Exception:
+    n = 0
+if n < 150:
+    sys.exit(0)                                   # too small to bother
+os.makedirs(os.path.dirname(marker), exist_ok=True)
+open(marker, "w").write(str(time.time()))
+print(f"No knowledge-graph index for this repo ({n} files). If this session will do "
+      f"search-heavy work, building one with /magician:knowledge-graph (kg init) makes "
+      f"retrieval cheaper and faster — offer it once, and respect a no.")
+PYEOF
+)
+
 CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the user by printing this block inside a code fence verbatim, then proceed to help them:
 ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
-${LORE_NOTE}${CHRONICLE_NOTE}${REFERENCES_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${REMEMBER_HINT}"
+${LORE_NOTE}${CHRONICLE_NOTE}${REFERENCES_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${REMEMBER_HINT}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"

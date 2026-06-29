@@ -26,6 +26,14 @@ Review against **external truth**, not assumptions — the difference between "t
 
 `/magic` saves findings to `.workspace/shared/research/` and returns the artifact path; pass that path into each reviewer's context so the whole panel reviews against the same grounding. If grounding already exists in `.workspace/shared/research/`, read it instead of re-researching.
 
+## Blast radius via the knowledge graph
+
+A change isn't just the lines in the diff — it's everything that depends on them. At **Deep/Exhaustive** (or any change touching shared/core code), establish the impact set with the knowledge graph instead of guessing:
+
+- `kg check` — if there's an index, for each changed file run `kg blast <file>` to get the transitive dependents (ranked by centrality), and `kg neighbors <file>` for direct callers/imports.
+- Feed those `file:line` lists into each reviewer subagent's context — the same on-disk artifact for the whole panel, so nobody re-explores and there's no context loss. A High-severity finding in a file with a wide blast radius is more urgent than one in a leaf.
+- No index (or the user opted out, [lore/integration-prefs.md](../../../lore/integration-prefs.md) key `knowledge-graph`) → fall back to `Grep` for references; optionally offer `kg init` once. Treat any `⚠ stale` flag as a cue to `kg refresh` before trusting the impact set. Details: [knowledge-graph skill](../../knowledge-graph/references/retrieval.md).
+
 ## Adversarial verification
 
 A finding is a claim; treat it like one. Before it reaches the report, **try to disprove it** against the actual code and the change's intent:
