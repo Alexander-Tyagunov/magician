@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] — 2026-06-30
+
+### Added
+- **Flow-shape detector** — when you *describe* a multi-step delivery (numbered steps, "first/then/finally", "here's the flow/steps/plan", "for each …") rather than naming an explicit batch, magician now injects a soft analysis nudge to **decide the engine**: `/weave` if it's N similar units, `/manifest` if it's distinct SDLC stages — instead of hand-rolling ad-hoc agents. Fires only when no specific action trigger matched and the prompt is substantial (keeps over-firing low); the decision stays Claude's.
+
 ## [3.5.0] — 2026-06-30
 
 **Adoption release** — make magician actually *drive* the behaviors it ships: own large pipelines, push the knowledge graph, and track context for real. Diagnosed from a real 5,000-line session where Claude hand-rolled a Workflow + 42 agents (bypassing magician), reused the graph 3× against 105 reads, and never surfaced a single context warning.

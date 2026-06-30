@@ -116,6 +116,17 @@ security_trigger = (not _neg("security")) and _has(
     r'\bis\b[^.?!]{0,25}\bsecure\b',                                            # "is this code secure"
     r'\bsecure\b[^.?!]{0,20}\b(against|from|injection|xss|csrf|attack|exploit)\b',
 )
+# A described multi-step PIPELINE (numbered steps, first/then/finally, "here's the flow",
+# for-each). Soft fallback: nudge to DECIDE the engine, only when no specific action fired.
+flow_shape = _has(
+    r"\b(here(?:'s| is| are)|this is|below is)\b[^.?!]{0,24}\b(the )?(flow|steps|plan|pipeline|process|sequence|stages|phases)\b",
+    r'\bthe (flow|steps|plan|pipeline|process|sequence|stages|phases)\b\s+(is|are)\b',  # "the steps are …"
+    r'\b(steps|plan|flow|process|pipeline|sequence|stages|phases)\b\s*(?:are|is)?\s*:',  # "steps:", "plan is:"
+    r'(^|\n)\s*1[.)]\s+\S.*\n\s*2[.)]\s+',                                  # numbered list 1. .. 2. ..
+    r'\bstep\s*1\b[^.?!]{0,90}\bstep\s*2\b',
+    r'\bfirst\b[^.?!]{0,90}\b(then|next)\b[^.?!]{0,140}\b(then|next|finally|lastly|after that|and then)\b',
+    r'\bfor each\b[^.?!]{0,40}\b(then|do|implement|create|run|build|generate|process)\b',
+)
 weave_trigger = _has(
     r'\b(implement|deliver|build|ship|complete|do|finish)\b[^.?!]{0,40}\b(all|these|every|each|the (?:whole )?(?:epic|batch|backlog|list|set))\b[^.?!]{0,30}\b(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules|files)\b',
     r'\b(implement|deliver|build|ship)\b[^.?!]{0,20}\b(\d+|several|multiple|many)\b[^.?!]{0,20}\b(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules)\b',
@@ -176,6 +187,11 @@ if jira_trigger and not _invoking("/jira", "magician:jira"):
 if confluence_trigger and not _invoking("/confluence", "magician:confluence"):
     flush("[MAGICIAN] Confluence intent detected. Use the magician:confluence skill (direct HTTP REST, no MCP; it runs "
           "first-time setup if Confluence isn't configured) for this request.")
+if flow_shape and not is_short and len(prompt.split()) >= 12 and not _invoking("/weave", "magician:weave", "/manifest", "magician:manifest", "/orchestrate"):
+    flush("[MAGICIAN] This reads like a multi-step delivery. Decide the engine before diving in: if it's N similar "
+          "units (tickets/files/features) → run it via /weave as ONE guarded Workflow (TDD per unit, kg grounding, "
+          "certify, multi-lens review + adversarial verify, write gates); if it's distinct SDLC stages → /manifest. "
+          "Either way, don't hand-roll many ad-hoc agents.")
 if magic_hit and not is_short and not _invoking("/magic", "magician:magic", "/conjure"):
     flush("[MAGICIAN] Research/analysis intent detected ({}). Auto-activating /magic skill. Invoke magician:magic "
           "before responding to this request.".format(", ".join(str(m) for m in matched_magic)))
