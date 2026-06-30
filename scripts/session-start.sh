@@ -217,7 +217,10 @@ if not root:
 root = os.path.realpath(root)
 h = hashlib.sha256(root.encode()).hexdigest()[:12]   # must match `kg`'s repohash
 if os.path.exists(os.path.join(mag_home, "knowledge-graph", "repos", h, "meta.json")):
-    sys.exit(0)                                   # already indexed
+    print("This repo has a knowledge-graph index — for code lookups prefer `kg query \"<terms>\"` / "
+          "`kg blast <file>` / `kg neighbors <symbol>` over grep (exact file:line, far fewer tokens, "
+          "shared across agents); run `kg refresh` if results look stale.")
+    sys.exit(0)                                   # already indexed → reinforce using it
 try:
     if json.load(open(os.path.join(plugin_data, "integration-prefs.json"))).get("knowledge-graph") == "disabled":
         sys.exit(0)                               # opted out

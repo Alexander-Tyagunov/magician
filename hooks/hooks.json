@@ -29,6 +29,15 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sentinel-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/kg-nudge.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [

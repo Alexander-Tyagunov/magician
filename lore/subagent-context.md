@@ -20,7 +20,7 @@ Pipeline stages (conjure → blueprint → orchestrate → certify → scrutiniz
 ## Rule: keep context small — pointers over content
 
 Context is a finite resource; protect it for yourself and every actor downstream.
-- Don't paste whole files into the transcript. Use `kg query` + `Read(file:line)` to pull the relevant lines; reference code by `path:line`.
+- For locating code, **default to `kg query` / `kg blast` / `kg neighbors`** whenever the repo has an index — it returns exact `file:line` in far fewer tokens and is shared across agents. Use broad `grep` / whole-file reads only for non-code or literal-string scans. Never paste whole files into the transcript; reference code by `path:line`.
 - Persist durable facts (decisions, user prefs, gotchas) to `.workspace/shared/decisions/` or `/chronicle learn`, not the chat.
 - Offload heavy exploration to subagents (clean context windows) and have them return a distilled summary, not raw dumps.
 - The plugin warns when context grows (60/80/92%) and captures a resume capsule before any compaction — when warned, offload to an artifact and/or `/compact` before the next big step. See [the chronicle context-mgmt reference](../skills/chronicle/references/context-mgmt.md).

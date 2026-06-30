@@ -11,6 +11,8 @@ Profile and optimize performance systematically. No optimization without measure
 
 Scale [/effort](../../lore/models.md) to the optimization scope: low for a single hot path, high for cross-cutting work.
 
+Scope the work with the knowledge graph when the repo is indexed: `kg query "<slow area>"` to locate the hot code and `kg blast`/`kg neighbors` to see what it touches — so you profile and change the right thing, in fewer tokens than grepping.
+
 <HARD-GATE>
 Establish a baseline measurement BEFORE making any changes. Optimization without a baseline is guesswork.
 </HARD-GATE>

@@ -100,7 +100,7 @@ autopsy_trigger = _has(
     r'\b(post-?mortem|\brca\b|root cause analysis|blameless|incident (?:review|report|retro(?:spective)?)|write up the (?:incident|outage))\b',
 )
 debug_trigger = _has(
-    r'\b(bug|debug|broken|crash\w*|stack ?trace|traceback|exception|regression|defect|segfault|panic)\b',
+    r'\b(bugs?|debug|broken|crash\w*|stack ?trace|tracebacks?|exceptions?|regressions?|defects?|segfaults?|panic)\b',
     r'\w*exception\b',  # CamelCase class names, e.g. NullPointerException
     r"\b(not working|isn'?t working|doesn'?t work|won'?t work|stopped working|something(?:'s| is) wrong)\b",
     r'\b(throw\w*|getting|hit(?:ting)?|raises?)\s+an?\s+\w*(error|exception)\b',
@@ -115,6 +115,12 @@ security_trigger = (not _neg("security")) and _has(
     r'\b(secret|credential|api[ -]?key|token)s?\b[^.?!]{0,20}\bexpos\w+',       # "secrets ... exposed"
     r'\bis\b[^.?!]{0,25}\bsecure\b',                                            # "is this code secure"
     r'\bsecure\b[^.?!]{0,20}\b(against|from|injection|xss|csrf|attack|exploit)\b',
+)
+weave_trigger = _has(
+    r'\b(implement|deliver|build|ship|complete|do|finish)\b[^.?!]{0,40}\b(all|these|every|each|the (?:whole )?(?:epic|batch|backlog|list|set))\b[^.?!]{0,30}\b(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules|files)\b',
+    r'\b(implement|deliver|build|ship)\b[^.?!]{0,20}\b(\d+|several|multiple|many)\b[^.?!]{0,20}\b(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules)\b',
+    r'\bmigrat\w+\b[^.?!]{0,40}\b(across|everywhere|all|the (?:whole )?(?:codebase|repo)|every (?:file|module|component))\b',
+    r'\b(for each of|one (?:per|each)|batch (?:of|process))\b[^.?!]{0,30}\b(stories|tickets|tasks|features|items|files|components|modules)\b',
 )
 perf_trigger = _has(
     r'\b(slow|sluggish|too slow|laggy|latency|bottleneck|memory leak|high (?:cpu|memory)|throughput|p9[59])\b',
@@ -151,6 +157,10 @@ if debug_trigger and not _invoking("/unravel", "magician:unravel"):
     flush("[MAGICIAN] Bug/problem-report intent detected. Auto-activating /unravel (systematic debugging: hypothesis "
           "preflight, evidence before any change). Ground it comprehensively with /magic and the knowledge graph "
           "(kg query / kg blast on the affected area) for root-cause research; invoke magician:unravel before responding.")
+if weave_trigger and not _invoking("/weave", "magician:weave"):
+    flush("[MAGICIAN] Large multi-item delivery detected. Use /weave — compose ONE native Workflow that delivers all "
+          "units with magician's guardrails (TDD per unit, kg grounding, certify, parallel multi-lens review + "
+          "adversarial verify, write gates) instead of hand-rolling many agents. Invoke magician:weave before responding.")
 if security_trigger and not _invoking("/sentinel", "magician:sentinel"):
     flush("[MAGICIAN] Security intent detected. Use magician:sentinel — OWASP Top 10, secret/credential scan, injection "
           "surfaces, dependency + git-history audit (read-only).")

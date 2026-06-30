@@ -18,7 +18,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-3.4.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-3.5.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -133,7 +133,7 @@ flowchart TD
 
 ## Skills
 
-22 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
+23 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
 
 | Skill | Purpose | Category |
 |---|---|---|
@@ -143,6 +143,7 @@ flowchart TD
 | `/unravel` | Systematic debugging with mandatory hypothesis preflight — no code changes before evidence; one change at a time, then regression test | Core SDLC |
 | `/certify` | Full verification loop — tests, types, lint, build, and Playwright browser check for UI projects; collects evidence before any success claim | Core SDLC |
 | `/orchestrate` | Drives multi-agent implementation from a blueprint — groups parallel tasks into waves, dispatches concurrent subagents with self-contained prompts, resolves conflicts, runs `/certify`. Aware of native dynamic workflows, nested subagents & agent teams. *(merged the former `/summon`)* | Orchestration |
+| `/weave` | **Composes + runs a large delivery as one native Workflow** — for big multi-item work ("implement these N tickets", "deliver the epic", "migrate X across the codebase"). Picks the structure adaptively (per-item pipeline / parallel fan-out / orchestrator-worker / evaluator-optimizer) but always keeps the guardrails: TDD per unit, kg grounding, certify, multi-lens review + adversarial verify, write gates, no context loss. Auto-suggested on big-delivery intent; use instead of hand-rolling many agents | Orchestration |
 | `/scrutinize` | Dispatches 3 specialist reviewers in parallel (correctness, security, simplification), consolidates findings, then remediates Critical/High. *(merged the former `/absorb`)* | Orchestration |
 | `/divine` | Standalone, research-grounded **code review** — auto-triggers on "review this PR/MR" / "do a code review". Detects change context (GitHub PR · GitLab MR · branch · working tree) + intent + CI gates, gates **depth** (Quick simple-logic → Exhaustive PRD/docs/data + blast-radius across affected services & infra), grounds via `/magic`, runs 4 lenses in parallel, adversarially verifies findings, emits a severity-ranked report with impact + fix + traceability. Can optionally spin an agent to **implement fixes + commit**, and run **unattended via `/loop`** to monitor repos for new PRs/MRs. Stack/company-agnostic | Review |
 | `/jira` | Work with Jira over its **REST API directly** via a bundled **`jira` CLI** (no MCP/proxy; one command per call → no per-request prompts). Read/search (JQL), create/comment/transition/link/worklog, MR investigation, clone; per-action write gates, bulk-write playbook, INVEST/Gherkin authoring, first-run token setup. Cloud + Server/DC. Auto-triggers on jira intent | Integration |

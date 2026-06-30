@@ -12,6 +12,7 @@ Execute an entire blueprint with parallel + sequential agent dispatch. (This ski
 ## Pick the right engine first
 
 - **This skill** — the default: you control waves explicitly from a blueprint, with conflict checks between them.
+- **[`/weave`](../weave/SKILL.md)** — for *adaptive multi-item delivery* (N tickets/features, a migration, a batch sweep) where you compose the pipeline to the work: it builds ONE native Workflow with magician's guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify, write gates). Prefer it over hand-rolling many agents.
 - **Native dynamic workflows** — for very large plans (hundreds of independent units: migrations, sweeping refactors), mention "workflow" so Claude builds a dynamic orchestration plan that fans across many subagents with self-verification. Works best in **auto mode**. Nested subagents (agents spawning agents, capped depth) help manage context on deep work.
 - **Agent teams** — when independent workers need to talk to each other and share a task list (research/review, cross-layer features), prefer an agent team over one-way subagents.
 

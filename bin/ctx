@@ -53,6 +53,26 @@ def _ensure(d):
     return d
 
 
+def discover_transcript():
+    """Find the newest transcript JSONL for the current cwd. The host doesn't always
+    hand the hook a usable transcript_path (this was why context tracking silently
+    no-op'd); when it doesn't, we locate the session log ourselves."""
+    root = os.path.realpath(os.getcwd())
+    enc = re.sub(r"[/_]", "-", root)  # ~/.claude/projects/<encoded cwd>/
+    d = os.path.join(HOME, ".claude", "projects", enc)
+    try:
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".jsonl")]
+        return max(files, key=os.path.getmtime) if files else None
+    except Exception:
+        return None
+
+
+def resolve_transcript(tpath):
+    if tpath and os.path.exists(tpath):
+        return tpath
+    return discover_transcript()
+
+
 # ─────────────────────────── transcript parsing ────────────────────────────
 def _tail(path, nbytes=524288):
     with open(path, "rb") as f:
@@ -89,13 +109,16 @@ def last_tokens(path):
     except Exception:
         return None, None
     for o in _iter_rev(text):
-        if _is_role(o, "assistant"):
-            u = (_msg(o).get("usage") or o.get("usage") or {})
-            if u:
-                t = (u.get("input_tokens", 0) or 0) + (u.get("cache_read_input_tokens", 0) or 0) \
-                    + (u.get("cache_creation_input_tokens", 0) or 0)
-                if t:
-                    return t, False  # exact
+        if not isinstance(o, dict):
+            continue
+        u = (_msg(o).get("usage") or o.get("usage") or {})
+        # Accept the latest assistant turn, OR any line carrying real usage — schema
+        # varies across host apps, so don't hard-require the role label.
+        if u and (_is_role(o, "assistant") or u.get("input_tokens")):
+            t = (u.get("input_tokens", 0) or 0) + (u.get("cache_read_input_tokens", 0) or 0) \
+                + (u.get("cache_creation_input_tokens", 0) or 0)
+            if t:
+                return t, False  # exact
     return max(1, size // 4), True   # ~approx fallback by bytes
 
 
@@ -358,7 +381,8 @@ def c_hook(a):
         except Exception:
             pass
     # 2) size band warning (once per band per session)
-    if tpath and os.path.exists(tpath):
+    tpath = resolve_transcript(tpath)  # discover the session log if the host didn't pass one
+    if tpath:
         w = _band_warning(session, tpath)
         if w:
             out.append(w)
@@ -366,11 +390,22 @@ def c_hook(a):
         print("\n\n".join(out))
 
 
+def _effective_max(toks):
+    """Context window. Can't read it from a hook, so: honor CTX_MAX if set, else infer
+    the 1M extended window when observed tokens exceed the 200K standard (a 200K session
+    would have compacted before exceeding it)."""
+    env = os.environ.get("CTX_MAX")
+    if env and env.isdigit():
+        return int(env)
+    return 1_000_000 if (toks and toks > 200_000) else 200_000
+
+
 def _band_warning(session, tpath):
     toks, approx = last_tokens(tpath)
     if not toks:
         return None
-    pct = 100.0 * toks / MAX
+    mx = _effective_max(toks)
+    pct = 100.0 * toks / mx
     statef = os.path.join(ctx_dir(), session + ".json")
     warned = set()
     try:
@@ -390,7 +425,7 @@ def _band_warning(session, tpath):
         pass
     name = crossed[-1]
     tag = "~" if approx else ""
-    k = MAX // 1000
+    k = mx // 1000
     base = f"Context ~{tag}{round(pct)}% of {k}K tokens"
     if name == "soft":
         return f"[MAGICIAN] {base}. Good moment to offload findings to a .workspace/shared/ artifact or wrap the current thread."
@@ -426,15 +461,15 @@ def c_resume(a):
 
 # ─────────────────────────── pct / learn / consolidate ─────────────────────
 def c_pct(a):
-    tpath = argval(a, "--transcript")
+    tpath = resolve_transcript(argval(a, "--transcript"))
     if not tpath:
-        # best effort: newest transcript under ~/.claude
-        die("usage: ctx pct --transcript <path>")
+        die("no transcript found for this repo")
     toks, approx = last_tokens(tpath)
     if not toks:
         die("could not read transcript usage")
-    pct = round(100.0 * toks / MAX)
-    print(f"context: {'~' if approx else ''}{pct}% ({toks:,} / {MAX:,} tokens){' [approx]' if approx else ''}")
+    mx = _effective_max(toks)
+    pct = round(100.0 * toks / mx)
+    print(f"context: {'~' if approx else ''}{pct}% ({toks:,} / {mx:,} tokens){' [approx]' if approx else ''}")
 
 
 def c_learn(a):

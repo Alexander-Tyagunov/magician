@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] — 2026-06-30
+
+**Adoption release** — make magician actually *drive* the behaviors it ships: own large pipelines, push the knowledge graph, and track context for real. Diagnosed from a real 5,000-line session where Claude hand-rolled a Workflow + 42 agents (bypassing magician), reused the graph 3× against 105 reads, and never surfaced a single context warning.
+
+### Added
+- **`/weave`** — composes and runs a large delivery as **one native Workflow** with magician's guardrails, instead of hand-rolling dozens of agents. Picks the structure adaptively (per-item `pipeline` / `parallel` barrier / orchestrator-worker / evaluator-optimizer) but always keeps the non-negotiables: **TDD per unit, kg grounding, certify before done, multi-lens review + adversarial verify, write gates, no context loss**. Auto-suggested on big multi-item intent ("implement these N tickets/features", "migrate X across the codebase", batch/sweep). Ships a copy-and-adapt Workflow template; `/orchestrate` and `/manifest` point to it; Codex adapter included.
+- **Always-on kg push** — a `PreToolUse(Grep|Glob)` hook (`kg-nudge.sh`) nudges toward `kg query`/`kg blast`/`kg neighbors` at the moment Claude reaches for grep (throttled, only when an index exists); SessionStart now reinforces "prefer kg over grep" when the repo is indexed; `/magic`, `/divine`, `/unravel`, `/accelerate`, and `lore/subagent-context.md` lead with kg as the default for code lookups, not a conditional.
+- Natural-language routing gained the big-delivery trigger (→ `/weave`); the debug trigger now matches plurals ("these bugs").
+
+### Fixed
+- **Context tracking never fired.** Root cause: the `ctx` hook got no usable `transcript_path` in some host apps, so it silently no-op'd all session. `ctx` now **discovers** the session log itself (newest JSONL for the cwd) when the host doesn't pass one, parses usage schema-tolerantly, and **auto-detects the context window** (200K vs the 1M extended window) so the percentage is right — band warnings (60/80/92%) actually fire now.
+
 ## [3.4.0] — 2026-06-28
 
 **Context efficiency release** — a code **knowledge-graph** for targeted retrieval and a **self-managed context system** that keeps conversations small and lossless.
