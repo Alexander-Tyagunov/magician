@@ -4,13 +4,32 @@
 Config via env: JIRA_BASE_URL, a token (JIRA_API_TOKEN | JIRA_PAT | JIRA_PROD_PAT),
 and JIRA_EMAIL for Cloud (Basic auth + API v3). Server/Data-Center uses Bearer + API v2.
 One clean command per call so a single `Bash(jira:*)` allow rule covers everything.
+
+Resilient by design — ALWAYS use this CLI, never hand-roll urllib/python HTTP (urllib
+fails on corporate CAs that curl trusts) and never use any litellm/MCP jira endpoint:
+  * 429/503 → bounded exponential backoff (JIRA_RETRIES), then a clear STOP message —
+    so bulk loops don't hammer Jira; do not retry a failed call in a tight loop.
+  * GET responses cached briefly (JIRA_CACHE_TTL=30s; cleared on any write) so repeated
+    identical queries are free; writes always see fresh data.
+  * Bulk loops self-pace (JIRA_MIN_INTERVAL_MS=120) across separate `jira` calls.
+  * connect-timeout + JIRA_TIMEOUT so a throttled endpoint can't hang the session.
 """
-import os, sys, json, re, base64, subprocess, urllib.parse
+import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil
 
 BASE = (os.environ.get("JIRA_BASE_URL") or "").rstrip("/")
 TOKEN = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_PAT") or os.environ.get("JIRA_PROD_PAT") or ""
 EMAIL = os.environ.get("JIRA_EMAIL") or ""
 V = os.environ.get("JIRA_API_VERSION") or ("3" if EMAIL else "2")
+
+# Resilience knobs (env-overridable) — added after a bulk epic/story/link session hit
+# rate limits and the agent hand-rolled urllib loops that re-introduced TLS failures.
+TIMEOUT = int(os.environ.get("JIRA_TIMEOUT", "45"))            # per-request seconds
+RETRIES = int(os.environ.get("JIRA_RETRIES", "3"))             # on 429/503, with backoff
+CACHE_TTL = int(os.environ.get("JIRA_CACHE_TTL", "30"))        # GET cache seconds (0 = off)
+MIN_INTERVAL = float(os.environ.get("JIRA_MIN_INTERVAL_MS", "120")) / 1000.0  # bulk-loop pacing floor
+PLUGIN_DATA = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(os.path.expanduser("~"), ".local", "share", "magician")
+CACHE_DIR = os.path.join(PLUGIN_DATA, "jira-cache")
+PACE_FILE = os.path.join(PLUGIN_DATA, "jira-last-call")
 
 
 def die(msg, code=1):
@@ -24,32 +43,97 @@ def _auth():
     return "Bearer " + TOKEN
 
 
-def api(method, path, body=None, timeout=45):
+def _ckey(method, path):
+    return hashlib.sha1(f"{method} {BASE}/{path}".encode()).hexdigest()[:20]
+
+
+def _cache_get(method, path):
+    if CACHE_TTL <= 0 or method != "GET":
+        return None
+    p = os.path.join(CACHE_DIR, _ckey(method, path) + ".json")
+    try:
+        if time.time() - os.path.getmtime(p) <= CACHE_TTL:
+            return json.load(open(p))
+    except Exception:
+        pass
+    return None
+
+
+def _cache_put(method, path, val):
+    if CACHE_TTL <= 0 or method != "GET":
+        return
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        json.dump(val, open(os.path.join(CACHE_DIR, _ckey(method, path) + ".json"), "w"))
+    except Exception:
+        pass
+
+
+def _pace():
+    # Enforce a minimum gap between calls (across separate `jira` processes, via a
+    # marker file's mtime) so bulk loops don't hammer Jira into rate-limiting.
+    if MIN_INTERVAL > 0:
+        try:
+            wait = MIN_INTERVAL - (time.time() - os.path.getmtime(PACE_FILE))
+            if wait > 0:
+                time.sleep(min(wait, 5))
+        except Exception:
+            pass
+    try:
+        os.makedirs(PLUGIN_DATA, exist_ok=True)
+        open(PACE_FILE, "w").write(".")
+    except Exception:
+        pass
+
+
+def api(method, path, body=None, timeout=None):
     if not BASE:
         die("JIRA_BASE_URL not set — run the jira skill setup (setup.md).")
     if not TOKEN:
         die("no token (set JIRA_API_TOKEN / JIRA_PAT / JIRA_PROD_PAT) — run setup.")
+    method = method.upper()
+    timeout = timeout or TIMEOUT
+    if method == "GET":
+        cached = _cache_get(method, path)
+        if cached is not None:
+            return cached
+    else:
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)  # a write invalidates cached reads
     # Shell out to curl so the system/corporate CA trust (keychain) is used — Python's
-    # urllib doesn't trust corporate roots that curl does. Still one `jira` command to the Bash tool.
-    cmd = ["curl", "-sS", "--compressed", "--max-time", str(timeout), "-X", method,
-           "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
+    # urllib doesn't trust corporate roots that curl does (do NOT hand-roll urllib).
+    cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
+           "-X", method, "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
     if body is not None:
         cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
     cmd += ["-w", "\n%{http_code}", f"{BASE}/{path}"]
-    try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
-    except subprocess.TimeoutExpired:
-        die("request timed out — check VPN / base URL.")
-    if p.returncode != 0:
-        die(f"connection failed — {p.stderr.strip()[:200]} (check JIRA_BASE_URL and VPN).")
-    out = p.stdout
-    nl = out.rfind("\n")
-    code, payload = out[nl + 1:].strip(), out[:nl]
-    if not code.isdigit():
-        die(f"unexpected response: {out[:200]}")
-    if int(code) >= 400:
-        die(f"HTTP {code} on {method} {path} — {payload[:400]}")
-    return json.loads(payload) if payload.strip() else {}
+    attempt = 0
+    while True:
+        _pace()
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+        except subprocess.TimeoutExpired:
+            die(f"request timed out after {timeout}s — check VPN / base URL (raise JIRA_TIMEOUT if needed).")
+        if p.returncode != 0:
+            die(f"connection failed — {p.stderr.strip()[:200]} (check JIRA_BASE_URL and VPN).")
+        out = p.stdout
+        nl = out.rfind("\n")
+        code, payload = out[nl + 1:].strip(), out[:nl]
+        if not code.isdigit():
+            die(f"unexpected response: {out[:200]}")
+        code = int(code)
+        if code in (429, 503) and attempt < RETRIES:
+            time.sleep(min(2 ** attempt, 30))   # exponential backoff, capped
+            attempt += 1
+            continue
+        if code == 429:
+            die("HTTP 429 — Jira is rate-limiting and retries are exhausted. STOP: do not retry in a tight "
+                "loop. Wait ~60s, shrink the batch, and pace requests (JIRA_MIN_INTERVAL_MS=300+). "
+                f"Body: {payload[:160]}")
+        if code >= 400:
+            die(f"HTTP {code} on {method} {path} — {payload[:400]}")
+        val = json.loads(payload) if payload.strip() else {}
+        _cache_put(method, path, val)
+        return val
 
 
 def _name(o):
@@ -160,9 +244,36 @@ def c_comments(a):
         print(f'  [{(c.get("created") or "")[:10]}] {au}: {body}')
 
 
+def c_create(a):
+    # jira create '<fields-json>'  → one create via the CLI (throttle-aware), prints the new key.
+    # Accepts either a full {"fields":{...}} body or a bare {...} treated as fields.
+    if not a:
+        die('usage: jira create \'{"fields":{"project":{"key":"GIM"},"summary":"...","issuetype":{"name":"Story"}}}\'')
+    try:
+        body = json.loads(a[0])
+    except Exception as e:
+        die(f"invalid JSON: {e}")
+    if "fields" not in body:
+        body = {"fields": body}
+    d = api("POST", f"rest/api/{V}/issue", body)
+    print(f'created {d.get("key")} — {BASE}/browse/{d.get("key")}')
+
+
+def c_link(a):
+    # jira link <inwardKey> "<Link Type>" <outwardKey>  → create one issue link (throttle-aware).
+    # Loop this for bulk dependencies; the CLI paces + backs off so it won't hammer Jira.
+    if len(a) < 3:
+        die('usage: jira link <inwardKey> "<Link Type, e.g. Blocks/Depends>" <outwardKey>')
+    inward, ltype, outward = a[0], a[1], a[2]
+    api("POST", f"rest/api/{V}/issueLink",
+        {"type": {"name": ltype}, "inwardIssue": {"key": inward}, "outwardIssue": {"key": outward}})
+    print(f'linked {inward} —{ltype}→ {outward}')
+
+
 CMDS = {"myself": c_myself, "get": c_get, "search": c_search, "jql": c_search,
         "transitions": c_transitions, "raw": c_raw, "url": c_url,
-        "mine": c_mine, "board": c_board, "sprint": c_sprint, "comments": c_comments}
+        "mine": c_mine, "board": c_board, "sprint": c_sprint, "comments": c_comments,
+        "create": c_create, "link": c_link}
 
 
 def main():
@@ -171,6 +282,7 @@ def main():
         print(__doc__)
         print("commands: myself | mine | sprint <boardId> | get <KEY> | comments <KEY> | "
               "search <JQL> | transitions <KEY> | board <name> | url <KEY> | "
+              "create '<fields-json>' | link <inwardKey> \"<Type>\" <outwardKey> | "
               "raw <METHOD> <rest/path> [json-body]", file=sys.stderr)
         return
     fn = CMDS.get(av[0])

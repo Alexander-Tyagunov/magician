@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.2] — 2026-06-30
+
+### Fixed
+- **Jira & Confluence CLIs are now throttle-aware and bulk-safe.** After a bulk epic/story/dependency-link session hit Jira's rate limits, the agent hand-rolled `urllib` loops that re-introduced corporate-CA TLS failures *and* hammered the API. Both `bin/jira` and `bin/confluence` now: retry **429/503 with bounded exponential backoff** then emit a clear **STOP** message (no tight-loop retries); cache **GET** responses briefly (cleared on any write) so repeated identical queries are free and fresh-after-writes; **self-pace bulk loops** across separate calls; and add a **connect-timeout** so a throttled endpoint can't hang the session. New **`jira create`** / **`jira link`** bulk helpers so loops use the CLI instead of hand-rolled HTTP. Skill guidance hardened: never hand-roll `urllib`/MCP — use the CLI; on 429 stop and pace; re-query before retrying an interrupted write. Env knobs: `JIRA_*`/`CONFLUENCE_*` `TIMEOUT`, `RETRIES`, `CACHE_TTL`, `MIN_INTERVAL_MS`.
+
 ## [3.5.1] — 2026-06-30
 
 ### Added

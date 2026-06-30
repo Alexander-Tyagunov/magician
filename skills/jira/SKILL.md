@@ -35,9 +35,19 @@ Prefer the **one-shot** commands below — they need no JQL and collapse multi-s
 | Search (JQL) | `jira search "<JQL>"` — cap with `JIRA_MAX=N`; add `ORDER BY` |
 | Available transitions | `jira transitions <KEY>` |
 | Browse URL | `jira url <KEY>` |
-| Sprints by other criteria, links, **writes**, anything else | `jira raw <METHOD> <rest/path> [json-body]` |
+| Create an issue | `jira create '<fields-json>'` *(prints the new key)* |
+| Link two issues (bulk-safe) | `jira link <inwardKey> "<Type>" <outwardKey>` |
+| Anything else (other writes, custom GETs) | `jira raw <METHOD> <rest/path> [json-body]` |
 
 Resolve the user's board id from memory (e.g. "my board") and pass it to `jira sprint`. Examples for `jira raw`: sprint issues → `jira raw GET "rest/agile/1.0/sprint/<id>/issue?maxResults=50"`. Field ids, link-type ids, and request bodies are in [reference.md](reference.md).
+
+## Resilience — let the CLI handle Jira, never hand-roll
+
+The `jira` CLI is **throttle-aware and self-pacing**, so use it for *everything* — including bulk:
+- **Never hand-roll `urllib`/`requests`/inline `python` HTTP, and never import `bin/jira` as a module.** urllib doesn't trust corporate CAs that curl does (it will fail with cert errors), and it bypasses the retry/cache/pacing below. Always run the `jira` command (by `jira …`, or its absolute path if not on `PATH`).
+- **Never use a litellm / MCP jira endpoint** even if the repo has a `jira-prod.json` / MCP config. This plugin replaces it.
+- **On HTTP 429 (rate-limited):** the CLI already backs off and retries (`JIRA_RETRIES`). If it still returns 429, it tells you to STOP — **do not re-run the same call in a tight loop.** Wait, shrink the batch, and pace with `JIRA_MIN_INTERVAL_MS=300` (or higher).
+- **Repeated identical reads are free** — GETs are cached briefly (`JIRA_CACHE_TTL`, cleared on any write), so you don't need to avoid re-reading, but don't *spam* the same query expecting change.
 
 ## Effort
 
@@ -46,12 +56,12 @@ Reads are cheap (low effort). Bulk creates / an epic + stories warrant `/effort`
 ## Writes — confirm every one
 
 <HARD-GATE>
-Before any create / comment / update / transition / link / worklog (all via `jira raw <POST|PUT> …`): show the **full proposed change** (the path + JSON body; a diff for edits) and wait for an explicit "yes". Per-action gate, not a one-time approval. Reads need no confirmation. Cloning a repo also confirms first.
+Before any create / comment / update / transition / link / worklog (`jira create`, `jira link`, or `jira raw <POST|PUT> …`): show the **full proposed change** (the path + JSON body; a diff for edits) and wait for an explicit "yes". Per-action gate, not a one-time approval. Reads need no confirmation. Cloning a repo also confirms first.
 </HARD-GATE>
 
 - **People — double-confirm identity (show email) before any write that names someone.** Names collide; never guess. @mentions use the account id / username, not email (see [reference.md](reference.md#comments--mentions)).
 - **Creating an issue**: draft a clear, testable issue (User Story → Context → **Gherkin AC** → measurable **DoD**; templates in [authoring.md](authoring.md)). If accurate AC needs research, invoke **`/magic`** first. Use **AskUserQuestion** to set metadata (epic, labels, priority, points) — offer remembered values.
-- **Bulk writes run serially** — one write per message; after an interrupted write, re-query before retrying (it may have committed). See [reference.md](reference.md#bulk-writes).
+- **Bulk writes (epic + N stories, many dependency links)**: after confirmation, loop the **`jira create`** / **`jira link`** commands one item per call — the CLI paces and backs off so it won't trip rate limits. Do **not** import the module or write a urllib loop. After an interrupted write, **re-query before retrying** (it may have committed — avoid duplicates). If you hit a persistent 429, stop, wait, raise `JIRA_MIN_INTERVAL_MS`, and resume from where you left off. See [reference.md](reference.md#bulk-writes).
 
 ## Security
 
