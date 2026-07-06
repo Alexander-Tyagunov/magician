@@ -9,7 +9,7 @@
     {
       "name": "magician",
       "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, and parallel agent orchestration",
-      "version": "3.7.1",
+      "version": "3.7.2",
       "source": "./",
       "author": {
         "name": "Alexander Tyagunov",

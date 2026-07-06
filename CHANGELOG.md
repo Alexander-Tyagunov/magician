@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.2] — 2026-07-06
+
+**The CLI-UI first-run offer now actually reaches the user** — a second post-restart test showed it still silent in the **desktop app**, where a SessionStart hook's stderr isn't surfaced.
+
+### Fixed
+- **The offer is an interactive question now, not a passive hint.** SessionStart's `additionalContext` instructs Claude to proactively call **AskUserQuestion** on first run (enable the bar? which components?) — client-agnostic, so it works in the desktop app too (3.7.1's stderr line only reached the terminal CLI).
+- **It re-offers until you decide, instead of burning the one-shot state on emit.** `reconcile` previously set `asked` the moment it emitted, so an offer Claude never surfaced was lost forever. It now re-offers for up to 3 sessions and only goes silent once you enable/disable (or the cap is reached).
+
 ## [3.7.1] — 2026-07-06
 
 **Fixes to the v3.7.0 Magician CLI UI rollout**, caught by a real post-restart test.

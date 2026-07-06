@@ -221,21 +221,14 @@ def cmd_disable(_args):
 
 
 def cmd_reconcile(_args):
-    """Always-on state check (SessionStart). Suggest once; keep an enabled bar healthy.
-    Prints a suggestion line ONLY when it decides to suggest; otherwise silent. Never fails."""
+    """Always-on state check (SessionStart). While the user hasn't DECIDED, emit a strong
+    first-run OFFER as additionalContext so Claude actually asks (AskUserQuestion) — this works
+    in the desktop app too, where a hook's stderr isn't shown to the user. Re-offers until the
+    user enables/disables (with a small cap) so a missed offer isn't permanent. Silent once
+    decided. Never fails."""
     try:
         cfg = load_cfg()
         st = cfg.get("state", "ask")
-        if st == "ask":
-            cfg["state"] = "asked"
-            cfg["askedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-            save_cfg(cfg)
-            print("[MAGICIAN] Tip: enable the Magician CLI UI — a lightweight status bar showing "
-                  "live context %, a rot warning, a token-flow sparkline, and the active skill, to "
-                  "help you spot context rot early. It runs locally (no tokens) and is fully "
-                  "configurable. To turn it on say \"enable magician ui\" (or run `magician-ui enable`); "
-                  "pick parts with e.g. `magician-ui enable --only context,rot`. I won't bring this up again.")
-            return
         if st == "enabled":
             # keep the installed renderer fresh across plugin updates
             if renderer_stale():
@@ -253,7 +246,25 @@ def cmd_reconcile(_args):
             if isinstance(cur, dict) and not _has_any_statusline(cur):
                 _edit_settings(lambda d: d.__setitem__(
                     "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
-        # asked / disabled → silent
+            return
+        if st in ("disabled", "asked"):
+            return  # user decided, or we've offered enough times → stay silent
+        # st == "ask": make a first-run OFFER. enable/disable set the terminal state; re-offer
+        # until then, capped so we never nag forever.
+        offers = int(cfg.get("offers", 0) or 0) + 1
+        cfg["offers"] = offers
+        cfg["lastOfferedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        if offers >= 3:
+            cfg["state"] = "asked"  # stop offering after 3 un-acted sessions
+        save_cfg(cfg)
+        print("[MAGICIAN] FIRST-RUN OFFER — the Magician CLI UI status line is available but NOT enabled. "
+              "BEFORE doing the user's other work, use AskUserQuestion to OFFER it: "
+              "(Q1) enable the always-on status bar? "
+              "(Q2, multi-select) which parts to show — context (bar+%+tokens), rot (warning glyph), "
+              "spark (token-flow sparkline), meta (model/git/cost), skill (active skill/workflow); default all. "
+              "If they enable, run `magician-ui enable --only <picked>` (or `--all`); if they decline, run "
+              "`magician-ui disable`. It renders locally, costs zero tokens, and hot-reloads. This is the "
+              "magician:statusline skill. One-time offer — it stops once the user decides.")
     except Exception:
         pass  # reconcile must never break SessionStart
 
