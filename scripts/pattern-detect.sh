@@ -49,6 +49,21 @@ def flush(extra=None):
     notes = list(pending)
     if extra:
         notes.append(extra)
+        # best-effort: record the routed skill for the Magician CLI UI "skill" component.
+        # Never fails the hook; the status line reads this marker only if fresh (<15 min).
+        try:
+            m = re.search(r'magician:([a-z]+)', extra)
+            if m:
+                import time as _t
+                home = os.environ.get("MAGICIAN_HOME") or os.path.join(
+                    os.path.expanduser("~"), ".claude", "magician")
+                sd = os.path.join(home, "status")
+                os.makedirs(sd, exist_ok=True)
+                sid = str(session_id).replace("/", "_")[:64]
+                json.dump({"skill": m.group(1), "ts": _t.time()},
+                          open(os.path.join(sd, sid + ".json"), "w"))
+        except Exception:
+            pass
     if notes:
         print(json.dumps({"additionalContext": "\n\n".join(notes)}))
     sys.exit(0)

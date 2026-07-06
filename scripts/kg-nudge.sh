@@ -30,8 +30,8 @@ CODE = {'.py','.js','.jsx','.ts','.tsx','.mjs','.cjs','.go','.rs','.rb','.java',
         '.scala','.c','.cc','.cpp','.h','.hpp','.cs','.php','.vue','.svelte'}
 skip = False
 if tn == 'Read':
-    if ti.get('offset') or ti.get('limit'):
-        skip = True  # ranged read = already targeted (often kg-driven) → don't nag
+    if ti.get('offset') is not None or ti.get('limit') is not None:
+        skip = True  # ranged read = already targeted (often kg-driven) → don't nag (offset==0 counts)
     else:
         ext = os.path.splitext(ti.get('file_path', '') or '')[1].lower()
         if ext not in CODE:

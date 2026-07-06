@@ -1,7 +1,7 @@
 ---
 name: accelerate
 description: Systematic performance profiling and optimization with a mandatory baseline-first gate — measure before changing, re-measure after. Use when something is slow or you need to hit a latency/throughput target.
-allowed-tools: Bash, Read, Edit
+allowed-tools: Bash, Read, Edit, Monitor
 argument-hint: [what is slow] [target, e.g. p99<500ms]
 ---
 
@@ -73,7 +73,8 @@ Fix ONLY the identified bottleneck. Common fixes:
 
 ### Phase 5: Measure Again
 Run the same benchmark as Phase 2. Compare: baseline vs. optimized.
-If target not met: return to Phase 3.
+
+This is a **bounded evaluator-optimizer loop**: if the target isn't met, return to Phase 3 and attack the next bottleneck — but stop after a few rounds, when a round's marginal gain is negligible, or when the `/effort`/token budget is exhausted, then report the best result with the target marked met/not-met. Never loop indefinitely. For long benchmarks or load tests, run them via the **Monitor tool** so results stream back as they finish instead of blocking the turn.
 
 ## Completion Signal
 

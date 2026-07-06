@@ -1,7 +1,7 @@
 ---
 name: divine
 description: Thorough, research-grounded code review of a change, PR, or MR — multi-lens (correctness, security, simplification, tests), severity-ranked with impact + fix, configurable depth, optional PR comments. Use when asked to review code, "do a code review", "review this PR/MR", "review my changes/diff/branch", or audit a changeset before merge.
-allowed-tools: Read, Grep, Glob, Bash, Task, AskUserQuestion, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__query-docs
+allowed-tools: Read, Grep, Glob, Bash, Monitor, Task, AskUserQuestion, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__query-docs
 argument-hint: [PR/MR URL · branch · "working tree" · monitor <repo>]
 ---
 
@@ -87,6 +87,9 @@ For a PR/MR you don't own locally, prefer leaving inline review comments (Phase 
 Run /divine on a schedule to watch repos for new PRs/MRs and review them automatically:
 > `/loop 1h review open PRs in <owner/repo> at standard depth and post the review`
 > or: `/loop 1h /divine monitor <owner/repo>`
+> or **omit the interval** (`/loop review open PRs in <owner/repo> …`) to **self-pace** — Claude widens the gap on quiet repos and tightens it on active ones (fixed-interval on Bedrock/Vertex).
+
+To react the moment a PR opens or gets new commits (instead of waiting for the next tick), prefer the **Monitor tool** over clock polling — see [references/monitor-mode.md](references/monitor-mode.md).
 
 Unattended runs have no one to answer gates, so depth and post-policy are **pre-set** when the loop starts, the run is **idempotent** (reviews a PR/MR only when its head SHA hasn't been reviewed yet), and it **never implements or pushes fixes** — review (and optional review comments) only. Full flow in [references/monitor-mode.md](references/monitor-mode.md).
 

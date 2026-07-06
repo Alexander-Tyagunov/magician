@@ -59,6 +59,8 @@ Per finding (Critical and High first):
 3. Run the affected test, then the full suite — no regressions.
 4. Mark resolved.
 
+**Re-review (evaluator-optimizer loop).** After the Critical/High fixes land, re-dispatch the relevant lens(es) on just the remediated files to confirm the fixes didn't introduce new Critical/High. If they did, remediate and re-review again — loop until a clean pass or 2 rounds (then report what remains). This is what makes review + fix *one loop*, not one pass.
+
 **Declining** a finding: allowed only for Low/Medium (convention conflict, readability, documented false positive). Never decline Critical/High without sign-off — ask: "I'm considering declining [finding] because [reason]. Agree, or fix it anyway?" **End your turn. Wait for explicit confirmation.**
 
 ## Summary

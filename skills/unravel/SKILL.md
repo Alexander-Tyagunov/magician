@@ -1,7 +1,7 @@
 ---
 name: unravel
 description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use whenever a problem is reported or something misbehaves — "I have a bug / it's broken / not working / crashing", an error/exception/stack trace, a regression, a test failure, or a production issue/outage when the app is deployed. Grounds the investigation with /magic + the knowledge graph (kg query/blast) for comprehensive root-cause research.
-allowed-tools: Read, Grep, Glob, Bash
+allowed-tools: Read, Grep, Glob, Bash, Monitor
 argument-hint: <bug or error description>
 ---
 
@@ -27,6 +27,7 @@ State your hypothesis and evidence BEFORE reading any code or making any change.
 5. **Read relevant code** — only the code related to the hypothesis. If a knowledge-graph index exists, `kg query "<symptom/error/symbol>"` to jump straight to the relevant `file:line` (and `kg neighbors`/`kg blast` to see what interacts with it) instead of broad greps — then read just those ranges.
 6. **Add targeted logging/assertions** if needed — not scattered throughout
 7. **Run the failing case** — capture exact output
+   - For an intermittent or async bug, run the reproduction under the **Monitor tool** so the failing event (a 5xx, a crash, a specific log line) streams back the moment it happens instead of tailing by hand.
    - If the bug involves an unfamiliar error, library, or framework behavior, use `/magic` (context7 + web) to gather external evidence — known issues, version-specific bugs, correct API usage — and fold it into the hypothesis ranking in Phase 3.
 
 ### Phase 3: Hypothesis Testing

@@ -1,7 +1,7 @@
 ---
 name: certify
 description: Full verification loop — tests, types, lint, build, and a Playwright browser check for UI projects; collects evidence before any success claim. Use to verify a change is actually green.
-allowed-tools: Bash, Read, Glob, Grep
+allowed-tools: Bash, Read, Glob, Grep, Monitor
 ---
 
 # /certify — Verification Loop
@@ -10,7 +10,7 @@ Run the full verification suite and collect evidence of passing state.
 
 ## Required Checks (all must pass)
 
-Run these in order. Stop and fix before continuing if any fail.
+Run these in order. Stop and fix before continuing if any fail. This is a **loop, not a checklist**: if a check fails, fix it and re-run from the top — /certify only completes when a single clean pass runs end-to-end with no fixes in between.
 
 ### 1. Tests
 Run the test command for the detected stack:
@@ -63,6 +63,8 @@ If the project has a UI:
    - [ ] Golden path works end-to-end
    - [ ] Edge cases handled gracefully
    - [ ] No console errors
+
+Use the **Monitor tool** to tail the dev-server output and browser console in the background so a runtime error surfaces as an event mid-check instead of being missed on a one-shot glance.
 
 ## Completion Signal
 

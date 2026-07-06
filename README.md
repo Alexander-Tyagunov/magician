@@ -18,7 +18,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-3.6.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-3.7.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -133,7 +133,7 @@ flowchart TD
 
 ## Skills
 
-23 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
+24 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
 
 | Skill | Purpose | Category |
 |---|---|---|
@@ -153,6 +153,7 @@ flowchart TD
 | `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
 | `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |
 | `/chronicle` | **Memory & context steward** — session-learning history, the global reference store (repos/projects/ideas), **and** live context management: `status` (size %), `resume` (post-compaction capsule), `learn` (project/global), `consolidate`. Backed by the `ctx` CLI + hooks that track context size and capture a lossless resume capsule before compaction | Intelligence |
+| `/statusline` | **Magician CLI UI** — an opt-in, always-on status line (native Claude Code `statusLine`; renders locally, **zero API tokens**) for context-rot visibility: color-coded context bar + %, a ⚠/🔴 rot warning at magician's bands, a `▁▂▃▅▇` token-flow sparkline, model · git · cost, and the active skill/workflow/loop. **User-configurable** subset (`context,rot,spark,meta,skill`), managed by the bundled **`magician-ui`** CLI which edits `~/.claude/settings.json` **safely** (backup → JSON-validate → atomic write). Suggested once on first use, then honors your choice | Intelligence |
 | `/magic` | Research, analysis & consulting — auto-invokes on keywords (research, investigate, analyze…); web search, context7 for tech library docs, local document analysis; citation-aware outputs; depth mapped to reasoning effort. **Standalone, and feeds the pipeline**: saves findings to `.workspace/shared/research/` and routes into `/conjure`, `/blueprint`, `/unravel` with the artifact path | Research |
 | `/sentinel` | Security scan — OWASP Top 10, credential detection, injection surfaces, dependency audit, git history secret scan, auth middleware spot-check (read-only; runs in a forked context) | Security |
 | `/accelerate` | Performance profiling with mandatory baseline-first discipline — measures before optimizing, re-measures after; uses wrk/lighthouse/cProfile/pprof by stack | Quality |
@@ -262,6 +263,7 @@ Security is infrastructure, not advice.
 - **PreToolUse guard** — `sentinel-guard.sh` blocks pipe-to-shell, `eval` on dynamic content, `rm -rf` on absolute paths, credential/secret file reads, and the lethal trifecta (private data + network + execution) before the command runs. This is the enforced layer (plugin `settings.json` permission rules are advisory — `/almanac` offers to write project deny rules into your own settings).
 - **`magician-scan`** — standalone CLI for CI pipelines: `magician-scan .` (on `PATH` when the plugin is enabled)
 - **`kg`** — local code knowledge-graph + cache CLI: `kg init` then `kg query "<topic>"` / `kg blast <file>` (on `PATH` when the plugin is enabled; stdlib by default, global store at `~/.claude/magician/knowledge-graph/`)
+- **`magician-ui`** — manage the Magician CLI UI status line: `magician-ui enable [--all|--only context,rot] · set · disable · status` (safe, backed-up `settings.json` edits). Renders via **`magician-statusline`** (reads Claude Code's `context_window` JSON on stdin; local, zero tokens, fails safe)
 - **`ctx`** — self-managed context CLI (on `PATH` when the plugin is enabled): tracks context size from the transcript, captures a lossless resume capsule before compaction, and records project learnings. Driven automatically by the hooks; surfaced via `/chronicle status | resume | learn | consolidate`. Honest by design — it warns and preserves, it does not (and cannot) force or steer the harness's compaction.
 - **Workspace isolation** — `.workspace/local/` is always gitignored; per-machine secrets never reach git
 

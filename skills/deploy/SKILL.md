@@ -1,7 +1,7 @@
 ---
 name: deploy
 description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
-allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(ls:*), Read, Write, Edit
+allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(ls:*), Read, Write, Edit, Monitor
 disable-model-invocation: true
 argument-hint: [create|monitor|fix] [provider]
 ---
@@ -101,19 +101,21 @@ security:
 
 ### Monitoring a Pipeline
 
+Prefer the **Monitor tool** — run the pipeline watcher in the background so each status change streams back as an event and you react the moment a job fails, without a blocking `--watch` holding the turn.
 ```bash
 # GitHub Actions
 gh run list --limit 5
 gh run view <run-id>
-gh run watch <run-id>
+gh run watch <run-id>   # run via the Monitor tool; falls back to a blocking watch pre-v2.1.98
 ```
+For an unattended "until green" wait, pair with **`/goal`**, or schedule with **`/loop`** (self-paces when the interval is omitted; fixed-interval on Bedrock/Vertex).
 
-### Fixing a Failed Pipeline
+### Fixing a Failed Pipeline (loop until green)
 
 1. Read the failure: `gh run view <id> --log-failed`
 2. Fix the underlying issue
 3. Push the fix
-4. Monitor: `gh run watch`
+4. Monitor via the **Monitor tool**: `gh run watch` — on failure, repeat from step 1 until the run is green.
 
 ## Completion Signal
 

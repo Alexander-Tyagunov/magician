@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""magician-statusline — lightweight, always-safe Claude Code status line.
+
+Reads Claude Code's statusLine JSON on stdin and prints a compact, single-line
+status bar (context %, rot warning, token-flow sparkline, model/git/cost, active
+skill/workflow/loop). Which parts show is driven by the user's config.
+
+SAFETY CONTRACT (do not weaken):
+  * NEVER raises to the terminal — the whole body is wrapped; any error prints an
+    empty line (or a minimal marker) and exits 0. A broken bar can't break the REPL.
+  * No network. Only cheap local reads + one short, timed `git` call.
+  * Runs locally; consumes zero API tokens.
+"""
+import sys, os, json, subprocess, time, re
+
+HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
+CFG = os.path.join(HOME, "cli-ui.json")
+STATUS_DIR = os.path.join(HOME, "status")
+ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill"]
+
+_ANSI = re.compile(r"\033\[[0-9;]*m")
+
+
+def _color(s, c):
+    if os.environ.get("NO_COLOR"):
+        return s
+    codes = {"green": "32", "yellow": "33", "red": "31", "cyan": "36",
+             "mag": "35", "dim": "2", "bold": "1"}
+    return f"\033[{codes.get(c, '0')}m{s}\033[0m"
+
+
+def _load_json(path):
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _read_stdin():
+    try:
+        raw = sys.stdin.read()
+        return json.loads(raw) if raw and raw.strip() else {}
+    except Exception:
+        return {}
+
+
+def _ctx(d):
+    """(pct:int|None, used:int|None, size:int|None) — from Claude Code's context_window."""
+    cw = d.get("context_window") or {}
+    pct = cw.get("used_percentage")
+    size = cw.get("context_window_size")
+    ti, to = cw.get("total_input_tokens"), cw.get("total_output_tokens")
+    used = None
+    try:
+        if isinstance(ti, (int, float)):
+            used = int(ti) + (int(to) if isinstance(to, (int, float)) else 0)
+    except Exception:
+        used = None
+    if pct is None and used is not None and isinstance(size, (int, float)) and size:
+        try:
+            pct = 100.0 * used / float(size)
+        except Exception:
+            pct = None
+    try:
+        pct = int(round(float(pct))) if pct is not None else None
+    except Exception:
+        pct = None
+    return pct, used, (int(size) if isinstance(size, (int, float)) and size else None)
+
+
+def _human(n):
+    try:
+        n = int(n)
+        if n >= 1_000_000:
+            return f"{n/1e6:.1f}M"
+        if n >= 1000:
+            return f"{n//1000}k"
+        return str(n)
+    except Exception:
+        return "?"
+
+
+def _bar(pct, width=10):
+    try:
+        p = max(0, min(100, int(pct)))
+        fill = int(round(width * p / 100.0))
+        return "█" * fill + "░" * (width - fill)
+    except Exception:
+        return "░" * width
+
+
+def _band_color(pct):
+    if pct is None:
+        return "dim"
+    if pct >= 90:
+        return "red"
+    if pct >= 70:
+        return "yellow"
+    return "green"
+
+
+def _rot(pct):
+    if pct is None:
+        return ""
+    if pct >= 92:
+        return "🔴"
+    if pct >= 80:
+        return "⚠"
+    return ""
+
+
+def _spark(sid, pct):
+    chars = "▁▂▃▄▅▆▇█"
+    try:
+        os.makedirs(STATUS_DIR, exist_ok=True)
+        p = os.path.join(STATUS_DIR, f"{sid}.spark")
+        hist = []
+        if os.path.exists(p):
+            with open(p) as f:
+                hist = [int(x) for x in f.read().split() if x.strip().lstrip("-").isdigit()]
+        if pct is not None:
+            hist.append(int(pct))
+        hist = hist[-12:]
+        with open(p, "w") as f:
+            f.write(" ".join(map(str, hist)))
+        return "".join(chars[min(len(chars) - 1, max(0, h * len(chars) // 101))] for h in hist)
+    except Exception:
+        return ""
+
+
+def _git_branch(cwd):
+    try:
+        r = subprocess.run(["git", "-C", cwd or ".", "rev-parse", "--abbrev-ref", "HEAD"],
+                           capture_output=True, text=True, timeout=0.4)
+        b = r.stdout.strip()
+        return b if r.returncode == 0 and b else ""
+    except Exception:
+        return ""
+
+
+def _active(sid):
+    """Best-effort active skill/workflow/loop, if a fresh marker exists (<15 min)."""
+    try:
+        p = os.path.join(STATUS_DIR, f"{sid}.json")
+        if not os.path.exists(p) or time.time() - os.path.getmtime(p) > 900:
+            return ""
+        m = _load_json(p)
+        parts = []
+        if m.get("skill"):
+            parts.append("⚡" + str(m["skill"])[:20])
+        if m.get("workflow"):
+            parts.append("❋" + str(m["workflow"])[:20])
+        try:
+            if int(m.get("agents", 0)) > 0:
+                parts.append(f"▶{int(m['agents'])}")
+        except Exception:
+            pass
+        if m.get("loop"):
+            parts.append("↻" + str(m["loop"])[:16])
+        return " ".join(parts)
+    except Exception:
+        return ""
+
+
+def _vlen(s):
+    return len(_ANSI.sub("", s))
+
+
+def main():
+    d = _read_stdin()
+    cfg = _load_json(CFG)
+    comps = cfg.get("components")
+    comps = [c for c in comps if c in ALL_COMPONENTS] if isinstance(comps, list) else ALL_COMPONENTS
+    if not comps:
+        comps = ALL_COMPONENTS
+
+    sid = str(d.get("session_id") or "default").replace("/", "_")[:64]
+    pct, used, size = _ctx(d)
+    model = ((d.get("model") or {}).get("display_name")) or ""
+    cwd = (d.get("workspace") or {}).get("current_dir") or d.get("cwd") or "."
+    cost = (d.get("cost") or {}).get("total_cost_usd")
+
+    segs = []  # (priority, text) — lower priority kept first when width-constrained
+    if "context" in comps and pct is not None:
+        bc = _band_color(pct)
+        glyph = _rot(pct) if "rot" in comps else ""
+        seg = (f"{glyph} " if glyph else "") + f"{_color('[' + _bar(pct) + ']', bc)} {_color(str(pct) + '%', bc)}"
+        if used is not None and size:
+            seg += _color(f" {_human(used)}/{_human(size)}", "dim")
+        segs.append((0, seg))
+    elif "rot" in comps and pct is not None:
+        g = _rot(pct)
+        if g:
+            segs.append((0, f"{g} {pct}%"))
+
+    if "skill" in comps:
+        a = _active(sid)
+        if a:
+            segs.append((1, _color(a, "cyan")))
+    if "spark" in comps:
+        s = _spark(sid, pct)
+        if s:
+            segs.append((2, _color(s, "dim")))
+    if "meta" in comps:
+        m = []
+        if model:
+            m.append(model)
+        b = _git_branch(cwd)
+        if b:
+            m.append(b)
+        if isinstance(cost, (int, float)) and cost > 0:
+            m.append(f"${cost:.2f}")
+        if m:
+            segs.append((3, _color(" · ".join(m), "dim")))
+
+    prefix = _color("✦", "mag") + " "
+    if not segs:
+        print(prefix.rstrip())
+        return
+    segs.sort(key=lambda x: x[0])
+    chosen = [t for _, t in segs]
+
+    try:
+        cols = int(os.environ.get("COLUMNS") or 0)
+    except Exception:
+        cols = 0
+    line = prefix + "  ".join(chosen)
+    if cols:
+        while len(chosen) > 1 and _vlen(prefix + "  ".join(chosen)) > cols - 2:
+            chosen.pop()
+        line = prefix + "  ".join(chosen)
+    print(line)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        try:
+            print("")
+        except Exception:
+            pass
+    sys.exit(0)

@@ -1,7 +1,7 @@
 ---
 name: seal
 description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
-allowed-tools: Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr checks:*), Bash(gh pr merge:*), Bash(gh pr view:*), Read, Edit, Task
+allowed-tools: Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr checks:*), Bash(gh pr merge:*), Bash(gh pr view:*), Bash(gh run view:*), Read, Edit, Task, Monitor
 argument-hint: [pr-title]
 ---
 
@@ -66,11 +66,14 @@ EOF
 )"
 ```
 
-### 7. Monitor CI
+### 7. Monitor CI (evaluator-optimizer loop)
+Prefer the **Monitor tool**: run the checks watcher in the background so CI status/failure events stream into the session and you react the instant a check fails — no blocking watch holding the turn open.
 ```bash
-gh pr checks --watch
+gh pr checks <pr> --watch    # run via the Monitor tool; each status line returns as an event
 ```
-Wait for all checks to pass. If any fail: read the failure, fix, push, wait again.
+Fallback when the Monitor tool is unavailable (pre-v2.1.98): call `gh pr checks --watch` directly (blocking).
+
+Then loop: **on a failing check → `gh run view <id> --log-failed` → fix → push → the watcher reports the next run → repeat until every check is green.** For a long or unattended wait, pair with **`/goal`** ("PR checks green, then merged") so Claude keeps driving across turns; on a schedule, `/loop check CI on my PR` (self-paces when you omit the interval; fixed-interval on Bedrock/Vertex).
 
 ### 8. Review Comments
 If reviewers add comments: use /scrutinize to process and remediate them, then /certify, then push.

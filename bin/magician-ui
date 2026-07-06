@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""magician-ui — manage the Magician Claude CLI status line ("Magician Claude CLI UI").
+
+Subcommands:
+  status                     Show whether the bar is enabled, its components, and settings state.
+  enable [--all|--only a,b]  Install the renderer to a stable path + add a statusLine to
+                             ~/.claude/settings.json (safe, backed-up, validated). Records prefs.
+  set <a,b,c>                Change which components show (no settings.json change needed).
+  disable                    Remove magician's statusLine (only if it's ours) + record opt-out.
+  reconcile                  Called by SessionStart: suggest ONCE if never asked; if enabled,
+                             keep the installed script fresh + re-add the entry only if none exists.
+
+SAFETY: all settings.json edits go through _edit_settings() — read, json.load, mutate a copy,
+serialize+re-validate, timestamped backup, atomic os.replace. Any failure aborts without
+touching the live file. Never leaves settings.json partial or invalid.
+
+Components: context (bar+%+tokens) · rot (⚠/🔴 glyph) · spark (token-flow sparkline) ·
+            meta (model·git·cost) · skill (active skill/workflow/loop).
+"""
+import sys, os, json, shutil, time
+
+HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
+CFG = os.path.join(HOME, "cli-ui.json")
+SETTINGS = os.environ.get("MAGICIAN_SETTINGS") or os.path.expanduser("~/.claude/settings.json")
+INSTALLED = os.path.join(HOME, "statusline.py")   # stable path, version-independent
+ALL = ["context", "rot", "spark", "meta", "skill"]
+MARK = "magician"   # substring used to recognise our own statusLine entry
+
+
+def die(msg):
+    sys.stderr.write(f"magician-ui: {msg}\n")
+    sys.exit(1)
+
+
+# ---------------- config ----------------
+def load_cfg():
+    try:
+        with open(CFG) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_cfg(d):
+    try:
+        os.makedirs(HOME, exist_ok=True)
+        tmp = CFG + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f, indent=2)
+        os.replace(tmp, CFG)
+    except Exception as e:
+        die(f"could not write config {CFG}: {e}")
+
+
+def parse_components(args, default=None):
+    only, allf = None, False
+    for a in args:
+        if a == "--all":
+            allf = True
+        elif a.startswith("--only"):
+            if "=" in a:
+                only = a.split("=", 1)[1]
+        elif only is None and not a.startswith("-"):
+            only = a  # bare comma-list, e.g. `set context,rot`
+    if allf:
+        return list(ALL)
+    if only:
+        picked = [c.strip() for c in only.replace(" ", ",").split(",") if c.strip()]
+        picked = [c for c in picked if c in ALL]
+        return picked or (default if default is not None else list(ALL))
+    return default if default is not None else list(ALL)
+
+
+# --------------- renderer install ---------------
+def _find_renderer():
+    # sibling of this CLI in the plugin bin/ (works when invoked via PATH)
+    here = os.path.dirname(os.path.realpath(sys.argv[0] or __file__))
+    cand = os.path.join(here, "magician-statusline")
+    if os.path.isfile(cand):
+        return cand
+    # fallback: newest version in the plugin cache
+    import glob
+    hits = glob.glob(os.path.expanduser(
+        "~/.claude/plugins/cache/*/magician/*/bin/magician-statusline"))
+    hits.sort()
+    return hits[-1] if hits else None
+
+
+def install_renderer():
+    src = _find_renderer()
+    if not src:
+        die("could not locate bin/magician-statusline to install")
+    os.makedirs(HOME, exist_ok=True)
+    tmp = INSTALLED + ".tmp"
+    shutil.copyfile(src, tmp)
+    os.chmod(tmp, 0o755)
+    os.replace(tmp, INSTALLED)
+    return src
+
+
+def renderer_stale():
+    """True if the installed copy is missing or differs from the plugin source."""
+    src = _find_renderer()
+    if not src or not os.path.exists(INSTALLED):
+        return True
+    try:
+        with open(src) as a, open(INSTALLED) as b:
+            return a.read() != b.read()
+    except Exception:
+        return True
+
+
+# --------------- safe settings.json edit ---------------
+def _edit_settings(mutate):
+    try:
+        with open(SETTINGS) as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = {}
+    except Exception as e:
+        die(f"~/.claude/settings.json is not valid JSON ({e}); refusing to modify it")
+    if not isinstance(data, dict):
+        die("~/.claude/settings.json is not a JSON object; refusing to modify it")
+
+    import copy
+    new = copy.deepcopy(data)
+    mutate(new)
+    text = json.dumps(new, indent=2)
+    json.loads(text)  # re-validate before writing anything
+
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    if os.path.exists(SETTINGS):
+        bak = SETTINGS + ".bak-magician-ui-" + time.strftime("%Y%m%d-%H%M%S")
+        shutil.copy2(SETTINGS, bak)
+    tmp = SETTINGS + ".tmp-magician-ui"
+    with open(tmp, "w") as f:
+        f.write(text + "\n")
+    with open(tmp) as f:
+        json.load(f)  # validate the temp file on disk
+    os.replace(tmp, SETTINGS)
+
+
+def _statusline_cmd():
+    return f'python3 "{INSTALLED}"'
+
+
+def _our_statusline(d):
+    sl = d.get("statusLine")
+    if not isinstance(sl, dict):
+        return False
+    cmd = str(sl.get("command", ""))
+    return INSTALLED in cmd or MARK in cmd
+
+
+def _has_any_statusline(d):
+    return isinstance(d.get("statusLine"), dict) and d.get("statusLine")
+
+
+# --------------- commands ---------------
+def cmd_status(_args):
+    cfg = load_cfg()
+    st = cfg.get("state", "ask")
+    comps = cfg.get("components") or ALL
+    try:
+        with open(SETTINGS) as f:
+            s = json.load(f)
+    except Exception:
+        s = {}
+    wired = _our_statusline(s) if isinstance(s, dict) else False
+    print(f"state:       {st}")
+    print(f"components:  {', '.join(comps)}")
+    print(f"installed:   {INSTALLED} {'(present)' if os.path.exists(INSTALLED) else '(missing)'}")
+    print(f"settings:    statusLine {'wired to magician' if wired else 'not wired to magician'}")
+
+
+def cmd_enable(args):
+    comps = parse_components(args, default=list(ALL))
+    src = install_renderer()
+    _edit_settings(lambda d: d.__setitem__(
+        "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
+    cfg = load_cfg()
+    cfg.update({"state": "enabled", "components": comps, "installedFrom": src,
+                "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    save_cfg(cfg)
+    print(f"Magician CLI UI enabled — components: {', '.join(comps)}.")
+    print("The bar appears within a message or two (settings hot-reload). "
+          "Change parts with `magician-ui set <list>`, turn off with `magician-ui disable`.")
+
+
+def cmd_set(args):
+    comps = parse_components(args, default=None)
+    if not comps:
+        die(f"nothing valid to set; choose from: {', '.join(ALL)}")
+    cfg = load_cfg()
+    cfg["components"] = comps
+    cfg.setdefault("state", "enabled")
+    cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    save_cfg(cfg)
+    print(f"Status-line components set to: {', '.join(comps)}.")
+
+
+def cmd_disable(_args):
+    def rm(d):
+        if _our_statusline(d):
+            d.pop("statusLine", None)
+    try:
+        with open(SETTINGS) as f:
+            cur = json.load(f)
+        if _has_any_statusline(cur) and not _our_statusline(cur):
+            print("Note: your settings.json has a non-magician statusLine — leaving it untouched.")
+    except Exception:
+        pass
+    _edit_settings(rm)
+    cfg = load_cfg()
+    cfg["state"] = "disabled"
+    cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    save_cfg(cfg)
+    print("Magician CLI UI disabled. It won't be suggested again; re-enable anytime with "
+          "`magician-ui enable`.")
+
+
+def cmd_reconcile(_args):
+    """Always-on state check (SessionStart). Suggest once; keep an enabled bar healthy.
+    Prints a suggestion line ONLY when it decides to suggest; otherwise silent. Never fails."""
+    try:
+        cfg = load_cfg()
+        st = cfg.get("state", "ask")
+        if st == "ask":
+            cfg["state"] = "asked"
+            cfg["askedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            save_cfg(cfg)
+            print("[MAGICIAN] Tip: enable the Magician CLI UI — a lightweight status bar showing "
+                  "live context %, a rot warning, a token-flow sparkline, and the active skill, to "
+                  "help you spot context rot early. It runs locally (no tokens) and is fully "
+                  "configurable. To turn it on say \"enable magician ui\" (or run `magician-ui enable`); "
+                  "pick parts with e.g. `magician-ui enable --only context,rot`. I won't bring this up again.")
+            return
+        if st == "enabled":
+            # keep the installed renderer fresh across plugin updates
+            if renderer_stale():
+                try:
+                    install_renderer()
+                except Exception:
+                    pass
+            # if the user has NO statusLine at all, restore ours (they opted in);
+            # never clobber a different statusLine they may have set themselves.
+            try:
+                with open(SETTINGS) as f:
+                    cur = json.load(f)
+            except Exception:
+                cur = {}
+            if isinstance(cur, dict) and not _has_any_statusline(cur):
+                _edit_settings(lambda d: d.__setitem__(
+                    "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
+        # asked / disabled → silent
+    except Exception:
+        pass  # reconcile must never break SessionStart
+
+
+CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set,
+        "disable": cmd_disable, "reconcile": cmd_reconcile}
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|disable|reconcile}")
+        print(f"components: {', '.join(ALL)}")
+        return
+    cmd = sys.argv[1]
+    fn = CMDS.get(cmd)
+    if not fn:
+        die(f"unknown command '{cmd}' (try: {', '.join(CMDS)})")
+    fn(sys.argv[2:])
+
+
+if __name__ == "__main__":
+    main()

@@ -11,7 +11,7 @@ When the task is "deliver many similar units" — N stories/tickets, a set of fe
 
 For a **single** task use `/ward` (TDD) directly; for executing an existing **blueprint** wave-by-wave use `/orchestrate`. `/weave` is for *adaptive, multi-unit delivery* where you compose the pipeline to the work.
 
-The full, copy-and-adapt Workflow template (schemas, stages, kg grounding, the verify loop) is in **[references/template.md](references/template.md)**.
+The full, copy-and-adapt Workflow template (schemas, stages, kg grounding, the verify + remediate loop) is in **[references/template.md](references/template.md)**.
 
 ## Phase 0 — scope, ground, and plan (gate before running)
 
@@ -27,7 +27,7 @@ Choose the shape that fits (Anthropic agent patterns), tuning depth, agent count
 - **Per-item `pipeline()`** *(default for N similar units)* — each unit flows implement → certify → review independently, no barrier; wall-clock = slowest single chain.
 - **`parallel()` barrier** — when a step needs *all* prior results (cross-unit dedup, a consolidation pass, "0 found → skip").
 - **Orchestrator-worker** — decompose first, then fan out workers over the decomposition.
-- **Evaluator-optimizer loop** — review → remediate → re-review until clean, for the verify cycle.
+- **Evaluator-optimizer loop** *(built into the default template)* — review → remediate → re-certify → re-review until clean, bounded by a round cap + `budget.remaining()`. The pipeline ships a clean changeset, not a to-do list.
 
 You **may deviate** from any single skill's canned steps to fit the task. You may **not** drop these non-negotiables, whatever shape you pick:
 
@@ -35,7 +35,7 @@ You **may deviate** from any single skill's canned steps to fit the task. You ma
 1. **TDD per unit** — a failing test first, then green, then refactor (the `/ward` discipline).
 2. **kg grounding** — workers locate code via `kg query`/`kg blast` and receive `file:line` pointers; no whole-file pastes.
 3. **certify before "done"** — tests + types + lint + build pass for each unit before it counts as delivered.
-4. **Review before ship** — multi-lens (`magician:reviewer`/`sentinel`/`simplifier`/`verifier`) + adversarial verify on every Critical/High finding.
+4. **Review before ship, then remediate in-pipeline** — multi-lens (`magician:reviewer`/`sentinel`/`simplifier`/`verifier`) + adversarial verify on every Critical/High finding, then the bounded remediate loop (fix → re-certify → re-review) resolves confirmed findings before the pipeline reports done.
 5. **Write gates** — the Workflow may read, implement on a branch/worktree, and test; it must **not** push, open/merge PRs, or do anything destructive without explicit user confirmation. Keep commits one-per-unit and surface them.
 6. **No context loss** — every worker prompt is fully self-contained (Goal/Scope/Inputs/Constraints/Return per [lore/subagent-context.md](../../lore/subagent-context.md)); pass artifact **paths**, not dumps; workers return distilled summaries (~1–2k tokens), not raw output. Write a running `.workspace/local/session-state.md` (goal · done/remaining units · decisions · blockers · artifact paths) and have every worker read it first, so a compaction mid-run loses nothing.
 </HARD-GATE>
@@ -52,6 +52,6 @@ Implement/verify stages on the latest code-optimal tier at high/xhigh effort; na
 
 ## Completion Signal
 
-> "Weave complete: <N>/<N> units delivered (1 commit each), certified, reviewed (<C> criticals resolved). Branch <name> — ready for you to push/PR (write-gated)."
+> "Weave complete: <N>/<N> units delivered (1 commit each), certified, reviewed (<C> criticals resolved over <R> remediation round(s)). Branch <name> — ready for you to push/PR (write-gated)."
 
 Grounding for a unit's domain → `/magic`. Reviewing the whole changeset afterward → `/divine`. Shipping → `/seal` (gated).
