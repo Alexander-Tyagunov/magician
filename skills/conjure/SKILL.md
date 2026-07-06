@@ -7,7 +7,7 @@ argument-hint: [feature or what you want to design]
 
 # /conjure — Design Dialogue
 
-Run a structured design dialogue before writing any code. Produce an approved spec and optional visual design artifacts.
+Run a structured design dialogue before writing any code. Produce an approved spec and optional visual design artifacts. When a visual mock or the spec is worth sharing, you can publish it as a Claude Code **Artifact** (a live page on claude.ai) so stakeholders can view/comment as it evolves — offer it, don't create it unprompted.
 
 <HARD-GATE>
 Do NOT write any code, scaffold any project, or take any implementation action until the user has approved the spec. This applies regardless of perceived simplicity.

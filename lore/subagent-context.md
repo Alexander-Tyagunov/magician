@@ -25,6 +25,13 @@ Context is a finite resource; protect it for yourself and every actor downstream
 - Offload heavy exploration to subagents (clean context windows) and have them return a distilled summary, not raw dumps.
 - The plugin warns when context grows (60/80/92%) and captures a resume capsule before any compaction — when warned, offload to an artifact and/or `/compact` before the next big step. See [the chronicle context-mgmt reference](../skills/chronicle/references/context-mgmt.md).
 
+## Rule: subagents run in the background — use it, don't fight it
+
+Current Claude Code runs spawned subagents in the **background by default**: you can keep working while they run, and their permission prompts now surface in *your* main session (they no longer auto-deny). So:
+- Fan out, then keep doing useful work and collect results as they land. Ask to "run in the foreground" only when the next step genuinely blocks on a subagent's output.
+- Subagents can spawn their own subagents (**nested, up to ~5 levels**) — an orchestrator-worker where a wave lead further fans out is fine; keep every level's prompt self-contained per the rules above.
+- You rarely need to pre-authorize tools now (prompts surface to you), but the plugin's global `Bash(kg:*|jira:*|confluence:*|ctx:*)` allows keep the common CLIs prompt-free anyway.
+
 ## Rule: verify the handoff
 
 If a subagent returns NEEDS_CONTEXT, treat it as a context-completeness bug in your spawn prompt — add the missing input and re-dispatch, don't guess on its behalf.

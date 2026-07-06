@@ -37,3 +37,4 @@ Storage: `~/.local/share/magician/projects/<project-hash>/` (capsule + `learning
 - Offload heavy exploration to subagents (clean context windows; they return distilled summaries).
 - When a band warning fires, offload to an artifact and/or run `/compact` (with a focus instruction) before the next big step.
 - Add a `# Compact instructions` section to your project `CLAUDE.md` so the built-in compaction always preserves what matters (it survives compaction; `PreCompact` hooks cannot steer it).
+- `ctx` tracks *size*; run **`/usage`** for what's driving your plan limits (broken down by skill, subagent, plugin, MCP) — the two together tell you both how full the window is and what's filling it.

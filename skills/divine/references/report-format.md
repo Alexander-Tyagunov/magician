@@ -79,3 +79,5 @@ gh api repos/{owner}/{repo}/pulls/{N}/reviews -f event=COMMENT \
 Show the user the exact body / comment set before sending. Default to a single `--comment` review unless they explicitly want `--request-changes` or `--approve`. Never `--approve` on the user's behalf without an explicit instruction to approve.
 
 After posting, report the review URL.
+
+For a large review the user will want to circulate, you can also publish the severity-ranked report as a Claude Code **Artifact** — a live page on claude.ai that updates in place as findings are remediated. Offer it; don't create it unprompted.

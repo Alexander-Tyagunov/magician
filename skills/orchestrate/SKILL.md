@@ -38,7 +38,7 @@ Spawned agents see NONE of this conversation. Every `Task` prompt MUST be self-c
 ```
 Goal: implement task <N> — <one-line deliverable>.
 Scope: files/paths in play: <exact list>. Out of scope: <...>.
-Inputs: full task text from the plan (paste it), and the spec at .workspace/shared/specs/<feature>.md.
+Inputs: full task text from the plan (paste it), and the spec at .workspace/shared/specs/<feature>.md. FIRST read .workspace/local/session-state.md if it exists (current goal, decisions, blockers, artifact paths). Locate code with `kg query`/`kg blast`, not broad greps.
 Constraints: follow TDD via /ward; conventions/lore: <...>; do not touch <deny paths>; definition of done: <...>.
 Available magician skills: /conjure /blueprint /ward /unravel /certify /orchestrate /scrutinize /portal /seal /manifest /almanac /chronicle /magic /sentinel /accelerate /deploy /inscribe /autopsy
 Return: STATUS: DONE | BLOCKED | NEEDS_CONTEXT, then a one-paragraph summary of what was implemented and committed.

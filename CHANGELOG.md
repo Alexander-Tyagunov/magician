@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] — 2026-07-03
+
+**Adoption + currency release** — grounded in real magician sessions and the code.claude.com what's-new digest (W19–W26).
+
+### Changed
+- **kg enforced on file reads, not just search.** The PreToolUse nudge now also fires on whole-file **Read** of code — it skips ranged reads (`offset`/`limit`, the good kg-driven pattern) and non-code files, and steers Claude to `kg query`/`kg blast` at the moment it would otherwise slurp a whole file. Effort-aware cap (`$CLAUDE_EFFORT`: quieter at low, firmer at xhigh) with escalating wording. (Real sessions showed the graph built once then ignored — 3 queries vs 100+ reads.)
+- **Global CLI allow-rules.** Added `Bash(kg:*|jira:*|confluence:*|ctx:*|magician-scan:*)` so the bundled CLIs never prompt when called outside their owning skill (e.g. `/magic` running `kg`, `/weave` stages, the kg nudge) — a source of the permission friction users hit.
+- **Latest Claude Code capabilities folded in.** `lore/subagent-context.md` + `/orchestrate` + `/weave` now reflect **background-by-default subagents** (keep working; prompts surface in the main session) and **nested subagents (~5 deep)**; pointers added to **`/goal`** (unattended cross-turn runs — `/weave`, `/manifest`), **`/usage`** (limit breakdown by skill/subagent/plugin — `/chronicle` context-mgmt), and **Artifacts** (shareable live pages — `/conjure`, `/divine`).
+- **Context-passing hardened between pipelined agents.** `/orchestrate` and `/weave` spawn prompts now require reading `.workspace/local/session-state.md` first and keep it current between waves/phases, so a mid-run compaction loses nothing.
+
 ## [3.5.2] — 2026-06-30
 
 ### Fixed

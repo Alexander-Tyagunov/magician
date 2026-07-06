@@ -37,14 +37,14 @@ You **may deviate** from any single skill's canned steps to fit the task. You ma
 3. **certify before "done"** — tests + types + lint + build pass for each unit before it counts as delivered.
 4. **Review before ship** — multi-lens (`magician:reviewer`/`sentinel`/`simplifier`/`verifier`) + adversarial verify on every Critical/High finding.
 5. **Write gates** — the Workflow may read, implement on a branch/worktree, and test; it must **not** push, open/merge PRs, or do anything destructive without explicit user confirmation. Keep commits one-per-unit and surface them.
-6. **No context loss** — every worker prompt is fully self-contained (Goal/Scope/Inputs/Constraints/Return per [lore/subagent-context.md](../../lore/subagent-context.md)); pass artifact **paths**, not dumps; workers return distilled summaries (~1–2k tokens), not raw output.
+6. **No context loss** — every worker prompt is fully self-contained (Goal/Scope/Inputs/Constraints/Return per [lore/subagent-context.md](../../lore/subagent-context.md)); pass artifact **paths**, not dumps; workers return distilled summaries (~1–2k tokens), not raw output. Write a running `.workspace/local/session-state.md` (goal · done/remaining units · decisions · blockers · artifact paths) and have every worker read it first, so a compaction mid-run loses nothing.
 </HARD-GATE>
 
 ## Run it
 
 Adapt the template into a `Workflow({script})` call. Keep the script's `meta` a pure literal; group stages with `phase()`; use `schema` on every `agent()` whose result you branch on. Isolate file-mutating parallel workers with `isolation: 'worktree'` only when they'd otherwise collide. Read each phase's results before the next decision — you stay in the loop.
 
-For very large or open-ended scope, run `/weave` in successive Workflows (one phase each) rather than one giant script, so you review between phases.
+For very large or open-ended scope, run `/weave` in successive Workflows (one phase each) rather than one giant script, so you review between phases. For a long **unattended** delivery, pair with **`/goal`** so Claude keeps driving across turns until every unit is delivered + certified. Workflow stages run as background subagents (and may nest ~5 deep), so fan out and collect results as they land rather than blocking.
 
 ## Effort & models
 

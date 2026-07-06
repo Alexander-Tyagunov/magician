@@ -47,7 +47,7 @@ GATE 4: PR title and final go-ahead (before /seal)
     - If they decline: note "working in current branch" and continue
 
 ### Phase 4: Implementation
-12. **Proceed immediately after Phase 3 without waiting.** Run /orchestrate — execute all tasks using parallel agents where safe, sequential where required. For a large multi-item plan (many tickets/features/files), prefer **/weave** to deliver them as one native Workflow with guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify).
+12. **Proceed immediately after Phase 3 without waiting.** Run /orchestrate — execute all tasks using parallel agents where safe, sequential where required. For a large multi-item plan (many tickets/features/files), prefer **/weave** to deliver them as one native Workflow with guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify). For a long **unattended** run, pair with **`/goal`** so Claude keeps driving across turns until the completion condition holds.
 13. /ward discipline enforced throughout (TDD)
 
 ### Phase 5: Verification
