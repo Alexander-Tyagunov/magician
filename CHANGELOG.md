@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1] — 2026-07-06
+
+**Fixes to the v3.7.0 Magician CLI UI rollout**, caught by a real post-restart test.
+
+### Fixed
+- **The one-time "enable Magician CLI UI" nudge is now shown on the terminal (stderr).** On the first session after install it was emitted only via `additionalContext` — a Claude-facing hint that isn't guaranteed to surface — *and* the one-time `asked` state was burned on emit, so the suggestion could be silently consumed without the user ever seeing it. SessionStart now prints the nudge to stderr next to the magician banner (guaranteed visible); `additionalContext` still carries it for Claude, and it's still shown only once.
+- **"enable magician ui" / "status line" / "status bar" now route to `/statusline`.** There was no pattern-detect trigger for the CLI UI, so the phrasing fell through to skill-description matching and could be hijacked into `/magic` research (e.g. "tell me about the magician ui" contains the research phrase "tell me about"). Added a `statusline` intent trigger, routed **before** `/magic`.
+
 ## [3.7.0] — 2026-07-06
 
 **Loops currency pass** — grounded in Anthropic's "Getting started with loops" (ClaudeDevs) and the Week-15 Monitor-tool + self-pacing `/loop` docs. A verified audit (7 skill-groups, 32 agents, every gap adversarially checked) found magician already used loops widely but lagged the newest mechanisms in two systematic ways; both are closed here. Also adds an opt-in **Magician CLI UI** status line.

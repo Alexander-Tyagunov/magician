@@ -262,6 +262,11 @@ ${LEARNINGS}"
 # ── Magician CLI UI (status line): always reconcile state — suggest ONCE if never asked,
 #    keep an enabled bar's installed script fresh. `reconcile` is silent unless it suggests. ──
 UI_NOTE=$("$PLUGIN_ROOT/bin/magician-ui" reconcile 2>/dev/null || true)
+if [ -n "$UI_NOTE" ]; then
+  # Print the one-time nudge to the TERMINAL (stderr) too — additionalContext alone is a
+  # Claude-facing hint and isn't guaranteed to surface, so the user could miss it entirely.
+  printf '%b\n' "${PURPLE}✦ Magician CLI UI${RESET} — an opt-in status bar: live context %%, a rot warning, a token-flow sparkline, and the active skill. Turn it on with ${GREEN}\"enable magician ui\"${RESET} (or ${GREEN}/statusline${RESET}); pick parts, e.g. ${GREEN}magician-ui enable --only context,rot${RESET}. Shown once." >&2
+fi
 
 CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the user by printing this block inside a code fence verbatim, then proceed to help them:
 ${CAT_ART}

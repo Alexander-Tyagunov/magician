@@ -163,6 +163,12 @@ deploy_trigger = _has(
 )
 jira_trigger = (not _neg("jira")) and _has(r'\bjira\b', r'\b(my|the)\s+(board|sprint|backlog)\b', r'\btickets?\b')
 confluence_trigger = (not _neg("confluence")) and _has(r'\bconfluence\b', r'\bwiki\s+(page|space|doc)\b')
+statusline_trigger = _has(
+    r'\bmagician\s+(ui|bar)\b', r'\bcli ui\b',
+    r'\bstatus[\s-]?(line|bar)\b',
+    r'\b(enable|turn on|turn off|disable|show|hide|configure|set up|customi[sz]e)\b[^.?!]{0,30}\b(status[\s-]?(line|bar)|magician\s+(ui|bar)|cli ui|the bar)\b',
+    r'\b(context|tokens?)\b[^.?!]{0,24}\b(status[\s-]?(line|bar)|console|terminal|footer|the bar)\b',
+)
 
 MAGIC_KEYWORDS = {"research", "investigate", "analyze", "analyse", "explore", "examine",
                   "assess", "evaluate", "discover", "audit", "study", "survey", "probe", "benchmark"}
@@ -202,6 +208,10 @@ if jira_trigger and not _invoking("/jira", "magician:jira"):
 if confluence_trigger and not _invoking("/confluence", "magician:confluence"):
     flush("[MAGICIAN] Confluence intent detected. Use the magician:confluence skill (direct HTTP REST, no MCP; it runs "
           "first-time setup if Confluence isn't configured) for this request.")
+if statusline_trigger and not _invoking("/statusline", "magician:statusline"):
+    flush("[MAGICIAN] Status-line / CLI-UI intent detected. Use magician:statusline to enable/configure/disable the "
+          "Magician CLI UI via the bundled `magician-ui` CLI (`magician-ui enable [--only context,rot,…]` / `set` / "
+          "`disable` / `status`) — it's a built-in magician feature, do NOT research it. Invoke magician:statusline before responding.")
 if flow_shape and not is_short and len(prompt.split()) >= 12 and not _invoking("/weave", "magician:weave", "/manifest", "magician:manifest", "/orchestrate"):
     flush("[MAGICIAN] This reads like a multi-step delivery. Decide the engine before diving in: if it's N similar "
           "units (tickets/files/features) → run it via /weave as ONE guarded Workflow (TDD per unit, kg grounding, "
