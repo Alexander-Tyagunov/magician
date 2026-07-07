@@ -111,6 +111,16 @@ def renderer_stale():
         return True
 
 
+def _plugin_version():
+    """Version from the plugin.json next to this CLI (installPath/.claude-plugin/plugin.json)."""
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.realpath(sys.argv[0] or __file__)))
+        with open(os.path.join(root, ".claude-plugin", "plugin.json")) as f:
+            return str((json.load(f) or {}).get("version", "") or "")
+    except Exception:
+        return ""
+
+
 # --------------- safe settings.json edit ---------------
 def _edit_settings(mutate):
     try:
@@ -181,7 +191,7 @@ def cmd_enable(args):
         "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
     cfg = load_cfg()
     cfg.update({"state": "enabled", "components": comps, "installedFrom": src,
-                "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
+                "version": _plugin_version(), "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
     save_cfg(cfg)
     print(f"Magician CLI UI enabled — components: {', '.join(comps)}.")
     print("The bar appears within a message or two (settings hot-reload). "
@@ -221,23 +231,29 @@ def cmd_disable(_args):
 
 
 def cmd_reconcile(_args):
-    """Always-on state check (SessionStart). While the user hasn't DECIDED, emit a strong
-    first-run OFFER as additionalContext so Claude actually asks (AskUserQuestion) — this works
-    in the desktop app too, where a hook's stderr isn't shown to the user. Re-offers until the
-    user enables/disables (with a small cap) so a missed offer isn't permanent. Silent once
-    decided. Never fails."""
+    """Always-on state check (SessionStart), OPT-OUT model: on first run AUTO-ENABLE the status
+    bar (safe settings.json edit) so it's guaranteed visible — a hook can't force Claude to pop
+    an interactive prompt, so we just turn it on and let the user reconfigure/disable. Thereafter
+    keep an enabled bar healthy; stay silent once the user has disabled it. Never fails."""
     try:
         cfg = load_cfg()
         st = cfg.get("state", "ask")
+        ver = _plugin_version()
+        if st == "disabled":
+            return  # user opted out → never re-enable (even on upgrade); `magician-ui default` re-enables
         if st == "enabled":
+            upgraded = bool(ver) and cfg.get("version") != ver
             # keep the installed renderer fresh across plugin updates
             if renderer_stale():
                 try:
                     install_renderer()
                 except Exception:
                     pass
-            # if the user has NO statusLine at all, restore ours (they opted in);
-            # never clobber a different statusLine they may have set themselves.
+            if upgraded:
+                cfg["components"] = list(ALL)   # on version upgrade, reset to the full default set
+                cfg["version"] = ver
+                save_cfg(cfg)
+            # if the user has NO statusLine at all, restore ours; never clobber a different one.
             try:
                 with open(SETTINGS) as f:
                     cur = json.load(f)
@@ -247,35 +263,47 @@ def cmd_reconcile(_args):
                 _edit_settings(lambda d: d.__setitem__(
                     "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
             return
-        if st in ("disabled", "asked"):
-            return  # user decided, or we've offered enough times → stay silent
-        # st == "ask": make a first-run OFFER. enable/disable set the terminal state; re-offer
-        # until then, capped so we never nag forever.
-        offers = int(cfg.get("offers", 0) or 0) + 1
-        cfg["offers"] = offers
-        cfg["lastOfferedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        if offers >= 3:
-            cfg["state"] = "asked"  # stop offering after 3 un-acted sessions
+        # st == "ask" (first run): ENABLE by default (opt-out). Only auto-enable if the user has
+        # no statusLine of their own — never clobber a custom bar. Then record state=enabled.
+        try:
+            with open(SETTINGS) as f:
+                cur = json.load(f)
+        except Exception:
+            cur = {}
+        if isinstance(cur, dict) and _has_any_statusline(cur) and not _our_statusline(cur):
+            # user already runs their own status line — don't touch it; just mark decided.
+            cfg["state"] = "asked"
+            save_cfg(cfg)
+            return
+        install_renderer()
+        _edit_settings(lambda d: d.__setitem__(
+            "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
+        cfg["state"] = "enabled"
+        cfg["components"] = list(ALL)
+        cfg["version"] = ver
+        cfg["enabledAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         save_cfg(cfg)
-        print("[MAGICIAN] FIRST-RUN OFFER — the Magician CLI UI status line is available but NOT enabled. "
-              "BEFORE doing the user's other work, use AskUserQuestion to OFFER it: "
-              "(Q1) enable the always-on status bar? "
-              "(Q2, multi-select) which parts to show — context (bar+%+tokens), rot (warning glyph), "
-              "spark (token-flow sparkline), meta (model/git/cost), skill (active skill/workflow); default all. "
-              "If they enable, run `magician-ui enable --only <picked>` (or `--all`); if they decline, run "
-              "`magician-ui disable`. It renders locally, costs zero tokens, and hot-reloads. This is the "
-              "magician:statusline skill. One-time offer — it stops once the user decides.")
+        print("[MAGICIAN] Enabled the Magician CLI UI status line by default (opt-out): a live context "
+              "bar + %, a rot warning, a token-flow sparkline, model/git/cost, and the active skill — it "
+              "renders locally and costs zero tokens. Tell the user it's on; they can choose which parts "
+              "show with `magician-ui set context,rot,…` (or the /statusline skill), or turn it off with "
+              "`magician-ui disable`.")
     except Exception:
         pass  # reconcile must never break SessionStart
 
 
-CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set,
+def cmd_default(_args):
+    """Reset to the default CLI UI: enabled with ALL components ('back to default')."""
+    cmd_enable(["--all"])
+
+
+CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
         "disable": cmd_disable, "reconcile": cmd_reconcile}
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
-        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|disable|reconcile}")
+        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile}")
         print(f"components: {', '.join(ALL)}")
         return
     cmd = sys.argv[1]

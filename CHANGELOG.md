@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.3] — 2026-07-06
+
+**Magician CLI UI: reliable + fast, via an opt-out model.** The 3.7.0–3.7.2 attempts to *ask* at startup didn't work — a plugin hook can't force Claude to pop an interactive prompt, so Claude just answered the user's first message and skipped the offer (proven from real session transcripts). The bar now auto-enables instead of asking.
+
+### Changed
+- **Auto-enable on install and on version upgrade (opt-out).** First run enables the status bar (all components) via a safe `settings.json` edit — guaranteed visible, no reliance on Claude asking. A **version upgrade** re-asserts the default (resets to all components, refreshes the renderer so new parts show). It never clobbers a `statusLine` you set yourself, and `magician-ui disable` is respected across upgrades. New **`magician-ui default`** resets to enabled + all components ("back to default"); `magician-ui set <parts>` tunes which components show (persists within a version).
+- **Startup performance.** SessionStart uses a cheap **bash fast-path** and only spawns the (python) `reconcile` when there's real work — first run, version upgrade, or a missing renderer; steady-state startups no longer pay for it (~0.45s → ~0.37s). The renderer **caches the git branch** (5s TTL). Removed the earlier SessionStart/pattern-detect "offer" machinery.
+
+### Fixed
+- The token-flow sparkline no longer shows a lone low tick (`▁`, which reads like `_`) at session start — it appears once there are ≥2 data points (an actual trend).
+
 ## [3.7.2] — 2026-07-06
 
 **The CLI-UI first-run offer now actually reaches the user** — a second post-restart test showed it still silent in the **desktop app**, where a SessionStart hook's stderr isn't surfaced.

@@ -259,13 +259,25 @@ LEARNINGS=$("$PLUGIN_ROOT/bin/ctx" learn --list --n 3 2>/dev/null || true)
 [ -n "$LEARNINGS" ] && LEARN_NOTE=" PROJECT MEMORY — recent learnings for this project (consult only when relevant):
 ${LEARNINGS}"
 
-# ── Magician CLI UI (status line): always reconcile state — suggest ONCE if never asked,
-#    keep an enabled bar's installed script fresh. `reconcile` is silent unless it suggests. ──
-UI_NOTE=$("$PLUGIN_ROOT/bin/magician-ui" reconcile 2>/dev/null || true)
+# ── Magician CLI UI (status line): OPT-OUT auto-enable on install/upgrade. PERF: a cheap
+#    bash fast-path so we only spawn the (python) reconcile when there's real work — first run,
+#    version upgrade, or a missing renderer. In the steady state (already enabled, current
+#    version, renderer present) we do NOTHING here, keeping session startup fast. ──
+MAG_HOME="${MAGICIAN_HOME:-$HOME/.claude/magician}"
+UI_CFG="$MAG_HOME/cli-ui.json"
+PLUGIN_VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | head -1 | sed -E 's/.*"([^"]*)"$/\1/')"
+UI_NOTE=""
+if grep -q '"state"[[:space:]]*:[[:space:]]*"disabled"' "$UI_CFG" 2>/dev/null; then
+  :   # user opted out — nothing to do, no subprocess
+elif grep -q '"state"[[:space:]]*:[[:space:]]*"enabled"' "$UI_CFG" 2>/dev/null \
+     && [ -n "$PLUGIN_VER" ] && grep -q "\"version\"[[:space:]]*:[[:space:]]*\"${PLUGIN_VER}\"" "$UI_CFG" 2>/dev/null \
+     && [ -f "$MAG_HOME/statusline.py" ]; then
+  :   # already enabled, current version, renderer present → skip the reconcile spawn (fast path)
+else
+  UI_NOTE=$("$PLUGIN_ROOT/bin/magician-ui" reconcile 2>/dev/null || true)   # first run / upgrade / repair
+fi
 if [ -n "$UI_NOTE" ]; then
-  # Print the one-time nudge to the TERMINAL (stderr) too — additionalContext alone is a
-  # Claude-facing hint and isn't guaranteed to surface, so the user could miss it entirely.
-  printf '%b\n' "${PURPLE}✦ Magician CLI UI${RESET} — an opt-in status bar: live context %%, a rot warning, a token-flow sparkline, and the active skill. Turn it on with ${GREEN}\"enable magician ui\"${RESET} (or ${GREEN}/statusline${RESET}); pick parts, e.g. ${GREEN}magician-ui enable --only context,rot${RESET}. Shown once." >&2
+  printf '%b\n' "${PURPLE}✦ Magician CLI UI enabled${RESET} — a live status bar (context %, rot warning, token-flow sparkline, active skill). Configure with ${GREEN}/statusline${RESET} (or ${GREEN}magician-ui set context,rot${RESET}); turn it off with ${GREEN}magician-ui disable${RESET}." >&2
 fi
 
 CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the user by printing this block inside a code fence verbatim, then proceed to help them:

@@ -125,17 +125,32 @@ def _spark(sid, pct):
         hist = hist[-12:]
         with open(p, "w") as f:
             f.write(" ".join(map(str, hist)))
+        if len(hist) < 2:
+            return ""   # don't show a lone tick at session start; appears once there's a trend
         return "".join(chars[min(len(chars) - 1, max(0, h * len(chars) // 101))] for h in hist)
     except Exception:
         return ""
 
 
 def _git_branch(cwd):
+    # Cache per-cwd with a 5s TTL so rapid re-renders skip the git subprocess (perf).
     try:
+        import hashlib
+        cache = os.path.join(STATUS_DIR, "gitbranch-" + hashlib.md5((cwd or ".").encode()).hexdigest()[:12])
+        try:
+            if time.time() - os.path.getmtime(cache) < 5:
+                return open(cache).read().strip()
+        except Exception:
+            pass
         r = subprocess.run(["git", "-C", cwd or ".", "rev-parse", "--abbrev-ref", "HEAD"],
                            capture_output=True, text=True, timeout=0.4)
-        b = r.stdout.strip()
-        return b if r.returncode == 0 and b else ""
+        b = r.stdout.strip() if r.returncode == 0 else ""
+        try:
+            os.makedirs(STATUS_DIR, exist_ok=True)
+            open(cache, "w").write(b)
+        except Exception:
+            pass
+        return b
     except Exception:
         return ""
 
