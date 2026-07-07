@@ -29,7 +29,7 @@ Choose the shape that fits (Anthropic agent patterns), tuning depth, agent count
 - **Per-item `pipeline()`** *(default for N similar units)* — each unit flows implement → certify → review independently, no barrier; wall-clock = slowest single chain.
 - **`parallel()` barrier** — when a step needs *all* prior results (cross-unit dedup, a consolidation pass, "0 found → skip").
 - **Orchestrator-worker** — decompose first, then fan out workers over the decomposition.
-- **Evaluator-optimizer loop** *(built into the default template)* — review → remediate → re-certify → re-review until clean, bounded by a round cap + `budget.remaining()`. The pipeline ships a clean changeset, not a to-do list.
+- **Evaluator-optimizer loop** *(built into the default template)* — review → remediate → re-certify → re-review until clean, bounded by a round cap + `budget.remaining()`. The pipeline ships a clean changeset, not a to-do list. For **parity/mirror** deliveries (units must mirror a gold 1:1), encode `single_purpose`/no-folding + `mirrors_gold` acceptance in the evaluator schema ([references/template.md](references/template.md) → *Adapting it*) — a generic review green-lights folding; for a full comprehend→parity job use `/transmute`.
 
 You **may deviate** from any single skill's canned steps to fit the task. You may **not** drop these non-negotiables, whatever shape you pick:
 

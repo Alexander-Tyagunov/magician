@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] — 2026-07-07
+
+**Hardening for large bulk-Jira and gold-mirror deliveries.** Two avoidable failure modes are now guided against: bulk Jira work routed through a *hardcoded, stale* `jira` helper that lacked throttling (→ HTTP 429 + a stall), and a `/weave` mirror pass green-lighting "folded" stories that then needed a corrective second run.
+
+### Changed
+- **`/jira` — version & bulk hygiene (the fix that matters).** Call `jira` on `PATH` (current version) and **never hardcode a `~/.claude/plugins/cache/<version>/bin/jira` path** — a pinned pre-3.6.0 helper lacks the throttle/backoff/pacing and will 429 and hang on bulk work; **restart after a plugin upgrade** so every skill/bin resolves to one version. Reinforced the existing "never `import`/`exec` `bin/jira` to loop `api()` directly" rule (it bypasses the throttle). Mirrored into the Codex jira adapter.
+- **`/weave` — parity/mirror evaluator rubric.** For deliveries where units must mirror a gold standard 1:1 (e.g. one platform's stories mirroring another's), the template now ships a `PARITY` evaluator schema asserting `single_purpose` (no folding of several gold items into one), `mirrors_gold`, `correct_id`, and `deviations_justified` — folded output **fails back for a split** instead of passing. A generic FINDINGS pass only checks "covers the purpose," which silently lets folding through and forces a corrective second run. Cross-referenced `/transmute` for full comprehend→parity jobs.
+
 ## [4.1.0] — 2026-07-06
 
 **`/transmute` — magician can now comprehend an existing feature and either port it or transform it in place.** A new headline skill that turns Claude into a product-architect-engineer for *brownfield* work: understand something that already exists, then recreate it elsewhere or change it precisely where it lives. One skill, a routing gate, three modes — reusing the existing skills rather than adding a CLI or a data store.

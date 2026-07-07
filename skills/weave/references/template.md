@@ -161,4 +161,15 @@ return {
 - **Different shape?** Independent units with no shared state → make Implement a `pipeline()` with `isolation:'worktree'` per worker (then merge). Need a cross-unit pass (dedup, shared scaffolding) → add a `parallel()` barrier before Implement.
 - **Tune the remediate loop.** The default runs the evaluator-optimizer (fix → re-certify → re-review) until clean, bounded by `MAX_ROUNDS` (override via `args.maxRounds`) and a `budget.remaining()` floor. Set `maxRounds: 1` for a single-pass report; raise it for hard changesets. It re-reviews only the touched units each round, and never pushes — write-gated.
 - **Scale to budget** — if a token target was set, gate loops on `budget.remaining()`; otherwise cap finder/lens counts to the unit count.
+- **Parity / mirror deliveries (make set B mirror set A 1:1).** When each unit must mirror a gold item — same purpose, justified per-item deviations (e.g. platform B's stories mirroring platform A's) — a generic FINDINGS/verify pass will **green-light *folding*** (one unit silently absorbing several gold purposes) because it only checks "covers the purpose." Encode the 1:1 rule in the evaluator schema and fail anything that violates it:
+
+    ```javascript
+    const PARITY = { type:'object', additionalProperties:false, properties:{
+      unit:{type:'string'}, mirrors_gold:{type:'boolean'},   // covers exactly the gold item's purpose
+      single_purpose:{type:'boolean'},                        // ONE purpose — NO folding of several gold items into one
+      correct_id:{type:'boolean'}, deviations_justified:{type:'boolean'},
+      issues:{type:'array',items:{type:'string'}} },
+      required:['unit','mirrors_gold','single_purpose','correct_id','deviations_justified'] }
+    ```
+  A unit passes only when `mirrors_gold && single_purpose && correct_id && deviations_justified`; a folded/multi-purpose unit is a **failure that loops back for a split**, not a pass. (Skipping `single_purpose` is what forces a whole corrective second run after the fact.) For a full comprehend→parity job — a gold standard ported to targets with a behavioral-vs-environmental split + a parity contract — reach for **`/transmute`**, which encodes exactly this.
 - The non-negotiables (TDD, kg grounding, certify, review+verify, write gates, self-contained prompts) stay in every variant.
