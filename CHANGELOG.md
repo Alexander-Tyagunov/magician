@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] — 2026-07-06
+
+**`/conjure` becomes a two-way, token-driven AI design studio.**
+
+### Added
+- **Selection/click callback (#1):** the browser streams clicks + selections (with a stable `data-mid`/id/CSS-path locator) to `state/events.jsonl` (append-only, **never wiped** — the old bug that lost selections is fixed); the session reads them by cursor via `GET …/events.json?since=` and reacts.
+- **In-prototype companion chat (#6, opt-in):** a floating ✦ bubble lets you talk to the CURRENT session ("move the title up") without leaving the design — `POST …/chat` → session reacts (**pull** via the Chrome plugin, or **poll** via `/loop`) → replies stream back through `state/outbox.jsonl`. Asked once at GATE 0; off by default. Honest limit: reactions occur while the session is engaged/looping — on Vertex it's poll-latency, not instant push (Monitor tool unavailable there).
+- **Design tokens + variation + one-design themes + responsive (#2/#3/#5):** new `references/design-tokens.md` — a two-tier CSS-custom-property system (primitives → semantics). **Seeded multi-archetype** generation so runs genuinely vary (no more same house look); **light & dark are two tonal maps of the SAME tokens on ONE layout** (with a `[data-theme]` toggle), not two different designs; GATE 3 asks target **viewports** and renders the same design responsively. Emits `design-tokens.css` + `brand.md` (archetype + reproducible **seed**) to `.workspace/shared/` so `/blueprint`→`/ward` build against the exact tokens.
+
+### Changed
+- `server.cjs` is now an **event hub** (chat POST, events pull endpoint, `outbox.jsonl`→browser, wired `new_version` banner, hardened WS frame parse, activity-aware auto-exit that won't kill a live session). `helper.js` emits stable locators + the opt-in chat widget. GATE 3 rewritten around the token system; the old "vary light/dark across sessions" line (which produced two different designs) is gone.
+
 ## [3.7.3] — 2026-07-06
 
 **Magician CLI UI: reliable + fast, via an opt-out model.** The 3.7.0–3.7.2 attempts to *ask* at startup didn't work — a plugin hook can't force Claude to pop an interactive prompt, so Claude just answered the user's first message and skipped the offer (proven from real session transcripts). The bar now auto-enables instead of asking.

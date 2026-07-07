@@ -182,7 +182,7 @@ Do NOT add further ceremony. One line.
 After writing each screen file:
 1. Tell user the current URL + a 1–2 sentence text summary of what's on screen
 2. End your turn — let the user look, click choices, and respond
-3. On your next turn: read `$VC_STATE/events` — one JSON line per click, last line = final selection
+3. On your next turn: read `$VC_STATE/events.jsonl` — one JSON line per click, last line = final selection
 4. Read their terminal message for textual feedback
 5. **Iterating same screen:** write `screen-v2.html`, `screen-v3.html` etc. (always a new filename — the server reloads on any new file)
 6. **Moving to next design step:** write a semantically different filename
@@ -190,7 +190,7 @@ After writing each screen file:
 
 Clear `events` file yourself before each new screen write so previous clicks don't pollute next reads:
 ```bash
-> "$VC_STATE/events"
+> "$VC_STATE/events.jsonl"
 ```
 
 ### Stopping the Companion
@@ -342,7 +342,7 @@ Apply frontend-design quality rules — these are not optional:
 
 Write the CSS file **first**, then the HTML that references it.
 
-**`$VC_SCREENS/v1/mockup.css`** — all styles, no HTML:
+**`$VC_SCREENS/v1/mockup.css`** — all styles, no HTML. **v3.8.0:** build it from the two-tier token system in [design-tokens.md](design-tokens.md) — Tier-1 primitives + Tier-2 semantics, with **both** a light (`:root`) and dark (`[data-theme="dark"]`) tonal map of the SAME tokens (same layout, only tones differ), and reference **only** `var(--semantic-*)` in component rules (never a primitive or raw hex). Ship a `[data-theme]` toggle and make it responsive across the chosen viewports. Stamp `data-mid="…"` on key elements so the session can act on clicks/selections. The block below is just illustrative shape:
 
 ```css
 :root {
