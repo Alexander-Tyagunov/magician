@@ -11,6 +11,8 @@ When the task is "deliver many similar units" — N stories/tickets, a set of fe
 
 For a **single** task use `/ward` (TDD) directly; for executing an existing **blueprint** wave-by-wave use `/orchestrate`. `/weave` is for *adaptive, multi-unit delivery* where you compose the pipeline to the work.
 
+`/transmute` is a common **upstream caller**: it hands over a comprehension dossier + a parity-contract path, and its created Jira stories become `args.units` (id/goal/AC only — **weave's Phase 0 derives each unit's `kg` scope/blast**, so transmute doesn't pre-compute it: one owner of the kg contract). Its parity contract supplies extra **evaluator criteria** — diff each build against the contract's *behavioral* golden (never the environmental baseline) alongside the usual review loop.
+
 The full, copy-and-adapt Workflow template (schemas, stages, kg grounding, the verify + remediate loop) is in **[references/template.md](references/template.md)**.
 
 ## Phase 0 — scope, ground, and plan (gate before running)

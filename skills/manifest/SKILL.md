@@ -9,6 +9,8 @@ argument-hint: [one-sentence feature description]
 
 The complete end-to-end development flow. Four human gates. Everything else runs autonomously.
 
+`/manifest` is the **greenfield** entry (build something new). For **brownfield** work — recreate an *existing* feature in another app, or change one in place (swap the vendor behind the scenes, redesign, add a capability) — use **`/transmute`**, which comprehends the existing feature first and then drives the same delivery spine (conjure → blueprint → weave → gateways → seal) behind a parity contract.
+
 A full SDLC run is large — prefer the latest model and a high reasoning effort (`/effort high`, or `xhigh` for big features). If the session is on an older model, suggest upgrading before starting. See [lore/models.md](../../lore/models.md).
 
 ## Gates (Human Approval Required)

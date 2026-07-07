@@ -191,6 +191,7 @@ Before asking anything, look at what was just researched and classify it:
 | Academic / scientific | thesis, paper, literature review, citation, study, diploma | /conjure (research poster or slides), /magic again (next research angle) |
 | Financial / business | revenue, Q1–Q4, KPIs, margins, market share | /conjure (dashboard), /blueprint (action plan) |
 | Technical feature / API | endpoints, SDK, library, integration | /blueprint (plan), /conjure (design), /ward (implement) |
+| Existing feature to port/change | usage of a live app, vendor/3rd-party, "recreate/clone", "swap the provider", migration | /transmute (comprehend → port or integrate), /blueprint |
 | Bug / incident | error, failure, crash, regression, issue | /unravel (debug), /sentinel (security angle) |
 | Security / vulnerability | CVE, injection, auth, permissions, exposure | /sentinel (full scan) |
 | Performance / scalability | latency, throughput, memory, profiling | /accelerate (profile) |
@@ -214,6 +215,7 @@ When handing off, pass the **saved research artifact path** (if saved, e.g. `.wo
 | /unravel | Invoke `/unravel` — pass the identified bug/incident and the research artifact path as the starting point |
 | /sentinel | Invoke `/sentinel` — no extra context needed, it scans the codebase |
 | /accelerate | Invoke `/accelerate` — pass performance concerns from findings (and the artifact path) as focus areas |
+| /transmute | Invoke `/transmute` — when the research comprehended an existing feature to port elsewhere or change in place; pass the research artifact path as the seed for the dossier |
 | Dig deeper | Use AskUserQuestion to ask which area, then return to Phase 2 with a focused query |
 | Done | Go to Step 5.4 |
 

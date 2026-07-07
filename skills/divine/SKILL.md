@@ -11,6 +11,8 @@ Perceive what's hidden in a change: correctness, security, simplification, and t
 
 This is the **on-demand, PR/MR-aware** reviewer. Its pipeline-internal counterpart is `/scrutinize` (which reviews the branch diff vs base mid-flow and also remediates Critical/High). `/divine` adds: change-context detection (GitHub PR / GitLab MR / branch / working tree), a depth gate, optional `/magic` grounding, adversarial verification, and optional posting back to the PR — and it reports rather than auto-fixing.
 
+`/transmute` invokes `/divine` as its **G7 sanity gateway** — a blast-radius review (`kg blast`) of a ported or in-place-integrated change; when reviewing such a change, check it against the parity contract in `.workspace/shared/research/<feature>-parity.md` (behavior/UX must be preserved).
+
 ## Auto-invocation
 
 The `UserPromptSubmit` hook injects a strong activation hint on review intent ("review this PR/MR", "do a code review", "audit/evaluate this MR", "review my changes/diff"). When it fires — or you otherwise pick up review intent — announce:

@@ -18,7 +18,7 @@
 
 Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
 
-[![Version](https://img.shields.io/badge/version-3.8.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.1.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
 
@@ -34,6 +34,12 @@ One command to go from idea to PR:
 
 ```
 /manifest
+```
+
+Working with something that already exists? Comprehend a feature — from its live usage, its codebase, its docs, or pure black-box — then **port** it into another app (optionally upgrading the vendor) or **integrate/transform** it in place (redesign · swap the 3rd-party behind it while preserving the UX · add a capability), behind a parity contract and quality gateways:
+
+```
+/transmute
 ```
 
 ---
@@ -133,7 +139,7 @@ flowchart TD
 
 ## Skills
 
-24 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
+25 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
 
 | Skill | Purpose | Category |
 |---|---|---|
@@ -153,7 +159,7 @@ flowchart TD
 | `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
 | `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |
 | `/chronicle` | **Memory & context steward** — session-learning history, the global reference store (repos/projects/ideas), **and** live context management: `status` (size %), `resume` (post-compaction capsule), `learn` (project/global), `consolidate`. Backed by the `ctx` CLI + hooks that track context size and capture a lossless resume capsule before compaction | Intelligence |
-| `/statusline` | **Magician CLI UI** — an opt-in, always-on status line (native Claude Code `statusLine`; renders locally, **zero API tokens**) for context-rot visibility: color-coded context bar + %, a ⚠/🔴 rot warning at magician's bands, a `▁▂▃▅▇` token-flow sparkline, model · git · cost, and the active skill/workflow/loop. **User-configurable** subset (`context,rot,spark,meta,skill`), managed by the bundled **`magician-ui`** CLI which edits `~/.claude/settings.json` **safely** (backup → JSON-validate → atomic write). Suggested once on first use, then honors your choice | Intelligence |
+| `/statusline` | **Magician CLI UI** — an opt-in, always-on status line (native Claude Code `statusLine`; renders locally, **zero API tokens**) for context-rot visibility: color-coded context bar + %, a ⚠/🔴 rot warning at magician's bands, a `▁▂▃▅▇` token-flow sparkline, model · git · cost, the active skill/workflow/loop, and a `🧠` **reasoning-effort/mode** readout (live `effort.level` — low/medium/high/xhigh/max — shown by default on open and tracking `/effort`, or the magician mode you set like `ultracode`). **User-configurable** subset (`context,rot,spark,meta,skill,effort`), managed by the bundled **`magician-ui`** CLI which edits `~/.claude/settings.json` **safely** (backup → JSON-validate → atomic write). Suggested once on first use, then honors your choice | Intelligence |
 | `/magic` | Research, analysis & consulting — auto-invokes on keywords (research, investigate, analyze…); web search, context7 for tech library docs, local document analysis; citation-aware outputs; depth mapped to reasoning effort. **Standalone, and feeds the pipeline**: saves findings to `.workspace/shared/research/` and routes into `/conjure`, `/blueprint`, `/unravel` with the artifact path | Research |
 | `/sentinel` | Security scan — OWASP Top 10, credential detection, injection surfaces, dependency audit, git history secret scan, auth middleware spot-check (read-only; runs in a forked context) | Security |
 | `/accelerate` | Performance profiling with mandatory baseline-first discipline — measures before optimizing, re-measures after; uses wrk/lighthouse/cProfile/pprof by stack | Quality |
@@ -161,6 +167,7 @@ flowchart TD
 | `/autopsy` | Blameless post-mortem — timeline from git log/CI, 5-Whys root cause, action items; saved to `.workspace/shared/postmortems/` and optionally remembered in the global reference store | Quality |
 | `/inscribe` | Creates a new reusable skill with modern frontmatter; suggested by the pattern detector after repeated requests | Meta |
 | `/manifest` | Full autonomous SDLC — 4 human gates (scope, spec, plan, PR title); runs conjure → blueprint → portal → orchestrate → certify → scrutinize → seal | Full flow |
+| `/transmute` | **Comprehend an existing feature → PORT or INTEGRATE it.** Understands a feature from live usage (Chrome/Playwright, read-only), its codebase (`kg`), its docs (`/magic`), or pure black-box — into a confidence-tagged **dossier** + **parity contract**. Then **PORT**s it into another app (optionally upgrading the vendor), **INTEGRATE**s/transforms it in place (redesign · swap the vendor behind the scenes preserving the UX · add capability, via anti-corruption layer + strangler-fig + feature-flag + parallel-run), or **AUDIT**s a flow and recommends work. Composes conjure/blueprint/jira/weave (created stories become weave units) with an evaluator-optimizer **parity loop**, and a hard **gateway checklist** (parity · perf · cost · security · a11y · rollback · sanity) before ship. `disable-model-invocation` — invoke it explicitly | Full flow |
 
 ---
 

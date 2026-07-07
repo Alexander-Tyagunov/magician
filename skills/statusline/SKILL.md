@@ -1,6 +1,6 @@
 ---
 name: statusline
-description: Enable, configure, or disable the Magician CLI status line ("Magician Claude CLI UI") — a lightweight, always-on bar showing live context %, a context-rot warning, a token-flow sparkline, model · git · cost, and the active skill/workflow/loop. Use when the user says "enable/turn on the magician UI / status line / status bar", "show my context/tokens in the console", "configure/change what the bar shows", "what should the status line display", or "turn off / disable the status line".
+description: Enable, configure, or disable the Magician CLI status line ("Magician Claude CLI UI") — a lightweight, always-on bar showing live context %, a context-rot warning, a token-flow sparkline, model · git · cost, the active skill/workflow/loop, and the current reasoning effort/mode. Use when the user says "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "what should the status line display", or "turn off / disable the status line".
 allowed-tools: Bash(magician-ui:*), AskUserQuestion, Read
 argument-hint: [enable · disable · status · set <components>]
 ---
@@ -18,6 +18,7 @@ A native Claude Code **status line** rendered by magician. It runs **locally, co
 | `spark` | a `▁▂▃▅▇` sparkline of recent context% (the token-flow stream) |
 | `meta` | model · git branch · session cost |
 | `skill` | the active magician skill / workflow / running-agent count / loop round |
+| `effort` | 🧠 the live reasoning **effort** (low/medium/high/xhigh/max) — the default shows on open and tracks `/effort` changes automatically (from Claude Code's `effort.level`) — or the magician **mode** you set, e.g. `ultracode` (which otherwise reports as `xhigh`); say "set mode to ultracode" / "exit ultracode" to change it |
 
 ## Actions
 

@@ -69,6 +69,34 @@ def flush(extra=None):
     sys.exit(0)
 
 
+# --- CLI UI 'effort' component: record magician modes the effort.level field can't distinguish ---
+# Ultracode is not a distinct effort level (it reports as xhigh on the statusLine stdin), so we mark
+# it here and the status bar shows "ultracode" in place of xhigh. The live low/medium/high/xhigh/max
+# default + any /effort change already come from effort.level — magician only overlays named modes.
+# Runs regardless of routing; fully wrapped so it can never break the hook.
+try:
+    _pl = (prompt or "").lower()
+    _home = os.environ.get("MAGICIAN_HOME") or os.path.join(os.path.expanduser("~"), ".claude", "magician")
+    _sd = os.path.join(_home, "status")
+    _ef = os.path.join(_sd, str(session_id).replace("/", "_")[:64] + ".effort.json")
+    if re.search(r"\b(exit|stop|leave|end|disable|turn off|no more|out of)\b[^.!?]{0,14}\bultracode\b", _pl):
+        try:
+            os.remove(_ef)
+        except Exception:
+            pass
+    elif re.search(r"\bultracode\b", _pl):
+        import time as _te
+        os.makedirs(_sd, exist_ok=True)
+        json.dump({"mode": "ultracode", "ts": _te.time()}, open(_ef, "w"))
+    elif (re.search(r"\b(set|switch|change|go back|reset|revert)\b[^.!?]{0,24}\b(mode|effort|reasoning)\b[^.!?]{0,16}\b(default|normal|standard|off|low|medium|high|xhigh|max)\b", _pl)
+          or re.search(r"/effort\s+(low|medium|high|xhigh|max)\b", _pl)):
+        try:
+            os.remove(_ef)   # switching to a raw effort level → drop the mode overlay, show the level
+        except Exception:
+            pass
+except Exception:
+    pass
+
 if not prompt or len(prompt) < 10:
     flush()
 
@@ -128,6 +156,8 @@ security_trigger = (not _neg("security")) and _has(
     r'\b(security (?:scan|audit|review|issue|check)|vulnerabilit\w+|owasp|\bcve\b|secrets? (?:leak|expos\w+|scan)|injection (?:risk|vuln\w*|attack)|pen ?test|hardening)\b',
     r'\bexpos\w+ (?:secret|credential|key|token|api key)s?\b',                 # "exposed secrets"
     r'\b(secret|credential|api[ -]?key|token)s?\b[^.?!]{0,20}\bexpos\w+',       # "secrets ... exposed"
+    r'\bleak\w+\b[^.?!]{0,20}\b(secret|credential|api[ -]?key|key|token|password)s?\b',   # "leaking keys/secrets"
+    r'\b(secret|credential|api[ -]?key|token|password)s?\b[^.?!]{0,20}\bleak\w+',          # "keys ... leaking"
     r'\bis\b[^.?!]{0,25}\bsecure\b',                                            # "is this code secure"
     r'\bsecure\b[^.?!]{0,20}\b(against|from|injection|xss|csrf|attack|exploit)\b',
 )
@@ -161,6 +191,29 @@ deploy_trigger = _has(
     r'\bpipeline\b[^.?!]{0,30}\b(staging|prod|production|deploy\w*)\b',
     r'\bthe (?:ci|build) (?:is )?(?:failing|red|broken)\b',
 )
+# Comprehend an existing feature → PORT it elsewhere or INTEGRATE/transform it in place.
+# The PORT/INTEGRATE route sits after security/perf/deploy, but those symptom triggers carry a
+# `not transmute_trigger` guard: a PURE symptom ("it's slow / leaking keys") goes to the specialist,
+# while an EXPLICIT transmute verb ("swap the vendor …, it's slow") wins here and covers the symptom
+# via its gateways (G2 perf / G4 security). Routed before weave-flow-shape/magic.
+# (The AUDIT trigger below is routed EARLIER — see its note.)
+transmute_trigger = _has(
+    r'\b(port|re-?implement|recreate|replicate|clone)\b[^.?!]{0,40}\b(feature|flow|search|widget|component|functionality|module|page|screen)\b',
+    r'\b(port|re-?implement|recreate|replicate|clone|copy)\b[^.?!]{0,40}\b(into|onto|to)\b[^.?!]{0,25}\b(our|another|a (?:new|different)|the other|this)\b[^.?!]{0,18}\b(app|application|codebase|project|service|stack|site)\b',
+    r'\b(swap|replace|migrat\w+|switch)\b[^.?!]{0,40}\b(vendor|3rd[- ]?party|third[- ]?party|provider|supplier)\b',
+    r'\bchang\w+\b[^.?!]{0,25}\bhow\b[^.?!]{0,45}\b(vendor|provider|3rd[- ]?party|third[- ]?party|supplier|api|backend|service)\b',
+    r'\b(behind the scenes|under the hood)\b[^.?!]{0,40}\b(keep|preserv\w+|same)\b[^.?!]{0,20}\b(ux|user experience|experience|behavio\w+)\b',
+    r'\b(keep|preserv\w+|same)\b[^.?!]{0,20}\b(ux|user experience)\b[^.?!]{0,45}\b(swap|replace|migrat\w+|switch|vendor|provider|3rd[- ]?party)\b',
+    r'\b(comprehend|understand how|figure out how|reverse[- ]?engineer)\b[^.?!]{0,45}\b(works?|working)\b[^.?!]{0,45}\b(rebuild|recreate|re-?implement|port)\b',
+)
+# AUDIT sub-mode ("walk this flow as a user and recommend …"). Routed BEFORE debug/perf so a
+# walk-and-recommend audit isn't stolen by /unravel ("broken") or /accelerate ("slow") — the user's
+# audit intent explicitly includes "recommendations on slowness or anything else".
+transmute_audit_trigger = _has(
+    r'\b(walk|go|going)\b\s*(?:me\s+)?(?:through|to)\b[^.?!]{0,30}\b(flow|page|feature|journey|checkout|screen|experience)\b[^.?!]{0,60}\b(recommend|suggest|improv\w+|slow(?:ness)?|issues?|problems?|friction|awkward|better)\b',
+    r'\b(be|act as|as)\b\s+(?:a\s+)?user\b[^.?!]{0,50}\b(recommend|suggest|improv\w+|issues?|friction|slow(?:ness)?|problems?)\b',
+    r'\b(check out|check|look at)\b[^.?!]{0,25}\b(this|the)\b[^.?!]{0,20}\b(flow|page|journey|checkout|experience)\b[^.?!]{0,55}\b(recommend|suggest|improv\w+|friction|slow(?:ness)?)\b',
+)
 jira_trigger = (not _neg("jira")) and _has(r'\bjira\b', r'\b(my|the)\s+(board|sprint|backlog)\b', r'\btickets?\b')
 confluence_trigger = (not _neg("confluence")) and _has(r'\bconfluence\b', r'\bwiki\s+(page|space|doc)\b')
 statusline_trigger = _has(
@@ -185,7 +238,12 @@ if review_trigger and not _invoking("/divine", "magician:divine", "/scrutinize")
 if autopsy_trigger and not _invoking("/autopsy", "magician:autopsy"):
     flush("[MAGICIAN] Post-mortem/RCA intent detected. Use magician:autopsy — gather facts, reconstruct the timeline, "
           "run 5-Whys, write blameless action items.")
-if debug_trigger and not _invoking("/unravel", "magician:unravel"):
+if transmute_audit_trigger and not is_short and not _invoking("/transmute", "magician:transmute", "/accelerate", "/unravel"):
+    flush("[MAGICIAN] Feature AUDIT intent detected (walk a flow → recommend). Use magician:transmute in AUDIT mode — "
+          "walk the flow as a user READ-ONLY, measure perf/UX/a11y/cost (baseline-first), then emit ranked "
+          "recommendations (each tagged port-able / integrate-able + the gateway it must clear) and offer to hand off "
+          "to PORT or INTEGRATE. Nothing changes until you say go. Invoke magician:transmute before responding.")
+if debug_trigger and not transmute_trigger and not _invoking("/unravel", "magician:unravel"):
     flush("[MAGICIAN] Bug/problem-report intent detected. Auto-activating /unravel (systematic debugging: hypothesis "
           "preflight, evidence before any change). Ground it comprehensively with /magic and the knowledge graph "
           "(kg query / kg blast on the affected area) for root-cause research; invoke magician:unravel before responding.")
@@ -193,15 +251,23 @@ if weave_trigger and not _invoking("/weave", "magician:weave"):
     flush("[MAGICIAN] Large multi-item delivery detected. Use /weave — compose ONE native Workflow that delivers all "
           "units with magician's guardrails (TDD per unit, kg grounding, certify, parallel multi-lens review + "
           "adversarial verify, write gates) instead of hand-rolling many agents. Invoke magician:weave before responding.")
-if security_trigger and not _invoking("/sentinel", "magician:sentinel"):
+if security_trigger and not transmute_trigger and not _invoking("/sentinel", "magician:sentinel"):
     flush("[MAGICIAN] Security intent detected. Use magician:sentinel — OWASP Top 10, secret/credential scan, injection "
           "surfaces, dependency + git-history audit (read-only).")
-if perf_trigger and not _invoking("/accelerate", "magician:accelerate"):
+if perf_trigger and not transmute_trigger and not _invoking("/accelerate", "magician:accelerate"):
     flush("[MAGICIAN] Performance intent detected. Use magician:accelerate — baseline-first: measure before changing, "
           "re-measure after; use the knowledge graph (kg blast) to scope hot paths.")
-if deploy_trigger and not _invoking("/deploy", "magician:deploy"):
+if deploy_trigger and not transmute_trigger and not _invoking("/deploy", "magician:deploy"):
     flush("[MAGICIAN] CI/CD intent detected. Use magician:deploy — create/update/monitor the pipeline "
           "(GitHub Actions / GitLab CI / CircleCI).")
+if transmute_trigger and not is_short and not _invoking("/transmute", "magician:transmute"):
+    flush("[MAGICIAN] Feature comprehend→port/integrate intent detected. Use magician:transmute — "
+          "comprehend the existing feature FIRST (live usage read-only via the Chrome plugin / codebase "
+          "via kg / docs via /magic → a confidence-tagged dossier + parity baseline), then PORT it into "
+          "another app (optionally upgrading the vendor) or INTEGRATE/transform it in place (swap the "
+          "3rd-party preserving the UX, redesign, or add a capability) behind a parity contract + the "
+          "gateway checklist (parity·perf·cost·security·a11y·rollback·sanity). Invoke magician:transmute "
+          "before responding.")
 if jira_trigger and not _invoking("/jira", "magician:jira"):
     flush("[MAGICIAN] Jira intent detected. Use the magician:jira skill (direct HTTP REST, no MCP; it runs first-time "
           "setup if Jira isn't configured) for this request.")

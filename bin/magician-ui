@@ -15,7 +15,9 @@ serialize+re-validate, timestamped backup, atomic os.replace. Any failure aborts
 touching the live file. Never leaves settings.json partial or invalid.
 
 Components: context (bar+%+tokens) · rot (⚠/🔴 glyph) · spark (token-flow sparkline) ·
-            meta (model·git·cost) · skill (active skill/workflow/loop).
+            meta (model·git·cost) · skill (active skill/workflow/loop) ·
+            effort (🧠 live reasoning effort — low/medium/high/xhigh/max — or the magician
+                    mode you set, e.g. ultracode; from Claude Code's effort.level on stdin).
 """
 import sys, os, json, shutil, time
 
@@ -23,7 +25,7 @@ HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician
 CFG = os.path.join(HOME, "cli-ui.json")
 SETTINGS = os.environ.get("MAGICIAN_SETTINGS") or os.path.expanduser("~/.claude/settings.json")
 INSTALLED = os.path.join(HOME, "statusline.py")   # stable path, version-independent
-ALL = ["context", "rot", "spark", "meta", "skill"]
+ALL = ["context", "rot", "spark", "meta", "skill", "effort"]
 MARK = "magician"   # substring used to recognise our own statusLine entry
 
 
@@ -284,8 +286,9 @@ def cmd_reconcile(_args):
         cfg["enabledAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         save_cfg(cfg)
         print("[MAGICIAN] Enabled the Magician CLI UI status line by default (opt-out): a live context "
-              "bar + %, a rot warning, a token-flow sparkline, model/git/cost, and the active skill — it "
-              "renders locally and costs zero tokens. Tell the user it's on; they can choose which parts "
+              "bar + %, a rot warning, a token-flow sparkline, model/git/cost, the active skill, and the "
+              "reasoning effort/mode (🧠) — it renders locally and costs zero tokens. Tell the user it's "
+              "on; they can choose which parts "
               "show with `magician-ui set context,rot,…` (or the /statusline skill), or turn it off with "
               "`magician-ui disable`.")
     except Exception:

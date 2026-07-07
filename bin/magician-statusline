@@ -16,7 +16,7 @@ import sys, os, json, subprocess, time, re
 HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
 CFG = os.path.join(HOME, "cli-ui.json")
 STATUS_DIR = os.path.join(HOME, "status")
-ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill"]
+ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill", "effort"]
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
 
@@ -179,6 +179,45 @@ def _active(sid):
         return ""
 
 
+_EFFORT_COLOR = {"low": "dim", "medium": "green", "high": "cyan",
+                 "xhigh": "mag", "max": "mag", "ultracode": "mag"}
+
+
+def _effort(d, sid):
+    """Current reasoning effort / magician mode for the bar.
+
+    Base = Claude Code's LIVE `effort.level` on stdin (low/medium/high/xhigh/max) — reflects the
+    session default on open and any mid-session `/effort` change, for free. Ultracode is not a
+    distinct level (it reports as `xhigh`), so a fresh per-session marker written by the hook when
+    the user says "ultracode" is shown in its place; if the user switches to a different effort,
+    the raw level wins again. Returns (label, color) or ("", "")."""
+    try:
+        level = ((d.get("effort") or {}).get("level")) or None
+        if isinstance(level, str):
+            level = level.strip().lower() or None
+        mode = None
+        p = os.path.join(STATUS_DIR, f"{sid}.effort.json")
+        try:
+            if os.path.exists(p) and time.time() - os.path.getmtime(p) < 43200:  # 12h
+                mode = (_load_json(p) or {}).get("mode") or None
+        except Exception:
+            mode = None
+        label = None
+        if mode == "ultracode" and level in (None, "xhigh"):
+            label = "ultracode"          # ultracode ⇒ xhigh; show the mode the user set
+        elif level:
+            label = level
+        elif mode:
+            label = mode
+        if label is not None:
+            label = str(label).strip()[:24] or None   # coerce: a non-string level/mode must never break render
+        if not label:
+            return "", ""                # model doesn't expose effort and no mode set
+        return label, _EFFORT_COLOR.get(label, "cyan")
+    except Exception:
+        return "", ""
+
+
 def _vlen(s):
     return len(_ANSI.sub("", s))
 
@@ -210,14 +249,21 @@ def main():
         if g:
             segs.append((0, f"{g} {pct}%"))
 
+    if "effort" in comps:
+        try:
+            eff, ecol = _effort(d, sid)
+            if eff:
+                segs.append((1, _color("🧠 " + str(eff), ecol)))
+        except Exception:
+            pass   # a bad effort value drops only this segment, never the whole bar
     if "skill" in comps:
         a = _active(sid)
         if a:
-            segs.append((1, _color(a, "cyan")))
+            segs.append((2, _color(a, "cyan")))
     if "spark" in comps:
         s = _spark(sid, pct)
         if s:
-            segs.append((2, _color(s, "dim")))
+            segs.append((3, _color(s, "dim")))
     if "meta" in comps:
         m = []
         if model:
@@ -228,7 +274,7 @@ def main():
         if isinstance(cost, (int, float)) and cost > 0:
             m.append(f"${cost:.2f}")
         if m:
-            segs.append((3, _color(" · ".join(m), "dim")))
+            segs.append((4, _color(" · ".join(m), "dim")))
 
     prefix = _color("✦", "mag") + " "
     if not segs:

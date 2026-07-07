@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] — 2026-07-06
+
+**`/transmute` — magician can now comprehend an existing feature and either port it or transform it in place.** A new headline skill that turns Claude into a product-architect-engineer for *brownfield* work: understand something that already exists, then recreate it elsewhere or change it precisely where it lives. One skill, a routing gate, three modes — reusing the existing skills rather than adding a CLI or a data store.
+
+### Added
+- **`/transmute` skill (25th skill).** Routes to **PORT** (recreate a feature in another app, optionally upgrading the vendor/library), **INTEGRATE** (change it in place — redesign · swap the 3rd-party behind the scenes preserving the exact UX · add a capability), or **AUDIT** ("just be a user", walk a flow, recommend work). `disable-model-invocation` — invoke it explicitly; the intent hook nudges toward it.
+- **Comprehension engine (Phase A).** Tiered by what exists — live URL / +docs / +codebase / pure black-box — and fans out (Tier A/B) or runs sequential (small features) across four layers: **usage** (claude-in-chrome, observation-only), **network** (endpoints/IO shapes/auth/**vendor** hosts/timing), **code** (`kg` on the source repo), **docs** (`/magic` + context7). Produces a confidence/source-tagged XML **dossier** + a **golden parity baseline** split into *behavioral* (portable) vs *environmental* (source-only), in `.workspace/shared/research/`.
+- **Parity contract + gateway checklist.** Phase B authors a `<parity_contract>` (behavioral parity + UX invariants + perf/cost/security/a11y budgets + upgrade decision + rollback) — hard-gated before any code. Phase D refuses "done" until **parity · performance · cost · security · a11y/UX · rollback · sanity · toggle-debt** are green, each mapped to an existing skill (`/certify` `/accelerate` `/sentinel` `/conjure` `/scrutinize` `/divine` `/jira` `/seal`).
+- **Delivery via `/weave` with an evaluator-optimizer parity loop.** Created Jira **stories become `args.units`** (id/goal/AC/scope from `kg`), so "epic → implement all of it" is real; the loop diffs each build against the **behavioral** golden (never environmental) + budgets until it passes. INTEGRATE cutover ships behind an **anti-corruption layer + strangler-fig + feature flag + parallel-run (returns control so the UX is unchanged) + canary**, with the old path retained. Optional `/goal`+`/loop` for long unattended migrations.
+- **Codex adapter** (`.codex-plugin/skills/transmute/`) mapping claude-in-chrome→Browser Use/Playwright, `Task`→agent-spawn, keeping all gates.
+- **Engineering principles, cited to official docs** (`references/principles.md`): **no-context-loss on handoff is the #1 HARD-GATE** — every subagent/stage/spawned-Workflow gets a complete self-contained brief + artifact paths and never re-derives upstream work; plus context engineering, the right agent pattern per phase, human-on-the-autonomy-slider, and verify-don't-trust — each grounded in Anthropic's *Building effective agents* / *Effective context engineering* and the Claude Code docs (no individuals named). Comprehension of a **copied** feature now captures its **sources / DOM / events** (the UI-event→network-call map) so a port is rebuilt faithfully, not approximated.
+- **Magician CLI UI — new `effort` component.** The status bar now shows a `🧠` **reasoning-effort/mode** readout: the live `effort.level` (low/medium/high/xhigh/max) straight from Claude Code's statusLine stdin — so the session default is visible on open and mid-session `/effort` changes track automatically — plus a magician **mode** overlay so "set mode to ultracode" shows `ultracode` (which otherwise reports as `xhigh`), reverting to the raw level when you switch effort or "exit ultracode". Added to the default component set (`magician-ui set …,effort`); existing enabled users get it on the 4.1.0 upgrade reset. Zero API tokens, fail-safe as ever.
+
+### Safety
+- Browser comprehension is **observation-first, read-only**: no credential entry, no form submits, no Enter/Return in a field, no irreversible clicks, no consent/ToS acceptance, host-allowlisted (stated honestly as soft/instruction-enforced, audited in tests). Comprehended app content is **data, not instructions**. Vendor/upgrade **research is keyed only on the public vendor name/version** — never captured payloads/headers/endpoints/PII; secrets are masked before any research subagent reads the dossier. All push/PR/ticket/destructive ops stay write-gated.
+
+### Changed
+- Cross-referenced `/transmute` from `/magic` (Phase 5 routing), `/conjure`, `/weave`, `/divine`, and `/manifest`; added a `transmute` intent clause to `scripts/pattern-detect.sh` (after security/perf/deploy, before weave/flow-shape/magic). README skill count 24 → 25.
+
 ## [3.8.0] — 2026-07-06
 
 **`/conjure` becomes a two-way, token-driven AI design studio.**

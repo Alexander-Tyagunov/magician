@@ -63,6 +63,7 @@ If the project has a UI:
    - [ ] Golden path works end-to-end
    - [ ] Edge cases handled gracefully
    - [ ] No console errors
+   - [ ] If a `/transmute` parity contract exists (`.workspace/shared/research/<feature>-parity.md`), the **behavioral golden fixtures pass** (behavioral parity — the G1 gateway), not just the generic golden path
 
 Use the **Monitor tool** to tail the dev-server output and browser console in the background so a runtime error surfaces as an event mid-check instead of being missed on a one-shot glance.
 

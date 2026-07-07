@@ -1,7 +1,7 @@
 {
   "name": "magician",
-  "version": "3.8.0",
-  "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, and parallel agent orchestration",
+  "version": "4.1.0",
+  "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, parallel agent orchestration, and feature comprehend→port/integrate (/transmute)",
   "author": {
     "name": "Alexander Tyagunov",
     "email": "tyagunov.alex@gmail.com",
@@ -22,6 +22,11 @@
     "mobile",
     "gamedev",
     "parallel",
-    "orchestration"
+    "orchestration",
+    "port",
+    "integrate",
+    "comprehend",
+    "migrate",
+    "vendor-swap"
   ]
 }

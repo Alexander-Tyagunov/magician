@@ -26,7 +26,7 @@ Do NOT write any code, scaffold any project, or take any implementation action u
 **Core rule: each gate is one turn. End your turn after each gate. Do NOT advance to the next gate until the user replies. Never collapse two gates into one message.**
 
 ### Step 1 — Explore
-Read relevant files, recent git log, existing specs in `.workspace/shared/specs/`, and any prior research in `.workspace/shared/research/` (from `/magic`). Note detected stack and archetype from session additionalContext. Do this silently before asking anything. If a design decision hinges on external evidence you don't have (library choice, prior art, API capabilities), suggest running `/magic` first — it returns a research artifact you then design from.
+Read relevant files, recent git log, existing specs in `.workspace/shared/specs/`, and any prior research in `.workspace/shared/research/` (from `/magic`, or a `/transmute` comprehension dossier when redesigning an existing feature — design against its recorded UX contract). Note detected stack and archetype from session additionalContext. Do this silently before asking anything. If a design decision hinges on external evidence you don't have (library choice, prior art, API capabilities), suggest running `/magic` first — it returns a research artifact you then design from.
 
 ### Step 2 — Clarify (one question per turn)
 Ask one clarifying question. End your turn. Wait for the answer. Repeat until you understand purpose, constraints, success criteria, and edge cases. Skip stack questions the inspector already answered. Use multiple choice when possible.
