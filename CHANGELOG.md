@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] — 2026-07-09
+
+**Plan-auto consistency — every pipeline now says "approve the plan, then run."** An audit (one auditor per skill) found the plan→approve→execute-autonomously posture was only fully wired into `manifest` and `weave`; 13 other pipelines had a plan/requirements gate but no "execute autonomously after the gate" language, so a run could still drift into per-read/per-step prompting. This wires the doctrine uniformly (no existing gate weakened).
+
+### Changed
+- **Autonomy stanza in 14 skills** — `accelerate`, `autopsy`, `blueprint`, `certify`, `conjure`, `deploy`, `divine`, `magic`, `orchestrate`, `scrutinize`, `seal`, `transmute`, `unravel`, `ward` each gained a short **"Autonomy — approve the plan, then run"** block: after the skill's existing approval gate, reads / searches / `kg` / read-only git run without pausing; re-gate **only** on that skill's real side effects (writes, commit/push, PR, tickets, deploy). Each links [lore/autonomy.md](lore/autonomy.md).
+- **Batched up-front gates** where they were drip-fed: `magic` asks source + depth in one `AskUserQuestion` (was two); `seal` presents a single consolidated ship-summary (changed files + commit message + PR title/body + merge strategy) before the first outward command instead of a bare PR-title prompt; `deploy` presents a one-shot pipeline plan before writing the workflow file.
+
 ## [4.2.1] — 2026-07-09
 
 **Steer Jira/Confluence off ambient MCPs onto the bundled MCP-free CLIs — follow-up to 4.2.0.** Re-inspecting the same prompt-heavy run showed the remaining approvals were *not* the reads 4.2.0 fixed: the pipeline hand-rolled `Workflow` scripts that grabbed an **ambient Atlassian MCP** (`mcp__…jira…`) instead of ever invoking `/jira`. Magician is MCP-free by design — it ships `jira`/`confluence` HTTP CLIs (on PATH, already allowed, with shared throttle/cache + bulk ops) — so the fix is to route work back to them, not to bless the MCP.

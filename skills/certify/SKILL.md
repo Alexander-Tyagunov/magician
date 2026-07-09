@@ -8,6 +8,10 @@ allowed-tools: Bash, Read, Glob, Grep, Monitor
 
 Run the full verification suite and collect evidence of passing state.
 
+## Autonomy — approve the plan, then run
+
+Once /certify is invoked and the stack is detected, the required checks run as **one autonomous pass**: Tests → Type Check → Lint → Build → the UI browser check *are* the run, not per-step decisions — the check commands, dev server, Monitor tail, read-only git, and `kg` queries never pause for permission (optionally echo the detected check list once before running). Re-gate **only** when a failing check needs a real side effect: a Write/Edit fix (or any outward action) — that returns to the owner. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Required Checks (all must pass)
 
 Run these in order. Stop and fix before continuing if any fail. This is a **loop, not a checklist**: if a check fails, fix it and re-run from the top — /certify only completes when a single clean pass runs end-to-end with no fixes in between.

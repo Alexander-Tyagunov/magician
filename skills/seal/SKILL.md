@@ -7,12 +7,16 @@ argument-hint: [pr-title]
 
 # /seal — Ship to Production
 
-Take a certified feature branch through to a merged PR. This skill performs irreversible actions (push, PR, merge) — it asks for the PR title and waits before any `gh` command.
+Take a certified feature branch through to a merged PR. This skill performs irreversible actions (push, PR, merge) — it presents a single consolidated ship-summary and waits before the first outward command (`git push`).
 
 ## Pre-flight
 
 - Confirm /certify has been run and passed
 - Confirm the /scrutinize review + remediation cycle is complete (or explicitly skipped by user)
+
+## Autonomy — approve the plan, then run
+
+Once Pre-flight is confirmed (/certify passed, /scrutinize + remediation complete or explicitly skipped), the ship sequence runs **autonomously**: the Simplifier Pass, Final Certify, Update Documentation, and Commit steps proceed without pausing — reading, searching, `kg query`/`blast`, and read-only git NEVER prompt for permission. Re-gate **only** on outward side effects — `git push`, `gh pr create`, `gh pr merge` — surfaced once through the consolidated ship-summary gate below, not per command. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Process
 
@@ -40,15 +44,22 @@ git commit -m "feat: <feature description>
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
+### Ship-summary gate — one outward approval
+Steps 1–4 ran autonomously. Before the first outward command (`git push`), present **one** consolidated ship-summary and **end your turn — wait for approval:**
+- **Changed files** — the diff going out (from step 4's `git add -A`)
+- **Commit message** — what was committed in step 4
+- **PR title + body** — the title plus the Summary + Test plan from step 6
+- **Merge strategy** — e.g. `--squash --delete-branch` (step 9)
+
+On approval, run Push, Create PR, and Merge without further per-command prompts.
+
 ### 5. Push
 ```bash
 git push -u origin <branch>
 ```
 
 ### 6. Create PR
-Ask: "What should the PR title be?" **End your turn. Wait for their answer before running any `gh` command.**
-
-Once you have the title:
+Use the PR title + body approved at the ship-summary gate above — no separate title prompt:
 ```bash
 gh pr create --title "<title>" --body "$(cat <<'EOF'
 ## Summary

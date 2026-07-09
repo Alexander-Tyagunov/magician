@@ -30,6 +30,8 @@ Ask all three questions in one message:
 
 **End your turn. Wait for all answers before generating any pipeline template.**
 
+Once answered, present a **one-shot plan** for approval — provider, stages, environments, and the exact file(s) to be written (e.g. `.github/workflows/ci.yml`) — then write the workflow file.
+
 ### GitHub Actions Template
 
 ```yaml
@@ -116,6 +118,12 @@ For an unattended "until green" wait, pair with **`/goal`**, or schedule with **
 2. Fix the underlying issue
 3. Push the fix
 4. Monitor via the **Monitor tool**: `gh run watch` — on failure, repeat from step 1 until the run is green.
+
+## Autonomy — approve the plan, then run
+
+After the requirements answers (the three questions — provider, stages, environments — plus the one-shot create plan), execute the remaining phases **autonomously**: detecting existing pipelines (`ls`), generating the template, and monitoring (`gh run list`/`view`/`watch`, `--log-failed`), plus `kg query`/`blast` and read-only git NEVER pause for permission.
+Re-gate **only** on this skill's real side effects: `Write`/`Edit` of the workflow file, `git add`/`commit`/`push`, and PR create. Do not weaken the write gate above.
+Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Completion Signal
 

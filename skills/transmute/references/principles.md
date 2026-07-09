@@ -8,7 +8,7 @@ Sources:
 - *Effective context engineering for AI agents* — https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
 - *Claude Code best practices* — https://code.claude.com/docs/en/best-practices
 - Claude Code docs (subagents, workflows) — https://code.claude.com/docs
-- In-repo: [lore/subagent-context.md](../../../lore/subagent-context.md), [lore/tdd.md](../../../lore/tdd.md), [lore/models.md](../../../lore/models.md)
+- In-repo: [lore/autonomy.md](../../../lore/autonomy.md), [lore/subagent-context.md](../../../lore/subagent-context.md), [lore/tdd.md](../../../lore/tdd.md), [lore/models.md](../../../lore/models.md)
 
 ---
 

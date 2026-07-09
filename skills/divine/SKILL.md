@@ -41,6 +41,10 @@ Offer the four depth levels (full matrix — lenses, effort, grounding, verifica
 
 Confirm model/effort per the chosen depth — prefer the latest code-optimal model and raise `/effort`; suggest an upgrade rather than switching silently if the session is on an older model ([lore/models.md](../../lore/models.md)).
 
+## Autonomy — approve the plan, then run
+
+Once the **depth & grounding** gate (Phase 1) is answered, run the review to completion **autonomously**: change-context reads (Phase 0), `kg query`/`blast` blast-radius, the parallel reviewer subagents (Phase 2), adversarial verification (Phase 3), and the consolidated report (Phase 4) — reading, searching, and read-only git NEVER pause for permission. Re-gate **only** on this skill's real side effects: posting the review to a PR/MR (Phase 5, `gh`/`glab` write) and, if fixes are implemented (Phase 6), `Write`/`Edit`, `git add`/`commit`/`push`, and PR create. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Phase 2 — Multi-lens review
 
 Dispatch the specialist agents **in parallel** (one message, multiple `Task` calls), scaled to the chosen depth, using these subagent types — do NOT read agent files by path:

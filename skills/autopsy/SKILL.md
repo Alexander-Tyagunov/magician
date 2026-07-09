@@ -14,6 +14,12 @@ Run a structured post-mortem for an incident or significant failure.
 
 This process is blameless. The goal is to understand what happened and prevent recurrence — not to assign fault.
 
+## Autonomy — approve the plan, then run
+
+After Phase 1's three facts are answered (the incident / impact / timeframe gate), run Phases 2–5 — timeline reconstruction, 5-Whys, action items, and drafting the post-mortem — **autonomously**: `git log`, `gh run list`, `kg query`/`blast`, and other reads NEVER pause for permission. A one-line scope preview after Phase 1 (incident, time window, what to scan) is enough; then proceed.
+
+Re-gate **only** on this skill's real side effects — show the drafted post-mortem and confirm before the Phase 6 `git add`/`git commit`, and before any Phase 7 `/chronicle` write. See [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Process
 
 ### Phase 1: Gather Facts

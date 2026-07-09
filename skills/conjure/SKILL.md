@@ -25,6 +25,10 @@ Do NOT write any code, scaffold any project, or take any implementation action u
 
 **Core rule: each gate is one turn. End your turn after each gate. Do NOT advance to the next gate until the user replies. Never collapse two gates into one message.**
 
+### Autonomy — approve the plan, then run
+
+The numbered design **GATEs (0–4)** and the final **commit** are the only pauses. Around them, exploration runs **autonomously**: Read/Grep/Glob, `kg query`/`blast`, and read-only git NEVER pause for permission — a read is never a gate. Re-gate **only** on this skill's real side effects: `Write`/`Edit` of specs/tokens/mockups and `git add`/`commit`. This frees the reads, not the design dialogue. See [lore/autonomy.md](../../lore/autonomy.md).
+
 ### Step 1 — Explore
 Read relevant files, recent git log, existing specs in `.workspace/shared/specs/`, and any prior research in `.workspace/shared/research/` (from `/magic`, or a `/transmute` comprehension dossier when redesigning an existing feature — design against its recorded UX contract). Note detected stack and archetype from session additionalContext. Do this silently before asking anything. If a design decision hinges on external evidence you don't have (library choice, prior art, API capabilities), suggest running `/magic` first — it returns a research artifact you then design from.
 

@@ -17,6 +17,10 @@ Before implementing, discover and read the repo's own standards — `CLAUDE.md`,
 
 Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task. See [lore/models.md](../../lore/models.md).
 
+## Autonomy — approve the plan, then run
+
+Once the spec is settled — the failing test you can write, or the plan task in `.workspace/shared/plans/` — run the remaining phases (RED → GREEN → REFACTOR and the per-task steps) autonomously: reading `CLAUDE.md`/standards, searching, `kg query`/`blast`, running the tests, and read-only git (`git status`, diff) NEVER pause for permission between phases. Re-gate only on real side effects — the per-task `git add`/`commit`/`push`. Beyond that, pause only for genuine spec ambiguity (the "cannot write the test first" case below). See [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Two modes
 
 - **Freeform** (`/ward <behavior>`): drive TDD for whatever you're implementing now.

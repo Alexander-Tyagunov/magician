@@ -13,6 +13,10 @@ Structured research and consulting workflow. Uses web search, document analysis,
 EVERY consultation, clarification, and decision MUST use the AskUserQuestion tool. Do NOT ask questions in plain prose — always invoke AskUserQuestion so the user sees the structured prompt UI. This applies to every gate in this skill without exception.
 </HARD-GATE>
 
+## Autonomy — approve the plan, then run
+
+Once the **Phase 0 scope/source/depth answers** are in, **Phase 1–2 execution runs to completion autonomously**: WebSearch/WebFetch, `Read`, context7 doc queries, `kg query`/`blast`/`neighbors`, and read-only git NEVER pause for per-source or per-read permission. Re-gate **only** on this skill's real side effects — the **Phase 4** `Write` (save findings) and `git add`/`git commit` — both already `AskUserQuestion`-gated. The interactive consultation gates (Phase 0 sources/depth, Phase 3 output/persistence, Phase 5 next steps) stay — magic is question-driven by design; this note drops per-tool-call permission prompts, not those gates. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Standalone & pipeline use
 
 `/magic` is a **standalone** skill — run it any time to research, analyze, or consult; no pipeline required, nothing changes about the flow below when used alone.
@@ -48,13 +52,9 @@ Read the user's original message carefully. Silently classify the research into 
 
 Do NOT ask for anything already clear from the message.
 
-### Step 0.2 — Source selection (AskUserQuestion)
+### Step 0.2 — Scope gate: sources + depth (ONE batched AskUserQuestion)
 
-Read [references/questions.md](references/questions.md) → "Phase 0 — Source selection". Pick the variant matching the Step 0.1 classification and deliver it via AskUserQuestion. Wait for the response before proceeding.
-
-### Step 0.3 — Research depth (AskUserQuestion)
-
-Read [references/questions.md](references/questions.md) → "Phase 0 — Research depth" and deliver that block via AskUserQuestion.
+Batch both up-front decisions into a **single** AskUserQuestion call so the user approves scope once — don't drip them as two separate prompts ([lore/autonomy.md](../../lore/autonomy.md): clarify up front, batched). Read [references/questions.md](references/questions.md) → "Phase 0 — Source selection" (pick the variant matching the Step 0.1 classification) **and** "Phase 0 — Research depth", then pass **both** question blocks in the `questions` array of one AskUserQuestion call. Wait for the response before proceeding.
 
 > **Model & effort:** the depth choice maps onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (`xhigh` for exhaustive sweeps). If the session is on an older model than ideal, suggest an upgrade rather than switching silently. See [lore/models.md](../../lore/models.md).
 

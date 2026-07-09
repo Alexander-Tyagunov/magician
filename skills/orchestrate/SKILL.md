@@ -31,6 +31,10 @@ Scale `/effort` to plan size (high/xhigh for large plans). For dispatched implem
 5. **After all waves** — run /certify. If it fails, fix and re-certify (bounded evaluator-optimizer loop) before reporting complete — never report done on a red certify.
 6. **Report** — completed tasks and any blockers.
 
+## Autonomy — approve the plan, then run
+
+The blueprint is the gate. Once it's approved (step 1), run the rest — **Execute wave by wave**, the per-wave sanity checks, and the capsule refresh — **autonomously**: reading, searching, `kg query`/`blast`, and read-only git (the `git status`/`git log --oneline` checks in steps 4–5) NEVER pause for permission, and never re-gate between waves. Re-gate **only** on real side effects: the writes/`git add`·`commit`·`push`/PR actions the dispatched agents perform, a merge conflict surfaced by **Conflict detection**, and the final **/certify**. Optionally show the wave graph + rough agent/token cost once for a go-ahead before the first fan-out. See [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Agent prompt — context contract (no context loss)
 
 Spawned agents see NONE of this conversation. Every `Task` prompt MUST be self-contained (see [lore/subagent-context.md](../../lore/subagent-context.md)):

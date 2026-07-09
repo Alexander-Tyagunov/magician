@@ -23,6 +23,10 @@ State your hypothesis and evidence BEFORE reading any code or making any change.
 3. **State what evidence would confirm or refute it**
 4. Ask: "Does this hypothesis match what you're seeing, or do you have a different theory?" **End your turn. Do not read any code or make any change until the user agrees or redirects.**
 
+### Autonomy — approve the plan, then run
+
+Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomously**: reading code, `grep`, `kg query`/`blast`/`neighbors`, adding targeted logging, running the failing case (incl. under Monitor), and running the test suite NEVER pause for permission. Re-gate **only** on the real side effect — the **commit** (`git add`/`commit`/`push`, per Phase 4). This does not weaken the Phase 1 HARD-GATE. See [lore/autonomy.md](../../lore/autonomy.md).
+
 ### Phase 2: Evidence Gathering
 5. **Read relevant code** — only the code related to the hypothesis. If a knowledge-graph index exists, `kg query "<symptom/error/symbol>"` to jump straight to the relevant `file:line` (and `kg neighbors`/`kg blast` to see what interacts with it) instead of broad greps — then read just those ranges.
 6. **Add targeted logging/assertions** if needed — not scattered throughout

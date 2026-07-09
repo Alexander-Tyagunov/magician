@@ -132,6 +132,12 @@ Hand off to **`/seal`** (simplify → certify → commit → PR → CI → merge
 
 ---
 
+## Autonomy — approve the plan, then run
+
+After the user approves the **parity contract** (Phase B gate), run Phases C→E **autonomously**: reading, `grep`/`glob`, `kg query`/`blast`/`neighbors`, read-only browser observation, and read-only git **never pause** for permission. Re-gate **only** on this skill's real side effects — `Write`/`Edit`, `git add`/`commit`/`push`, PR create/merge, ticket create/comment, deploy, and destructive ops — per the Write-gate (HARD-GATE #8) and Phase E. See [lore/autonomy.md](../../lore/autonomy.md).
+
+---
+
 ## Effort & models
 
 A transmute run is large — prefer the latest code-optimal model at high effort (`xhigh` for a big port or a hard cross-layer integration); comprehension extraction/classification can use a cheaper tier. If the session is on an older model, suggest an upgrade rather than switching silently ([lore/models.md](../../lore/models.md)).

@@ -28,6 +28,12 @@ Ask both questions in one message:
 
 **End your turn. Wait for both answers before proceeding to Phase 2. Do not run any benchmarks until you have a defined target.**
 
+## Autonomy — approve the plan, then run
+
+After the Phase 1 gate (the two target answers — what's slow, and the acceptable target), run **Phases 2–5 autonomously**: reading, searching, `kg query`/`blast`, read-only git, and every profiling read, baseline, and benchmark NEVER pause for permission. After baseline + profiling, show the proposed **Phase 4 targeted fix** ONCE for approval; the bounded evaluator-optimizer loop then iterates without per-round prompts.
+
+Re-gate **only** on real side effects — applying the fix (`Edit`/Write) and any `git add`/`commit`/`push`. See [lore/autonomy.md](../../lore/autonomy.md).
+
 ### Phase 2: Baseline
 Measure current performance using the appropriate tool:
 

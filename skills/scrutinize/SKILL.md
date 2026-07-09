@@ -13,6 +13,10 @@ Review a code change with three specialist agents in parallel, consolidate findi
 
 Scale review depth to the change size: a tiny diff needs little; a large changeset or security-sensitive change warrants `/effort high` (or `xhigh` for sprawling diffs). See [lore/models.md](../../lore/models.md).
 
+## Autonomy — approve the plan, then run
+
+Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches in one message; reads, searches, `kg query`/`blast`, and read-only `git diff`/`status` NEVER pause for permission. The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate — end your turn there and wait. Once approved, Phase 2 runs the Critical/High fix batch and the re-review loop without gating on intermediate reads, re-gating **only** on real side effects: the fix `Edit`s and the decline-a-finding decision (never decline Critical/High without sign-off). See [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Phase 1 — Review
 
 1. **Collect review scope and write the diff once** — files changed since the branch diverged (base defaults to `main`, or `$ARGUMENTS`). Write the diff to a single patch artifact so it isn't duplicated across agent prompts:

@@ -28,6 +28,10 @@ If the spec file path is not clear from context, ask: "Which spec should I plan 
 
    **End your turn. Wait for explicit approval ("looks good", "approved", "yes", etc.) before closing.**
 
+## Autonomy — approve the plan, then run
+
+Steps 1–5 run as **one autonomous pass** — read the spec + `.workspace/shared/research/`, map files, decompose, build the parallelism map, and write the plan to `.workspace/shared/plans/`. Reading, searching, `kg query`/`blast`, and read-only git NEVER pause for permission, and neither does writing that plan file. The **only** gate is step 6: presenting the plan for approval. The real downstream side effects — implementation `Write`/`Edit`, `git add`/`commit`/`push`, PR create/merge — are gated later by `/orchestrate` and `/ward`, not here. See [lore/autonomy.md](../../lore/autonomy.md).
+
 ## Task Format
 
 Each task in the plan:
