@@ -9,6 +9,8 @@ argument-hint: [ticket key · JQL · "my board" · "create …" · setup]
 
 Work with Jira through the plugin's **`jira` helper** (on PATH when magician is enabled). It calls the Jira REST API directly over HTTPS — no MCP, no proxy. **Always use the `jira` CLI; never hand-write `curl`.** One clean command per call means a single `Bash(jira:*)` grant (in this skill's `allowed-tools`) covers every request — no per-request permission prompts, and no giant commands on screen.
 
+> **Do not use an ambient Jira/Atlassian MCP** (e.g. a `mcp__…jira…` tool) even if one shows up in the tool list — including inside hand-rolled `Workflow` scripts. It **prompts on every call**, has no shared throttle/cache or bulk ops, and bypasses this skill's hygiene. That ambient MCP is the reason an autonomous run bombards the owner with approvals. Magician is MCP-free by design: reach for `jira <cmd>`. A workflow subagent should be told to use the `jira` CLI too (it's on PATH for them).
+
 - **Field ids, JQL patterns, transitions, link types, MR/clone, raw REST shapes** → [reference.md](reference.md)
 - **Issue/comment formatting, wiki markup, Gherkin AC / DoD templates** → [authoring.md](authoring.md)
 - **First-time setup (base URL + token in settings)** → [setup.md](setup.md)

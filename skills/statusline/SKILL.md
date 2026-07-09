@@ -33,7 +33,7 @@ A native Claude Code **status line** rendered by magician. It runs **locally, co
   ```
 - **Status** — `magician-ui status` (state, components, whether it's wired into settings).
 - **Disable** — `magician-ui disable` (removes only magician's `statusLine`; records the opt-out so it isn't suggested again; re-enable anytime on request).
-- **Read-only auto-approve** — `magician-ui allow` merges a safe read-only allow-list (Read/Grep/Glob/LS + read-only git + kg/jira/confluence/ctx + gh reads) into `settings.json` so autonomous runs don't prompt per file; writes/commit/push/PR/delete still gate. Applied on install/upgrade; turn off with `magician-ui allow --off`. See [lore/autonomy.md](../../lore/autonomy.md).
+- **Read-only auto-approve** — `magician-ui allow` merges a safe read-only allow-list (Read/Grep/Glob/LS + read-only git + kg/jira/confluence/ctx + gh reads) into `settings.json` so autonomous runs don't prompt per file; writes/commit/push/PR/delete still gate. Applied on install/upgrade; turn off with `magician-ui allow --off`. (Jira/Confluence go through magician's MCP-free `jira`/`confluence` CLIs — already allowed; magician nudges sessions off any ambient Atlassian MCP.) See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Rules
 

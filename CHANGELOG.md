@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.1] — 2026-07-09
+
+**Steer Jira/Confluence off ambient MCPs onto the bundled MCP-free CLIs — follow-up to 4.2.0.** Re-inspecting the same prompt-heavy run showed the remaining approvals were *not* the reads 4.2.0 fixed: the pipeline hand-rolled `Workflow` scripts that grabbed an **ambient Atlassian MCP** (`mcp__…jira…`) instead of ever invoking `/jira`. Magician is MCP-free by design — it ships `jira`/`confluence` HTTP CLIs (on PATH, already allowed, with shared throttle/cache + bulk ops) — so the fix is to route work back to them, not to bless the MCP.
+
+### Added
+- **MCP-steer nudge** — a `PreToolUse` hook on `mcp__…(jira|confluence|atlassian)…` tools injects a one-line reminder to use the bundled `jira`/`confluence` CLI instead (which never prompts per call). Non-blocking, throttled (≤2×/session/service), opt-out aware (`integration-prefs` `jira`/`confluence` = `disabled`), and silent when the bundled CLI isn't present. Fires inside hand-rolled workflows too.
+
+### Changed
+- **Broader read-only allow-list:** more read-only git verbs (`rev-list`, `shortlog`, `for-each-ref`, `show-ref`, `ls-tree`, `cat-file`, `merge-base`, `name-rev`, `worktree list`, `stash list`), more `gh` read verbs (`pr list`, `issue view/list`, `repo view`, `search`), and `TaskOutput`.
+- **`/jira` + `/confluence` skills, `lore/autonomy.md`:** explicit "do not use an ambient Atlassian MCP even if it appears in the tool list — including in `Workflow` subagents; use the CLI (on PATH for subagents too)."
+
+### Note
+Ambient MCP tools carry a **user-specific server name**, so magician does not (and cannot) auto-allow them — nor should it, since the CLI is the intended, hygienic path. Arbitrary `Bash` (ad-hoc `python3` / `cd &&` analysis) is likewise **not** auto-approved (it can write); the durable fix is kg-first retrieval + the bundled CLIs, which take effect on a session **restart**.
+
 ## [4.2.0] — 2026-07-09
 
 **Autonomy overhaul — approve the plan, not a thousand file reads.** From a live pipeline run that bombarded the owner with per-read / per-grep / per-git approvals and never touched the knowledge graph, two core promises are restored: kg-first retrieval and gate-at-decisions autonomy.

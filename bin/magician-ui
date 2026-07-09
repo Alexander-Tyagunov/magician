@@ -34,12 +34,17 @@ MARK = "magician"   # substring used to recognise our own statusLine entry
 # one-command-per-call CLIs + gh read verbs. Raw Bash grep/cat/find are deliberately NOT here
 # (redirection / `find -delete` could write) — kg-first steers agents to the allowed Grep/kg tools.
 READONLY_ALLOW = [
-    "Read", "Grep", "Glob", "LS",
+    "Read", "Grep", "Glob", "LS", "TaskOutput",
     "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
     "Bash(git rev-parse:*)", "Bash(git branch:*)", "Bash(git ls-files:*)", "Bash(git blame:*)",
-    "Bash(git remote:*)", "Bash(git fetch:*)", "Bash(git describe:*)",
+    "Bash(git remote:*)", "Bash(git fetch:*)", "Bash(git describe:*)", "Bash(git rev-list:*)",
+    "Bash(git shortlog:*)", "Bash(git for-each-ref:*)", "Bash(git show-ref:*)", "Bash(git ls-tree:*)",
+    "Bash(git cat-file:*)", "Bash(git merge-base:*)", "Bash(git name-rev:*)", "Bash(git worktree list:*)",
+    "Bash(git stash list:*)",
     "Bash(kg:*)", "Bash(jira:*)", "Bash(confluence:*)", "Bash(ctx:*)", "Bash(magician-scan:*)",
-    "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh pr diff:*)", "Bash(gh run view:*)",
+    "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh pr diff:*)", "Bash(gh pr list:*)",
+    "Bash(gh run view:*)", "Bash(gh issue view:*)", "Bash(gh issue list:*)", "Bash(gh repo view:*)",
+    "Bash(gh search:*)",
 ]
 
 

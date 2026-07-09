@@ -26,6 +26,13 @@ auto-approves the read-only surface (Read/Grep/Glob/LS + read-only git + `kg`/`j
 --off`). If a repo isn't set to allow reads, enabling it is step 0 of autonomous execution — not a
 reason to hand the owner a per-file prompt stream.
 
+**Jira/Confluence: use the bundled MCP-free CLIs, never an ambient MCP.** Magician ships `jira` and
+`confluence` HTTP CLIs on PATH — already allowed, with a shared throttle/cache and bulk ops, so they
+don't prompt per call. If a run (or a hand-rolled `Workflow`) reaches for an ambient
+`mcp__…jira…`/`…confluence…` tool instead, magician nudges it back to the CLI: that MCP prompts on
+*every* call and bypasses the plugin's pacing — exactly what bombards the owner with approvals. Tell
+subagents to use `jira`/`confluence` too (on PATH for them).
+
 **Retrieve, don't grind.** Ground via the **knowledge graph** (`kg query`/`blast`/`neighbors`) instead
 of broad `grep` and whole-file reads — targeted `file:line`, far fewer tokens, shared across agents,
 and it uses the *allowed* Grep/kg tools rather than raw `Bash` searches that each prompt. For work

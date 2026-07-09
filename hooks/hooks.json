@@ -38,6 +38,15 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/kg-nudge.sh"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*(jira|confluence|atlassian).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/jira-mcp-nudge.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [

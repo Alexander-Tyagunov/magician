@@ -9,6 +9,8 @@ argument-hint: [page URL/id · "search …" · space · "create …" · setup]
 
 Work with Confluence through the plugin's **`confluence` helper** (on PATH when magician is enabled). It calls the REST API directly over HTTPS — no MCP, no proxy. **Always use the `confluence` CLI; never hand-write `curl`.** One clean command per call means a single `Bash(confluence:*)` grant covers every request — no per-request prompts, no giant commands on screen.
 
+> **Do not use an ambient Confluence/Atlassian MCP** (e.g. a `mcp__…confluence…` tool) even if one appears in the tool list — including inside hand-rolled `Workflow` scripts. It prompts on every call and bypasses this skill; magician is MCP-free by design. Reach for `confluence <cmd>` (it's on PATH for subagents too).
+
 - **CQL patterns, page-id rules, raw REST shapes** → [reference.md](reference.md)
 - **Content formats (storage / wiki), macros** → [authoring.md](authoring.md)
 - **First-time setup (base URL + token)** → [setup.md](setup.md)
