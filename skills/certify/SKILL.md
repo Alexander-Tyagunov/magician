@@ -36,7 +36,7 @@ Required: zero type errors.
 - Go: `golangci-lint run`
 - Rust: `cargo clippy`
 
-Required: zero lint errors (warnings acceptable if pre-existing).
+Required: zero lint errors (warnings acceptable if pre-existing). Also hold the code to the project's **documented conventions** ([lore/code-standards.md](../../lore/code-standards.md)) — a style rule the reviewer or a `code-review.md` would flag (e.g. async/await vs `.then`, import order) is a fail even when the linter is silent about it.
 
 ### 4. Build
 Verify the build succeeds (if applicable).

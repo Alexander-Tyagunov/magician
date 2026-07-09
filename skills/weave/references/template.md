@@ -54,7 +54,7 @@ for (let i = 0; i < UNITS.length; i++) {
     `GOAL: ${u.goal}\nACCEPTANCE: ${u.accept || 'meet the goal; add meaningful tests'}\n` +
     `SCOPE (read these ranges with Read; locate more via kg query/kg blast — do NOT grep broadly or paste whole files): ${u.scope || '(discover via kg)'}\n` +
     `BLAST/IMPACT: ${u.impact || '(run kg blast on touched files)'}\n` +
-    `STEPS: write a FAILING test first → make it pass (green) → refactor. Run the unit's tests. ` +
+    `STEPS: read the repo's conventions first (CLAUDE.md / code-review.md / linter config — lore/code-standards.md) and match them. Write a FAILING test first → make it pass (green) → refactor. Run the unit's tests, formatter, and linter; fix style before committing. ` +
     `Commit exactly once with a clear message referencing ${u.id}. Do NOT push, open/merge a PR, or touch unrelated files.\n` +
     `RETURN: {unit:"${u.id}", green, commit, files[], summary}`,
     { label:`impl:${u.id}`, phase:'Implement', schema: IMPL, effort:'high' })

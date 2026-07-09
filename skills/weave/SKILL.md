@@ -36,7 +36,7 @@ You **may deviate** from any single skill's canned steps to fit the task. You ma
 <HARD-GATE>
 1. **TDD per unit** — a failing test first, then green, then refactor (the `/ward` discipline).
 2. **kg grounding** — workers locate code via `kg query`/`kg blast` and receive `file:line` pointers; no whole-file pastes.
-3. **certify before "done"** — tests + types + lint + build pass for each unit before it counts as delivered.
+3. **certify before "done"** — tests + types + lint + build pass for each unit before it counts as delivered, and the code matches the project's conventions ([lore/code-standards.md](../../lore/code-standards.md)) — style the reviewer would flag (async/await vs `.then`, etc.) is caught here, not after review.
 4. **Review before ship, then remediate in-pipeline** — multi-lens (`magician:reviewer`/`sentinel`/`simplifier`/`verifier`) + adversarial verify on every Critical/High finding, then the bounded remediate loop (fix → re-certify → re-review) resolves confirmed findings before the pipeline reports done.
 5. **Write gates** — the Workflow may read, implement on a branch/worktree, and test; it must **not** push, open/merge PRs, or do anything destructive without explicit user confirmation. Keep commits one-per-unit and surface them.
 6. **No context loss** — every worker prompt is fully self-contained (Goal/Scope/Inputs/Constraints/Return per [lore/subagent-context.md](../../lore/subagent-context.md)); pass artifact **paths**, not dumps; workers return distilled summaries (~1–2k tokens), not raw output. Write a running `.workspace/local/session-state.md` (goal · done/remaining units · decisions · blockers · artifact paths) and have every worker read it first, so a compaction mid-run loses nothing.

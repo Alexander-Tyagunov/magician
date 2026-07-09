@@ -20,7 +20,7 @@ Take a certified feature branch through to a merged PR. This skill performs irre
 Dispatch the simplifier via `Task` with subagent type `magician:simplifier` for a final simplification sweep. Give it a self-contained prompt: the goal, the changed files (with diff), and the return format (see [lore/subagent-context.md](../../lore/subagent-context.md)). Fix any Important findings. Skip Low suggestions unless trivial.
 
 ### 2. Final Certify
-Run /certify. All checks must pass before continuing.
+Run /certify. All checks must pass before continuing — including style vs the project's documented conventions ([lore/code-standards.md](../../lore/code-standards.md)), so review bounces on style don't reopen the ship loop.
 
 ### 3. Update Documentation
 Before committing, update docs to reflect the shipped feature:

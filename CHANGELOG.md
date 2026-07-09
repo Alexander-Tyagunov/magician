@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.2] — 2026-07-09
+
+**A style gate, model currency, and completion notifications.**
+
+### Added
+- **Completion-notify hook.** A fail-safe `Notification` handler (`scripts/notify.sh`) reacts to Claude Code's `agent_completed` / `agent_needs_input` events (2.1.198), so a long `/weave`, `/orchestrate`, `/loop`, or `/goal` run tells you when it finishes or needs you. Silent for permission/idle notifications; one concise line by default — set `MAGICIAN_NOTIFY=desktop` for an OS notification (macOS/Linux), `MAGICIAN_NOTIFY=off` to mute. Never blocks the session.
+
+### Changed
+- **Style gate — match the project's conventions before review, not after.** New `lore/code-standards.md`: discover + read a repo's own standards (`CLAUDE.md`, `code-review.md` / `CONTRIBUTING` / `STYLEGUIDE`, linter/formatter config) **before** implementing, and run the project's formatter + linter as a **commit gate**. `/ward`, `/certify`, `/seal`, and `/weave` now hold to it — a convention a reviewer would flag (e.g. async/await vs `.then`, import order) is a failing gate caught during implementation instead of bouncing back from PR review round after round.
+- **Model currency.** `lore/models.md` updated for **Sonnet 5** — Claude Code's default since 2.1.197 with a **1M-token context window** — alongside Opus 4.8 (top tier for hard coding), Fable 5, and Haiku 4.5.
+
 ## [4.1.1] — 2026-07-07
 
 **Hardening for large bulk-Jira and gold-mirror deliveries.** Two avoidable failure modes are now guided against: bulk Jira work routed through a *hardcoded, stale* `jira` helper that lacked throttling (→ HTTP 429 + a stall), and a `/weave` mirror pass green-lighting "folded" stories that then needed a corrective second run.

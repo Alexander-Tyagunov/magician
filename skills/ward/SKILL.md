@@ -9,6 +9,10 @@ argument-hint: [behavior to implement | task <N>]
 
 Enforce strict red → green → refactor discipline for all implementation work. (This skill absorbed the former `/forge` — general TDD and per-task blueprint execution are one engine.)
 
+## Match the project's conventions (read before you write)
+
+Before implementing, discover and read the repo's own standards — `CLAUDE.md`, any `code-review.md` / `CONTRIBUTING` / `STYLEGUIDE`, and the linter/formatter config — and mirror the patterns already in the files you touch. Conventions a formatter can't enforce (async/await over `.then`, error-wrapping, naming, FR-CA vs FR) are still binding — apply them **as you write**, not after a reviewer flags them. See [lore/code-standards.md](../../lore/code-standards.md).
+
 ## Effort
 
 Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task. See [lore/models.md](../../lore/models.md).
@@ -47,7 +51,7 @@ The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the 
 ## Per task (task mode only)
 
 After the behavior(s) for the task are green and refactored:
-1. Run lint and type-check — fix any issues.
+1. Run the project's **formatter + linter** (the ones CI/review actually use) and type-check — **fix style/lint before committing.** A convention the reviewer or `code-review.md` would flag (e.g. async/await vs `.then`) is a failing gate, not a post-review fixup ([lore/code-standards.md](../../lore/code-standards.md)).
 2. Run the full test suite — no regressions.
 3. Commit with a conventional commit message.
 4. Mark the task complete in the plan file (`- [ ]` → `- [x]`).
