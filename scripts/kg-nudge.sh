@@ -1,52 +1,58 @@
 #!/usr/bin/env bash
-# PreToolUse(Read|Grep|Glob) — when a knowledge-graph index EXISTS for this repo, nudge
-# toward `kg query/blast/neighbors` at the moment Claude reaches for grep or a whole-file
-# read (where the wasteful habit forms), so retrieval is targeted and shared across agents.
+# PreToolUse(Read|Grep|Glob|Bash) — steer retrieval toward the knowledge graph at the moment
+# Claude reaches for a broad grep / whole-file read (where the wasteful, prompt-spammy habit forms):
+#   * index EXISTS for this repo  → nudge `kg query/blast/neighbors` (targeted file:line, fewer tokens,
+#                                   shared across agents, and uses the ALLOWED Grep/kg tools not raw Bash).
+#   * NO index                    → nudge `kg init` (or `cd <repo> && kg init` for other repos) so the
+#                                   session stops grinding grep/read across an unindexed tree.
+# Catches BOTH the Grep/Read/Glob tools AND raw Bash searches (grep/rg/find/cat/head/tail) — the
+# latter is how workflows sneak past the nudge and bombard the owner with read approvals.
 #
-# For Read specifically: stay SILENT on ranged reads (offset/limit — the good, kg-driven
-# pattern we want) and on non-code files; only nudge whole-file code reads. Throttled +
-# effort-aware ($CLAUDE_EFFORT). Silent if there's no index. Never blocks the tool.
+# Stays SILENT on ranged Reads (offset/limit — already targeted), non-code files, and commands that
+# already use kg / the magician CLIs. Throttled + effort-aware. Never blocks the tool.
 
 set -euo pipefail
 
 PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.local/share/magician}"
 INPUT=$(cat 2>/dev/null || printf '{}')
 
-# Effort-aware cap: quieter at low effort, a little more insistent at high/xhigh.
 CAP=3
 case "${CLAUDE_EFFORT:-}" in low) CAP=1 ;; xhigh|max) CAP=4 ;; esac
 
-# Decide eligibility from the tool + input (skip ranged/non-code Reads), get session id.
 DECIDE=$(printf '%s' "$INPUT" | python3 -c "
-import json, sys, os
+import json, sys, os, re
 try:
     d = json.load(sys.stdin)
 except Exception:
     print('skip default'); raise SystemExit
-tn = d.get('tool_name', '')
-ti = d.get('tool_input', {}) or {}
+tn = d.get('tool_name', ''); ti = d.get('tool_input', {}) or {}
 sid = d.get('session_id') or 'default'
 CODE = {'.py','.js','.jsx','.ts','.tsx','.mjs','.cjs','.go','.rs','.rb','.java','.kt','.swift',
         '.scala','.c','.cc','.cpp','.h','.hpp','.cs','.php','.vue','.svelte'}
-skip = False
-if tn == 'Read':
-    if ti.get('offset') is not None or ti.get('limit') is not None:
-        skip = True  # ranged read = already targeted (often kg-driven) → don't nag (offset==0 counts)
-    else:
-        ext = os.path.splitext(ti.get('file_path', '') or '')[1].lower()
-        if ext not in CODE:
-            skip = True  # non-code file → grep/read is fine
-print(('skip' if skip else 'nudge'), sid)
+action='skip'
+if tn in ('Grep','Glob'):
+    action='nudge'
+elif tn == 'Read':
+    if ti.get('offset') is None and ti.get('limit') is None:
+        ext=os.path.splitext(ti.get('file_path','') or '')[1].lower()
+        if ext in CODE: action='nudge'
+elif tn == 'Bash':
+    cmd = ti.get('command','') or ''
+    # already using kg / magician CLIs, or writing → not a nudge target
+    if re.search(r'\\bkg\\b|\\bjira\\b|\\bconfluence\\b|\\bctx\\b', cmd) or '>' in cmd:
+        action='skip'
+    # broad code search or whole-file read via the shell
+    elif re.search(r'\\b(grep|rg|ag|ack)\\b|\\bgit\\s+grep\\b|\\bfind\\b', cmd) or re.search(r'\\b(cat|head|tail|less|more)\\b', cmd):
+        action='nudge'
+print(action, sid)
 " 2>/dev/null || echo "skip default")
 ACTION=${DECIDE%% *}; SID=${DECIDE##* }
 [ "$ACTION" = "nudge" ] || exit 0
 
-# Throttle FIRST (cheap).
 MARK="$PLUGIN_DATA/ctx/${SID}.kgnudge"
 N=$(cat "$MARK" 2>/dev/null || echo 0)
 [ "$N" -ge "$CAP" ] 2>/dev/null && exit 0
 
-# Index present for this repo? (repohash must match bin/kg's sha256 scheme)
 MH="${MAGICIAN_HOME:-$HOME/.claude/magician}"
 META=$(python3 -c "
 import hashlib, os, subprocess
@@ -56,13 +62,15 @@ except Exception:
     root = os.getcwd()
 h = hashlib.sha256(os.path.realpath(root).encode()).hexdigest()[:12]
 print(os.path.join('$MH','knowledge-graph','repos',h,'meta.json'))" 2>/dev/null)
-[ -n "$META" ] && [ -f "$META" ] || exit 0   # no index → stay silent
 
 mkdir -p "$(dirname "$MARK")"; echo "$((N+1))" > "$MARK"
 
-# Escalate wording after the first nudge.
-BASE='This repo has a knowledge-graph index. For locating code, prefer kg query "<terms>" / kg blast <file> / kg neighbors <symbol> — it returns the exact file:line in far fewer tokens than a broad grep or whole-file read, and is shared across agents. Run kg refresh first if results look stale. (grep and ranged Read of specific lines are still fine.)'
-[ "$N" -ge 1 ] && BASE="Reminder — reach for the knowledge graph before grepping or reading whole files. $BASE"
+if [ -n "$META" ] && [ -f "$META" ]; then
+  MSG='This repo has a knowledge-graph index. For locating code, prefer kg query "<terms>" / kg blast <file> / kg neighbors <symbol> — exact file:line in far fewer tokens than a broad grep or whole-file read, using the allowed Grep/kg tools (no per-file approval churn), shared across agents. kg refresh if stale. (ranged Read of specific lines is fine.)'
+  [ "$N" -ge 1 ] && MSG="Reminder — reach for the knowledge graph before grepping or reading whole files. $MSG"
+else
+  MSG='No knowledge-graph index for this repo — you are about to grep/read a whole tree the slow, prompt-heavy way. Build one once with `kg init` (then `kg query "<terms>"` / `kg blast <file>` for targeted file:line). Working across multiple repos? index each: `cd <repo> && kg init`. It is the plugin'"'"'s core retrieval path — cheaper, faster, shared, and it uses the allowed Grep/kg tools instead of raw Bash searches that each prompt.'
+fi
 
-python3 -c "import json,sys; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': '[MAGICIAN] '+sys.argv[1]}}))" "$BASE"
+python3 -c "import json,sys; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': '[MAGICIAN] '+sys.argv[1]}}))" "$MSG"
 exit 0

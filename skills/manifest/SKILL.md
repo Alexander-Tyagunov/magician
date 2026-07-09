@@ -9,6 +9,8 @@ argument-hint: [one-sentence feature description]
 
 The complete end-to-end development flow. Four human gates. Everything else runs autonomously.
 
+**Autonomy is the point: gather → plan → memorize → execute.** The human approves the gates below, **not each file read.** Ground via `kg` (not broad grep), memorize the plan + requirements + `kg` pointers + standards to `.workspace/`, and execute the whole plan without prompting per read/search — reads/searches/read-only git are auto-approved (`magician-ui allow`); only writes/commit/push/PR/ticket/destructive ops gate. If you're bombarding the owner with "can I read this?" the run is broken. See [lore/autonomy.md](../../lore/autonomy.md).
+
 `/manifest` is the **greenfield** entry (build something new). For **brownfield** work — recreate an *existing* feature in another app, or change one in place (swap the vendor behind the scenes, redesign, add a capability) — use **`/transmute`**, which comprehends the existing feature first and then drives the same delivery spine (conjure → blueprint → weave → gateways → seal) behind a parity contract.
 
 A full SDLC run is large — prefer the latest model and a high reasoning effort (`/effort high`, or `xhigh` for big features). If the session is on an older model, suggest upgrading before starting. See [lore/models.md](../../lore/models.md).

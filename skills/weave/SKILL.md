@@ -18,9 +18,9 @@ The full, copy-and-adapt Workflow template (schemas, stages, kg grounding, the v
 ## Phase 0 — scope, ground, and plan (gate before running)
 
 1. **Enumerate the units.** The N things to deliver (tickets, files, features). Pull ticket detail via `magician:jira` if relevant; read a blueprint from `.workspace/shared/plans/` if one exists.
-2. **Ground in the codebase.** `kg check`; if no index, build one (`kg init`) — a shared graph is what keeps every worker cheap and consistent. For each unit, `kg query`/`kg blast` to scope the files it touches and its blast radius (pass these as `file:line` pointers into the worker prompts; never paste whole files).
+2. **Ground in the codebase (kg, not grep).** `kg check`; if no index, build one (`kg init`) — a shared graph is what keeps every worker cheap and consistent. **Index every repo the work touches** (`cd <repo> && kg init` per repo — kg is per-repo; cross-repo parity/migration greps are the wrong tool, see [knowledge-graph/references/retrieval.md](../knowledge-graph/references/retrieval.md#multi-repo-cross-repo-work)). For each unit, `kg query`/`kg blast` to scope the files it touches and its blast radius (pass these as `file:line` pointers into worker prompts; never paste whole files). A hand-rolled Workflow script must ground via kg too — don't fan out grep/whole-file-read loops.
 3. **Pick the structure** (adaptive — see below) and the per-stage model/effort.
-4. **Show the plan and get a go.** A large Workflow spawns many agents and costs real tokens. Use **AskUserQuestion**: list the units, the structure, the guardrails, and the rough agent/token scale. **Wait for approval before running.**
+4. **Show the plan and get a go.** A large Workflow spawns many agents and costs real tokens. Use **AskUserQuestion**: list the units, the structure, the guardrails, and the rough agent/token scale. **Wait for approval before running.** Once approved, run to completion **autonomously** — reads/searches/read-only git are auto-approved (`magician-ui allow`), so you don't prompt the owner per file; only the write gates below stop you ([lore/autonomy.md](../../lore/autonomy.md)). Gather → plan → memorize → execute.
 
 ## Adaptive within guardrails
 

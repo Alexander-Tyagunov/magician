@@ -41,6 +41,10 @@ When researching the user's own codebase, `/magic` runs `kg query "<topic>"` as 
 
 At Deep/Exhaustive depth (or whenever change impact matters), `/divine` runs `kg blast <changed file>` per changed file to build the impact set, then hands those `file:line` lists to the reviewer subagents — the same artifact every agent can read, so there's no context loss and no re-exploration.
 
+## Multi-repo (cross-repo work)
+
+kg is **per-repo**, keyed on the cwd's git root (`repos/<sha256(realpath root)[:12]>/`). For a task spanning several repos — parity/comparison across services, a cross-repo migration — index and query **each** one where it lives: `cd <repo> && kg init` once, then `cd <repo> && kg query "<terms>"` / `kg blast <file>`. Do **not** grep across sibling repo trees from a single cwd — that's exactly the slow, prompt-heavy path kg exists to replace. If cwd isn't the code under study (e.g. you're running from a tools/plugin dir), point the work at each target repo's directory so kg indexes the right tree.
+
 ## Tier-2 speed
 
 If `kg daemon start` is running, `query`/`neighbors`/`blast` auto-route to a resident process that keeps the graph loaded in RAM, skipping the per-call graph load (the socket round-trip itself is ~1 ms). The client still starts fresh, so per-call Python startup (~50 ms) is the floor — the daemon's real win **grows with graph size**: on a large repo a query no longer rebuilds the in-memory graph each call. It falls back to a direct open if down, validates freshness per call, and refuses a stale index.

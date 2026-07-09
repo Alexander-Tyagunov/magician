@@ -268,7 +268,13 @@ UI_CFG="$MAG_HOME/cli-ui.json"
 PLUGIN_VER="$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | head -1 | sed -E 's/.*"([^"]*)"$/\1/')"
 UI_NOTE=""
 if grep -q '"state"[[:space:]]*:[[:space:]]*"disabled"' "$UI_CFG" 2>/dev/null; then
-  :   # user opted out — nothing to do, no subprocess
+  # CLI UI is off, but still roll out the read-only allow-list on install/upgrade (unless the user
+  # turned THAT off too). reconcile applies the allow-list, then returns without touching the bar.
+  if ! grep -q '"allow"[[:space:]]*:[[:space:]]*"off"' "$UI_CFG" 2>/dev/null \
+     && ! { [ -n "$PLUGIN_VER" ] && grep -q "\"allowVersion\"[[:space:]]*:[[:space:]]*\"${PLUGIN_VER}\"" "$UI_CFG" 2>/dev/null; }; then
+    ALLOW_NOTE=$("$PLUGIN_ROOT/bin/magician-ui" reconcile 2>/dev/null || true)
+    [ -n "$ALLOW_NOTE" ] && printf '%s\n' "$ALLOW_NOTE" >&2
+  fi
 elif grep -q '"state"[[:space:]]*:[[:space:]]*"enabled"' "$UI_CFG" 2>/dev/null \
      && [ -n "$PLUGIN_VER" ] && grep -q "\"version\"[[:space:]]*:[[:space:]]*\"${PLUGIN_VER}\"" "$UI_CFG" 2>/dev/null \
      && [ -f "$MAG_HOME/statusline.py" ]; then

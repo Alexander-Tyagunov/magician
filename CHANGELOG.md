@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] — 2026-07-09
+
+**Autonomy overhaul — approve the plan, not a thousand file reads.** From a live pipeline run that bombarded the owner with per-read / per-grep / per-git approvals and never touched the knowledge graph, two core promises are restored: kg-first retrieval and gate-at-decisions autonomy.
+
+### Added
+- **Read-only auto-approve (`magician-ui allow`).** Magician merges a **safe read-only allow-list** into `settings.json` — `Read`/`Grep`/`Glob`/`LS` + read-only git (status/diff/log/show/rev-parse/branch/ls-files/blame/remote/fetch) + the `kg`/`jira`/`confluence`/`ctx` CLIs + `gh` read verbs — so autonomous runs stop prompting per file. **Writes, commit/push, PRs, ticket-creates, and deletes still gate.** Applied on install/upgrade (announced; opt-out with `magician-ui allow --off`); never removes your own rules; safe backup→validate→atomic edit. Raw `Bash` `grep`/`cat`/`find` are deliberately excluded (redirection / `-delete` can write) — kg-first steers agents to the *allowed* Grep/kg tools instead.
+- **`lore/autonomy.md`** — the doctrine: **gather → plan → memorize → execute autonomously**; reads/searches are never a gate; re-gate only on side effects. Wired into `/manifest` and `/weave`.
+
+### Changed
+- **kg-first, enforced where the habit forms.** The kg nudge now also catches **raw `Bash` searches** (`grep`/`rg`/`find`/`cat`/`head`/`tail`) — not just the Read/Grep/Glob tools, which is how hand-rolled workflows slipped past it — and when a repo is **unindexed** it nudges `kg init` (was silent), so runs stop grinding grep/read. New **multi-repo** guidance (kg is per-repo — `cd <repo> && kg init` each; cross-repo greps are the wrong tool) across the knowledge-graph, weave, and manifest skills; hand-rolled Workflow scripts must ground via kg too.
+
 ## [4.1.2] — 2026-07-09
 
 **A style gate, model currency, and completion notifications.**

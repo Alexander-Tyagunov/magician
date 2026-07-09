@@ -28,6 +28,44 @@ INSTALLED = os.path.join(HOME, "statusline.py")   # stable path, version-indepen
 ALL = ["context", "rot", "spark", "meta", "skill", "effort"]
 MARK = "magician"   # substring used to recognise our own statusLine entry
 
+# Read-only surface magician auto-approves so autonomous runs don't prompt per file/search.
+# ONLY safe read-only tools + commands — NEVER writes/commit/push/PR/delete (those stay gated).
+# Native read tools (no redirection/flag risk) + read-only git subcommands + the plugin's own
+# one-command-per-call CLIs + gh read verbs. Raw Bash grep/cat/find are deliberately NOT here
+# (redirection / `find -delete` could write) — kg-first steers agents to the allowed Grep/kg tools.
+READONLY_ALLOW = [
+    "Read", "Grep", "Glob", "LS",
+    "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
+    "Bash(git rev-parse:*)", "Bash(git branch:*)", "Bash(git ls-files:*)", "Bash(git blame:*)",
+    "Bash(git remote:*)", "Bash(git fetch:*)", "Bash(git describe:*)",
+    "Bash(kg:*)", "Bash(jira:*)", "Bash(confluence:*)", "Bash(ctx:*)", "Bash(magician-scan:*)",
+    "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh pr diff:*)", "Bash(gh run view:*)",
+]
+
+
+def _merge_readonly_allow(d):
+    """Add magician's read-only allow entries to permissions.allow (dedup; never remove user rules)."""
+    perms = d.setdefault("permissions", {})
+    if not isinstance(perms, dict):
+        return
+    allow = perms.get("allow")
+    if not isinstance(allow, list):
+        allow = []
+    have = set(allow)
+    for r in READONLY_ALLOW:
+        if r not in have:
+            allow.append(r)
+            have.add(r)
+    perms["allow"] = allow
+
+
+def _remove_readonly_allow(d):
+    """Remove exactly magician's read-only entries (leave any the user added themselves)."""
+    perms = d.get("permissions")
+    if isinstance(perms, dict) and isinstance(perms.get("allow"), list):
+        ours = set(READONLY_ALLOW)
+        perms["allow"] = [r for r in perms["allow"] if r not in ours]
+
 
 def die(msg):
     sys.stderr.write(f"magician-ui: {msg}\n")
@@ -184,6 +222,7 @@ def cmd_status(_args):
     print(f"components:  {', '.join(comps)}")
     print(f"installed:   {INSTALLED} {'(present)' if os.path.exists(INSTALLED) else '(missing)'}")
     print(f"settings:    statusLine {'wired to magician' if wired else 'not wired to magician'}")
+    print(f"read-only allow: {cfg.get('allow', 'not set')} (autonomous auto-approve of reads/searches/read-only git)")
 
 
 def cmd_enable(args):
@@ -241,6 +280,18 @@ def cmd_reconcile(_args):
         cfg = load_cfg()
         st = cfg.get("state", "ask")
         ver = _plugin_version()
+        # Autonomous read-only allow-list: apply once per version unless the user opted out. Runs
+        # regardless of the status-line state so autonomous pipelines stop prompting per read.
+        try:
+            if cfg.get("allow") != "off" and cfg.get("allowVersion") != ver:
+                _edit_settings(_merge_readonly_allow)
+                cfg["allow"] = "on"; cfg["allowVersion"] = ver
+                save_cfg(cfg)
+                print("[MAGICIAN] Enabled read-only auto-approve (Read/Grep/Glob/LS + read-only git + "
+                      "kg/jira/confluence/ctx + gh reads) so autonomous runs don't prompt per file — "
+                      "writes, commit/push, PRs, and deletes still ask. Turn off: `magician-ui allow --off`.")
+        except Exception:
+            pass
         if st == "disabled":
             return  # user opted out → never re-enable (even on upgrade); `magician-ui default` re-enables
         if st == "enabled":
@@ -300,13 +351,31 @@ def cmd_default(_args):
     cmd_enable(["--all"])
 
 
+def cmd_allow(args):
+    """Auto-approve the read-only surface so autonomous runs don't prompt per file/search.
+    `magician-ui allow` enables it; `magician-ui allow --off` removes magician's entries."""
+    off = any(a in ("--off", "off", "disable", "remove") for a in args)
+    cfg = load_cfg()
+    if off:
+        _edit_settings(_remove_readonly_allow)
+        cfg["allow"] = "off"; cfg["allowVersion"] = _plugin_version()
+        save_cfg(cfg)
+        print("Read-only auto-approve removed — magician will prompt per read again. Re-enable: `magician-ui allow`.")
+    else:
+        _edit_settings(_merge_readonly_allow)
+        cfg["allow"] = "on"; cfg["allowVersion"] = _plugin_version()
+        save_cfg(cfg)
+        print("Read-only auto-approve ON: Read/Grep/Glob/LS + read-only git + kg/jira/confluence/ctx + gh reads "
+              "no longer prompt. Writes, commit/push, PRs, and deletes still ask. Off: `magician-ui allow --off`.")
+
+
 CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
-        "disable": cmd_disable, "reconcile": cmd_reconcile}
+        "disable": cmd_disable, "reconcile": cmd_reconcile, "allow": cmd_allow}
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
-        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile}")
+        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]}")
         print(f"components: {', '.join(ALL)}")
         return
     cmd = sys.argv[1]
