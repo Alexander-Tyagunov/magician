@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" fill="none" role="img" aria-label="magician — full-stack SDLC for Claude Code">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0b14"/>
+      <stop offset="0.55" stop-color="#12122a"/>
+      <stop offset="1" stop-color="#0d0b1e"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6C63FF"/>
+      <stop offset="0.5" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6C63FF" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#a78bfa" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="glint" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#6C63FF" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#6C63FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <mask id="wordmask">
+      <rect width="1200" height="360" fill="black"/>
+      <text x="600" y="196" text-anchor="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="118" font-weight="800" letter-spacing="2" fill="white">magician</text>
+    </mask>
+  </defs>
+
+  <!-- card -->
+  <rect x="4" y="4" width="1192" height="352" rx="26" fill="url(#bg)"/>
+  <rect x="4.5" y="4.5" width="1191" height="351" rx="25.5" fill="none" stroke="url(#stroke)" stroke-width="1.5"/>
+  <ellipse cx="600" cy="150" rx="520" ry="190" fill="url(#glow)"/>
+
+  <!-- twinkling sparkles -->
+  <g fill="#a78bfa">
+    <g transform="translate(150 90)"><path d="M0,-9 L2.2,-2.2 L9,0 L2.2,2.2 L0,9 L-2.2,2.2 L-9,0 L-2.2,-2.2 Z"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.6s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="scale" values="0.7;1.15;0.7" dur="2.6s" repeatCount="indefinite" additive="sum"/></path></g>
+  </g>
+  <g fill="#22d3ee">
+    <g transform="translate(1040 110)"><path d="M0,-7 L1.7,-1.7 L7,0 L1.7,1.7 L0,7 L-1.7,1.7 L-7,0 L-1.7,-1.7 Z"><animate attributeName="opacity" values="0.2;1;0.2" dur="3.2s" begin="0.6s" repeatCount="indefinite"/></path></g>
+  </g>
+  <g fill="#ffffff">
+    <g transform="translate(1090 250)"><path d="M0,-5 L1.2,-1.2 L5,0 L1.2,1.2 L0,5 L-1.2,1.2 L-5,0 L-1.2,-1.2 Z"><animate attributeName="opacity" values="0.1;0.9;0.1" dur="2.1s" begin="1.1s" repeatCount="indefinite"/></path></g>
+    <g transform="translate(120 260)"><path d="M0,-6 L1.4,-1.4 L6,0 L1.4,1.4 L0,6 L-1.4,1.4 L-6,0 L-1.4,-1.4 Z"><animate attributeName="opacity" values="0.12;0.8;0.12" dur="3.6s" begin="0.3s" repeatCount="indefinite"/></path></g>
+  </g>
+  <g fill="#6C63FF">
+    <g transform="translate(980 300)"><path d="M0,-6 L1.4,-1.4 L6,0 L1.4,1.4 L0,6 L-1.4,1.4 L-6,0 L-1.4,-1.4 Z"><animate attributeName="opacity" values="0.15;0.9;0.15" dur="2.9s" begin="1.4s" repeatCount="indefinite"/></path></g>
+  </g>
+
+  <!-- wordmark: gradient fill + sweeping glint (masked to the letters) -->
+  <g mask="url(#wordmask)">
+    <rect x="0" y="60" width="1200" height="170" fill="url(#brand)"/>
+    <rect x="0" y="60" width="240" height="170" fill="url(#glint)" transform="skewX(-16)">
+      <animate attributeName="x" values="-260;1260" dur="3.6s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <!-- animated underline -->
+  <rect x="470" y="222" width="260" height="4" rx="2" fill="url(#brand)">
+    <animate attributeName="opacity" values="0.4;1;0.4" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="width" values="180;300;180" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="x" values="510;450;510" dur="3s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- taglines -->
+  <text x="600" y="272" text-anchor="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="27" font-weight="600" fill="#c9c9db">Full-stack SDLC for Claude Code</text>
+  <text x="600" y="308" text-anchor="middle" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="15.5" fill="#7c7c94">gather → plan → build → verify → ship &#160;·&#160; autonomous, grounded, safe</text>
+</svg>

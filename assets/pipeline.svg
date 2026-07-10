@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 210" width="1200" height="210" fill="none" role="img" aria-label="magician SDLC pipeline: research, design, plan, build, verify, review, ship">
+  <defs>
+    <linearGradient id="pbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0b14"/><stop offset="1" stop-color="#100e22"/>
+    </linearGradient>
+    <linearGradient id="pline" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6C63FF"/><stop offset="0.5" stop-color="#a78bfa"/><stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="pstroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6C63FF" stop-opacity="0.8"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0.8"/>
+    </linearGradient>
+    <radialGradient id="dot" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.4" stop-color="#a78bfa"/><stop offset="1" stop-color="#6C63FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="pglow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="4"/></filter>
+  </defs>
+
+  <rect x="4" y="4" width="1192" height="202" rx="22" fill="url(#pbg)"/>
+  <rect x="4.5" y="4.5" width="1191" height="201" rx="21.5" fill="none" stroke="url(#pstroke)" stroke-width="1.2" stroke-opacity="0.5"/>
+
+  <!-- connector -->
+  <line x1="90" y1="78" x2="1110" y2="78" stroke="#2a2a44" stroke-width="3"/>
+  <line x1="90" y1="78" x2="1110" y2="78" stroke="url(#pline)" stroke-width="3" stroke-linecap="round" stroke-dasharray="10 12">
+    <animate attributeName="stroke-dashoffset" values="0;-44" dur="1.1s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- stage nodes: x = 90,260,430,600,770,940,1110 -->
+  <g font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+    <!-- node template repeated with staggered pulse begins to feel like flow -->
+    <g>
+      <circle cx="90" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="90" cy="78" r="15" fill="#6C63FF" opacity="0"><animate attributeName="opacity" values="0;0.55;0" dur="4.9s" begin="0s" repeatCount="indefinite"/><animate attributeName="r" values="15;22;15" dur="4.9s" begin="0s" repeatCount="indefinite"/></circle>
+      <text x="90" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Research</text>
+      <text x="90" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/magic</text>
+    </g>
+    <g>
+      <circle cx="260" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="260" cy="78" r="15" fill="#7c6cff" opacity="0"><animate attributeName="opacity" values="0;0.55;0" dur="4.9s" begin="0.7s" repeatCount="indefinite"/><animate attributeName="r" values="15;22;15" dur="4.9s" begin="0.7s" repeatCount="indefinite"/></circle>
+      <text x="260" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Design</text>
+      <text x="260" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/conjure</text>
+    </g>
+    <g>
+      <circle cx="430" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="430" cy="78" r="15" fill="#8f7bff" opacity="0"><animate attributeName="opacity" values="0;0.55;0" dur="4.9s" begin="1.4s" repeatCount="indefinite"/><animate attributeName="r" values="15;22;15" dur="4.9s" begin="1.4s" repeatCount="indefinite"/></circle>
+      <text x="430" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Plan</text>
+      <text x="430" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/blueprint</text>
+    </g>
+    <g>
+      <circle cx="600" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="600" cy="78" r="15" fill="#a78bfa" opacity="0"><animate attributeName="opacity" values="0;0.6;0" dur="4.9s" begin="2.1s" repeatCount="indefinite"/><animate attributeName="r" values="15;23;15" dur="4.9s" begin="2.1s" repeatCount="indefinite"/></circle>
+      <text x="600" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Build</text>
+      <text x="600" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/orchestrate · /ward</text>
+    </g>
+    <g>
+      <circle cx="770" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="770" cy="78" r="15" fill="#7bc8fa" opacity="0"><animate attributeName="opacity" values="0;0.6;0" dur="4.9s" begin="2.8s" repeatCount="indefinite"/><animate attributeName="r" values="15;22;15" dur="4.9s" begin="2.8s" repeatCount="indefinite"/></circle>
+      <text x="770" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Verify</text>
+      <text x="770" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/certify</text>
+    </g>
+    <g>
+      <circle cx="940" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="940" cy="78" r="15" fill="#4fd6e0" opacity="0"><animate attributeName="opacity" values="0;0.6;0" dur="4.9s" begin="3.5s" repeatCount="indefinite"/><animate attributeName="r" values="15;22;15" dur="4.9s" begin="3.5s" repeatCount="indefinite"/></circle>
+      <text x="940" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Review</text>
+      <text x="940" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/scrutinize · /divine</text>
+    </g>
+    <g>
+      <circle cx="1110" cy="78" r="15" fill="#0b0b14" stroke="url(#pstroke)" stroke-width="2.5"/>
+      <circle cx="1110" cy="78" r="15" fill="#22d3ee" opacity="0"><animate attributeName="opacity" values="0;0.65;0" dur="4.9s" begin="4.2s" repeatCount="indefinite"/><animate attributeName="r" values="15;23;15" dur="4.9s" begin="4.2s" repeatCount="indefinite"/></circle>
+      <text x="1110" y="120" text-anchor="middle" font-size="16" font-weight="700" fill="#e6e6f0">Ship</text>
+      <text x="1110" y="140" text-anchor="middle" font-size="12.5" fill="#7c7c94" font-family="monospace">/seal</text>
+    </g>
+  </g>
+
+  <!-- traveling energy dot -->
+  <circle r="13" fill="url(#dot)" filter="url(#pglow)">
+    <animate attributeName="cx" values="90;1110" dur="4.9s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="78;78" dur="4.9s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="4.5" fill="#ffffff">
+    <animate attributeName="cx" values="90;1110" dur="4.9s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="78;78" dur="4.9s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- caption -->
+  <text x="600" y="182" text-anchor="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#8a8aa2">approve the plan once — then it runs autonomously, gating only real side effects</text>
+</svg>

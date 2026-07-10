@@ -12,6 +12,10 @@ Run a comprehensive security scan of the codebase. Available as CLI: `magician-s
 
 For very large repos, raise /effort so the analysis stays thorough across the codebase. See [lore/models.md](../../lore/models.md).
 
+## Destructive-command hard gate (always on, not part of a scan)
+
+Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook (`scripts/destructive-guard.sh` → `destructive_guard.py`) that **unconditionally blocks catastrophic commands** — filesystem wipes (`rm -rf /` · `~` · `$HOME` · `--no-preserve-root` · system roots), disk/device destruction (`dd of=/dev/…`, `mkfs`, `wipefs`, `blkdiscard`, `shred /dev/…`, `diskutil erase…`), redirection onto a block device or over `/etc/passwd|shadow|sudoers|fstab`, fork bombs, recursive `chmod`/`chown` on system roots, `curl|bash` / `base64 -d|sh` / `eval "$(…)"`, and `git clean -x`. It exits 2, so the block lands **before permission rules are evaluated** — it overrides `allow` rules and fires in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Wrappers (`sudo`, `env`, `timeout`, …) and `sh -c '…'` payloads are unwrapped first. If you hit `[MAGICIAN HARD-GATE]`, do **not** retry, rephrase, or obfuscate — the human must run it themselves outside the agent. Honest limit (CWE-78): a denylist can't catch every obfuscation, so this is a deterministic net layered under OS sandboxing + auto-mode's classifier + model judgment, not a complete sandbox.
+
 ## Process
 
 ### 1. Static Analysis (via magician-scan)

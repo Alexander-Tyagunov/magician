@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] — 2026-07-10
+
+**An absolute destructive-command hard gate — plus a rebuilt, animated README.**
+
+### Added
+- **Destructive-command guard** (`scripts/destructive-guard.sh` → `destructive_guard.py`) — a `PreToolUse(Bash|PowerShell)` hook that **unconditionally blocks catastrophic commands**: filesystem wipes (`rm -rf /` · `~` · `$HOME` · `--no-preserve-root` · system roots), disk/device destruction (`dd of=/dev/…` · `mkfs` · `wipefs` · `blkdiscard` · `shred /dev/…` · `diskutil erase…`), block-device / critical-file overwrite (`> /dev/sd*` · over `/etc/passwd|shadow|sudoers|fstab`), fork bombs, recursive `chmod`/`chown` on system roots, opaque download-and-execute (`curl|bash` · `base64 -d|sh` · `eval "$(…)"`), and `git clean -x`. It exits 2, so the block lands **before permission rules are evaluated** — overriding `allow` rules in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Wrappers (`sudo`/`env`/`timeout`/…) and `sh -c '…'` payloads are unwrapped; a dangerous command merely *named* in a quoted argument is not mistaken for execution. Honest scope (CWE-78): a deterministic floor layered under OS sandboxing + auto-mode's classifier + model judgment — not a complete sandbox. Verified against a 90-case block/allow matrix; runs first in the PreToolUse chain; documented in `/sentinel`.
+
+### Changed
+- **Rebuilt README** — an animated hero + SDLC-pipeline SVG (`assets/`), a consistent card-grid layout end-to-end, badges, and GitHub-faithful HTML throughout (no markdown-in-cells that GitHub would render literally).
+
 ## [4.5.0] — 2026-07-10
 
 **Reliability discipline — evidence over claims, diff-verified orchestration, sharper debugging & plans.** A hardening pass so skills that finish work can't talk themselves into "done" without proof.

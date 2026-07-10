@@ -1,69 +1,74 @@
 <div align="center">
 
-```
-       *       
-      /|\      
-     / | \     
-    /  *  \    
-   /_______\   
-  /^  ^.^  ^\  
-  \  ~(u)~  /  
-   \_______/~  
-     |   |  /  
-```
+<img src="assets/hero.svg" alt="magician — full-stack SDLC for Claude Code" width="100%">
 
-# magician
+<br>
 
-**Full-stack SDLC plugin for Claude Code and Codex**
+[![Version](https://img.shields.io/badge/version-4.6.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
+[![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
+[![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584?style=for-the-badge&labelColor=0b0b14)](https://github.com/sponsors/Alexander-Tyagunov)
 
-Inspects your project, assembles the right knowledge automatically, orchestrates parallel agents, learns from every session, and ships clean code — from idea to merged PR, autonomously.
+<h3>From idea to merged PR — autonomously, grounded in your code, gated only where it matters.</h3>
 
-[![Version](https://img.shields.io/badge/version-4.5.0-6c63ff)](https://github.com/Alexander-Tyagunov/magician/releases)
-[![License](https://img.shields.io/badge/license-MIT-43e97b)](LICENSE)
-[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584)](https://github.com/sponsors/Alexander-Tyagunov)
+<sub>25 skills · a local code knowledge-graph · cross-session memory · parallel agent orchestration · an absolute destructive-command guard · zero required network calls or dependencies</sub>
 
 </div>
 
----
+<img src="assets/divider.svg" alt="" width="100%">
 
-## What it does
+## ✦ What it is
 
-Most AI coding tools require you to describe your stack, pick templates, and manage context manually. Magician inspects your project on every session start, assembles targeted knowledge for every technology it finds, and gets smarter with every session.
+Most AI coding tools make **you** describe the stack, pick templates, and babysit context. **magician** inspects your project on every session start, assembles targeted knowledge for each technology it finds, grounds itself in a local graph of your code, and runs the whole software lifecycle — design → plan → build → verify → review → ship — pausing only at the decisions that are genuinely yours.
 
-One command to go from idea to PR:
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4>One command · idea → PR</h4>
+<pre><code>/manifest</code></pre>
+Gather requirements → design → TDD plan → parallel build → verify → review → PR. You approve the plan; it does the rest.
+</td>
+<td width="50%" valign="top">
+<h4>Already exists? Transform it</h4>
+<pre><code>/transmute</code></pre>
+Comprehend a feature from its live usage, code, or docs — then <b>port</b> it elsewhere or <b>integrate / swap</b> it in place behind a parity contract.
+</td>
+</tr>
+</table>
 
-```
-/manifest
-```
+<img src="assets/divider.svg" alt="" width="100%">
 
-Working with something that already exists? Comprehend a feature — from its live usage, its codebase, its docs, or pure black-box — then **port** it into another app (optionally upgrading the vendor) or **integrate/transform** it in place (redesign · swap the 3rd-party behind it while preserving the UX · add a capability), behind a parity contract and quality gateways:
+## ⚡ The flow
 
-```
-/transmute
-```
+<div align="center">
+<img src="assets/pipeline.svg" alt="magician SDLC pipeline: research → design → plan → build → verify → review → ship" width="100%">
+</div>
 
----
+**Approve the plan once — then it executes autonomously**, re-gating only on real side effects (writes to shared state, commits, push, PRs, deploys). Reads, searches, tests, and knowledge-graph lookups never interrupt you.
 
-## How it works
+<details>
+<summary><b>How it works — detailed diagrams</b> (manifest flow · dynamic inspector · self-learning)</summary>
+
+<br>
 
 ### The manifest flow — full autonomous SDLC
 
 ```mermaid
 flowchart TD
     A["/manifest"] --> B{"scope OK?"}
-    B -- too large --> C["decompose\ninto sub-projects"]
-    B -- ok --> D["/conjure\ndesign dialogue"]
+    B -- too large --> C["decompose into sub-projects"]
+    B -- ok --> D["/conjure — design dialogue"]
     D --> E["approved spec"]
-    E --> F["/blueprint\nimpl plan + parallelism map"]
-    F --> G["/portal\ngit worktree isolation"]
-    G --> H["/orchestrate\nparallel agents"]
-    H --> I["/ward\nTDD throughout"]
-    I --> J["/certify\nverify: tests + browser"]
+    E --> F["/blueprint — plan + parallelism map"]
+    F --> G["/portal — git worktree isolation"]
+    G --> H["/orchestrate — parallel agents"]
+    H --> I["/ward — TDD throughout"]
+    I --> J["/certify — tests + browser"]
     J --> K{all green?}
     K -- no --> H
-    K -- yes --> L["/scrutinize\nreview + remediate"]
-    L --> N["/seal\nPR + loop until merged"]
-
+    K -- yes --> L["/scrutinize — review + remediate"]
+    L --> N["/seal — PR + loop until merged"]
     style A fill:#6c63ff,color:#fff
     style D fill:#6c63ff,color:#fff
     style F fill:#6c63ff,color:#fff
@@ -74,9 +79,7 @@ flowchart TD
     style N fill:#4facfe,color:#000
 ```
 
-Human gates (4 only): scope confirm → spec approval → plan approval → PR title. Everything else: autonomous.
-
----
+Human gates (4 only): scope confirm → spec approval → plan approval → ship. Everything else: autonomous.
 
 ### Dynamic project inspector — no manual stack selection
 
@@ -84,208 +87,282 @@ Human gates (4 only): scope confirm → spec approval → plan approval → PR t
 flowchart LR
     A["session start"] --> B["scan project files"]
     B --> C{"detect markers"}
-
-    C --> D["package.json\ntsconfig.json\nnext.config.*"]
-    C --> E["pom.xml\nbuild.gradle\n*.xcodeproj"]
-    C --> F["go.mod\nCargo.toml\npyproject.toml"]
-    C --> G["pubspec.yaml\ncapacitor.config.*\nproject.godot"]
-
-    D --> H["assemble lore\nweb/ fragments"]
-    E --> I["assemble lore\nbackend/ fragments"]
-    F --> J["assemble lore\nbackend/ fragments"]
-    G --> K["assemble lore\nmobile/ craft/ fragments"]
-
-    H --> L["assign archetype\n+ inject context"]
-    I --> L
-    J --> L
-    K --> L
-
-    L --> M["session ready\nin < 2 seconds"]
-
+    C --> D["package.json · tsconfig"]
+    C --> E["pom.xml · *.xcodeproj"]
+    C --> F["go.mod · Cargo.toml · pyproject"]
+    C --> G["pubspec.yaml · project.godot"]
+    D --> L["assign archetype + inject context"]
+    E --> L
+    F --> L
+    G --> L
+    L --> M["session ready in < 2s"]
     style A fill:#0d1117,color:#ccc,stroke:#555
     style M fill:#43e97b,color:#000
 ```
 
-Polyglot stacks (Next.js + FastAPI + Go) get full coverage automatically. No pack selection needed.
-
----
+Polyglot stacks (Next.js + FastAPI + Go) get full coverage automatically — no pack selection.
 
 ### Self-learning — intelligence grows each session
 
 ```mermaid
 flowchart TD
-    A["session ends"] --> B["chronicle-stop.sh\nStop hook"]
-    B --> C["git log + diff\nobservable data only"]
-    C --> D["write chronicle entry\nCLAUDE_PLUGIN_DATA/chronicle/"]
-    D --> E["update patterns.json"]
-
-    E --> F{"pattern seen 3x?"}
-    F -- yes --> G["offer: create skill\nvia /inscribe"]
-    F -- no --> H[" "]
-
-    G --> I["next session start"]
-    H --> I
-
-    I --> J["load last 3 entries\nas additionalContext"]
-    J --> K["cumulative intelligence\ngrows without replay"]
-
+    A["session ends"] --> B["Stop hook: chronicle"]
+    B --> C["git log + diff (observable only)"]
+    C --> D["write chronicle entry"]
+    D --> E{"pattern seen 3x?"}
+    E -- yes --> G["offer: create skill via /inscribe"]
+    E -- no --> I["next session"]
+    G --> I
+    I --> K["load recent entries as context —\ncumulative intelligence without replay"]
     style B fill:#f7971e,color:#000
     style D fill:#f7971e,color:#000
     style G fill:#43e97b,color:#000
     style K fill:#6c63ff,color:#fff
 ```
 
----
+</details>
 
-## Skills
+<img src="assets/divider.svg" alt="" width="100%">
 
-25 skills. Each carries modern frontmatter (`allowed-tools` to cut permission prompts in auto mode, `disable-model-invocation` on side-effecting standalone skills, `argument-hint`, `context: fork` for heavy read-only work) and scales reasoning effort to the task.
+## 🧠 What makes it different
 
-| Skill | Purpose | Category |
-|---|---|---|
-| `/conjure` | Structured design dialogue with visual browser companion — 4 modes (Visual+Strict, Visual+Reference, Text-only, Design-Only); HARD-GATE: no code until spec approved. Reference material lives in `references/` (progressive disclosure) | Core SDLC |
-| `/blueprint` | Converts an approved spec into a TDD task plan with parallelism map (PARALLEL vs SEQUENTIAL tasks) saved to `.workspace/shared/plans/` | Core SDLC |
-| `/ward` | TDD engine — red→green→refactor, one behavior at a time. `/ward task <N>` executes a single blueprint task end-to-end (failing test → minimum impl → lint/type-check → full suite → commit → check off). *(merged the former `/forge`)* | Core SDLC |
-| `/unravel` | Systematic debugging with mandatory hypothesis preflight — no code changes before evidence; one change at a time, then regression test | Core SDLC |
-| `/certify` | Full verification loop — tests, types, lint, build, and Playwright browser check for UI projects; collects evidence before any success claim | Core SDLC |
-| `/orchestrate` | Drives multi-agent implementation from a blueprint — groups parallel tasks into waves, dispatches concurrent subagents with self-contained prompts, resolves conflicts, runs `/certify`. Aware of native dynamic workflows, nested subagents & agent teams. *(merged the former `/summon`)* | Orchestration |
-| `/weave` | **Composes + runs a large delivery as one native Workflow** — for big multi-item work ("implement these N tickets", "deliver the epic", "migrate X across the codebase"). Picks the structure adaptively (per-item pipeline / parallel fan-out / orchestrator-worker / evaluator-optimizer) but always keeps the guardrails: TDD per unit, kg grounding, certify, multi-lens review + adversarial verify, write gates, no context loss. Auto-suggested on big-delivery intent; use instead of hand-rolling many agents | Orchestration |
-| `/scrutinize` | Dispatches 3 specialist reviewers in parallel (correctness, security, simplification), consolidates findings, then remediates Critical/High. *(merged the former `/absorb`)* | Orchestration |
-| `/divine` | Standalone, research-grounded **code review** — auto-triggers on "review this PR/MR" / "do a code review". Detects change context (GitHub PR · GitLab MR · branch · working tree) + intent + CI gates, gates **depth** (Quick simple-logic → Exhaustive PRD/docs/data + blast-radius across affected services & infra), grounds via `/magic`, runs 4 lenses in parallel, adversarially verifies findings, emits a severity-ranked report with impact + fix + traceability. Can optionally spin an agent to **implement fixes + commit**, and run **unattended via `/loop`** to monitor repos for new PRs/MRs. Stack/company-agnostic | Review |
-| `/jira` | Work with Jira over its **REST API directly** via a bundled **`jira` CLI** (no MCP/proxy; one command per call → no per-request prompts). Read/search (JQL), `create`/`link`/comment/transition/worklog, MR investigation, clone; per-action write gates, INVEST/Gherkin authoring, first-run token setup. **Throttle-aware & bulk-safe**: 429 backoff, brief GET cache, self-pacing loops, connect-timeout. Cloud + Server/DC. Auto-triggers on jira intent | Integration |
-| `/confluence` | Work with Confluence over its **REST API directly** via a bundled **`confluence` CLI** (no MCP/proxy). Read/search (CQL), page bodies, create/update/comment/label; write gates, macro-aware authoring, first-run token setup. **Throttle-aware & bulk-safe** (same 429 backoff / GET cache / pacing as `/jira`). Cloud + Server/DC. Auto-triggers on confluence intent | Integration |
-| `/knowledge-graph` | Local code **knowledge-graph + cache** via a bundled **`kg` CLI** (no MCP/network; stdlib by default). Indexes a repo into a SQLite/FTS5 graph of symbols + import/reference edges at `~/.claude/magician/knowledge-graph/`; serves ranked `file:line` (BM25 + Personalized PageRank), `neighbors`, and change **blast-radius** so agents retrieve targeted code instead of grepping whole files — fewer tokens, faster, shared across agents with no context loss. `status`/`reset`, incremental `refresh`, content cache, opt-in resident `daemon`. `/magic` & `/divine` use it. Suggested (not auto-built) on unindexed repos | Intelligence |
-| `/portal` | Creates a git worktree for isolated feature work; includes cleanup steps post-merge; respects `disableGit` preference | Orchestration |
-| `/seal` | Ships a feature — simplifier pass, `/certify`, commit, push, PR via `gh pr create`, CI monitoring, review loop, merge | Orchestration |
-| `/almanac` | One-time workspace init — creates `.workspace/` structure, generates lean `CLAUDE.md`, configures `.gitignore`, suggests relevant MCPs | Workspace |
-| `/chronicle` | **Memory & context steward** — session-learning history, the global reference store (repos/projects/ideas), **and** live context management: `status` (size %), `resume` (post-compaction capsule), `learn` (project/global), `consolidate`. Backed by the `ctx` CLI + hooks that track context size and capture a lossless resume capsule before compaction | Intelligence |
-| `/statusline` | **Magician CLI UI** — an opt-in, always-on status line (native Claude Code `statusLine`; renders locally, **zero API tokens**) for context-rot visibility: color-coded context bar + %, a ⚠/🔴 rot warning at magician's bands, a `▁▂▃▅▇` token-flow sparkline, model · git · cost, the active skill/workflow/loop, and a `🧠` **reasoning-effort/mode** readout (live `effort.level` — low/medium/high/xhigh/max — shown by default on open and tracking `/effort`, or the magician mode you set like `ultracode`). **User-configurable** subset (`context,rot,spark,meta,skill,effort`), managed by the bundled **`magician-ui`** CLI which edits `~/.claude/settings.json` **safely** (backup → JSON-validate → atomic write). Suggested once on first use, then honors your choice | Intelligence |
-| `/magic` | Research, analysis & consulting — auto-invokes on keywords (research, investigate, analyze…); web search, context7 for tech library docs, local document analysis; citation-aware outputs; depth mapped to reasoning effort. **Standalone, and feeds the pipeline**: saves findings to `.workspace/shared/research/` and routes into `/conjure`, `/blueprint`, `/unravel` with the artifact path | Research |
-| `/sentinel` | Security scan — OWASP Top 10, credential detection, injection surfaces, dependency audit, git history secret scan, auth middleware spot-check (read-only; runs in a forked context) | Security |
-| `/accelerate` | Performance profiling with mandatory baseline-first discipline — measures before optimizing, re-measures after; uses wrk/lighthouse/cProfile/pprof by stack | Quality |
-| `/deploy` | CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines; can start a background CI-red watcher | Quality |
-| `/autopsy` | Blameless post-mortem — timeline from git log/CI, 5-Whys root cause, action items; saved to `.workspace/shared/postmortems/` and optionally remembered in the global reference store | Quality |
-| `/inscribe` | Creates a new reusable skill with modern frontmatter; suggested by the pattern detector after repeated requests | Meta |
-| `/manifest` | Full autonomous SDLC — 4 human gates (scope, spec, plan, PR title); runs conjure → blueprint → portal → orchestrate → certify → scrutinize → seal | Full flow |
-| `/transmute` | **Comprehend an existing feature → PORT or INTEGRATE it.** Understands a feature from live usage (Chrome/Playwright, read-only), its codebase (`kg`), its docs (`/magic`), or pure black-box — into a confidence-tagged **dossier** + **parity contract**. Then **PORT**s it into another app (optionally upgrading the vendor), **INTEGRATE**s/transforms it in place (redesign · swap the vendor behind the scenes preserving the UX · add capability, via anti-corruption layer + strangler-fig + feature-flag + parallel-run), or **AUDIT**s a flow and recommends work. Composes conjure/blueprint/jira/weave (created stories become weave units) with an evaluator-optimizer **parity loop**, and a hard **gateway checklist** (parity · perf · cost · security · a11y · rollback · sanity) before ship. `disable-model-invocation` — invoke it explicitly | Full flow |
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4>🤖 Real autonomy, not a prompt</h4>
+Turns on Claude Code <b>auto mode</b> (<code>magician-ui automode</code>) — its classifier auto-approves reads and request-aligned work and <b>gates writes, deploys, force-push, and destructive ops</b>, honoring boundaries you state in chat. Approve the plan, then step back.
+</td>
+<td width="50%" valign="top">
+<h4>🗺 Grounded in your code</h4>
+A local <b>knowledge-graph</b> (<code>kg</code>, stdlib, no network) indexes your repo into ranked <code>file:line</code> retrieval + change <b>blast-radius</b> — so agents fetch exactly what they need instead of grepping whole files. Fewer tokens, shared across agents, zero context loss.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>🔒 An absolute safety floor</h4>
+A <code>PreToolUse</code> hard gate blocks catastrophic commands <b>before permission rules even run</b> — it overrides allow-rules, fires in every mode, and has no escape hatch. <code>rm -rf /</code> never executes here.
+</td>
+<td width="50%" valign="top">
+<h4>🧾 Evidence over claims</h4>
+No "done / fixed / passing" without a verification command run <i>this turn</i> whose output was read — and a subagent's task is only done when the <b>VCS diff</b> shows it, not when the agent says "success."
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>🧭 Remembers across sessions</h4>
+Per-project <code>.workspace/</code> (team-shared via git) plus a machine-global reference store loaded into <b>every</b> session. Context follows you across repos; conventions survive context compaction.
+</td>
+<td width="50%" valign="top">
+<h4>🔌 MCP-free integrations</h4>
+Jira &amp; Confluence over their REST APIs via bundled CLIs — throttle-aware, bulk-safe, one command per call. No MCP server to run, no per-call prompts.
+</td>
+</tr>
+</table>
 
----
+<img src="assets/divider.svg" alt="" width="100%">
 
-## Installation
+## 🔒 Safety — an absolute destructive-command guard &nbsp;<sub><code>new in 4.6.0</code></sub>
 
-Magician supports both Claude Code and Codex. The Claude Code path installs the native Claude plugin package. The Codex path installs the Codex adapter package from `.codex-plugin/`, which points back to the same Magician source skills and translates Claude-specific behavior to Codex behavior.
+> Security is infrastructure, not advice.
 
-### Claude Code
+A `PreToolUse(Bash|PowerShell)` hook inspects every shell command and **unconditionally blocks** the catastrophic ones. Because it exits before Claude Code evaluates permission rules, the block **overrides `allow` rules and fires in every mode** — default · acceptEdits · auto · bypass — **with no escape hatch by design.**
 
-Add the repo as a marketplace source, then install:
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4>🗑 Filesystem wipes</h4>
+<code>rm -rf /</code> · <code>~</code> · <code>$HOME</code> · <code>--no-preserve-root</code> · system roots
+</td>
+<td width="50%" valign="top">
+<h4>💽 Disk &amp; device destruction</h4>
+<code>dd of=/dev/…</code> · <code>mkfs</code> · <code>wipefs</code> · <code>blkdiscard</code> · <code>shred /dev/…</code> · <code>diskutil erase…</code>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>⛓ Device / critical-file overwrite</h4>
+redirection onto <code>/dev/sd*</code> · over <code>/etc/passwd</code> · <code>shadow</code> · <code>sudoers</code> · <code>fstab</code>
+</td>
+<td width="50%" valign="top">
+<h4>💣 Fork bombs</h4>
+<code>:(){ :|:&amp; };:</code> and self-replicating variants
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>🔑 Recursive perms on system roots</h4>
+<code>chmod -R</code> / <code>chown -R</code> on <code>/</code> · <code>~</code> · <code>/etc</code> · <code>/usr</code> …
+</td>
+<td width="50%" valign="top">
+<h4>🕳 Opaque exec &amp; repo loss</h4>
+download piped into a shell · <code>base64 -d</code> → shell · <code>eval "$(…)"</code> · <code>git clean -x</code>
+</td>
+</tr>
+</table>
 
-```
-/plugin marketplace add https://github.com/Alexander-Tyagunov/magician
-/plugin install magician@magician
-```
+Wrappers (`sudo`, `env`, `timeout`, …) and `sh -c '…'` payloads are unwrapped first; a dangerous command merely *named* in a quoted argument (like a commit message) is not mistaken for execution. **Honest scope:** a denylist can't catch every obfuscation, so this is a deterministic floor layered *under* OS sandboxing, auto-mode's classifier, and model judgment — not a complete sandbox. Verified against a 90-case block/allow matrix.
 
-Restart Claude Code after installation if prompted.
+<img src="assets/divider.svg" alt="" width="100%">
 
-### Codex
+## 🛠 Skills
 
-Install through Codex plugin marketplace support:
+<b>25 skills</b>, each with modern frontmatter (<code>allowed-tools</code> · <code>disable-model-invocation</code> · <code>argument-hint</code> · <code>context: fork</code>) that scales reasoning effort to the task. Approval gates use the structured <b>AskUserQuestion</b> tool, not prose.
 
-```bash
-codex plugin marketplace add Alexander-Tyagunov/magician
-```
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4>⚙️ Core SDLC</h4>
+<code>/manifest</code> · <code>/conjure</code> · <code>/blueprint</code> · <code>/ward</code> · <code>/unravel</code> · <code>/certify</code>
+</td>
+<td width="50%" valign="top">
+<h4>🎛 Orchestration</h4>
+<code>/orchestrate</code> · <code>/weave</code> · <code>/portal</code> · <code>/seal</code>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>🛡 Review &amp; security</h4>
+<code>/scrutinize</code> · <code>/divine</code> · <code>/sentinel</code>
+</td>
+<td width="50%" valign="top">
+<h4>🧠 Intelligence</h4>
+<code>/knowledge-graph</code> · <code>/chronicle</code> · <code>/statusline</code>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>🔗 Integration</h4>
+<code>/jira</code> · <code>/confluence</code>
+</td>
+<td width="50%" valign="top">
+<h4>🔬 Research · Quality · Meta</h4>
+<code>/magic</code> · <code>/transmute</code> · <code>/accelerate</code> · <code>/deploy</code> · <code>/autopsy</code> · <code>/almanac</code> · <code>/inscribe</code>
+</td>
+</tr>
+</table>
 
-Then enable Magician in the Codex app's Plugins UI.
+<details>
+<summary><b>Full skill catalog</b> — what each one does</summary>
 
-If the plugin does not appear in the UI after adding the marketplace, add this block to `~/.codex/config.toml`:
+<br>
 
-```toml
-[plugins."magician@magician"]
-enabled = true
-```
+| Skill | Purpose |
+|---|---|
+| `/manifest` | Full autonomous SDLC — 4 human gates (scope · spec · plan · ship); runs conjure → blueprint → portal → orchestrate → certify → scrutinize → seal |
+| `/conjure` | Structured design dialogue with a visual browser companion — 4 modes; HARD-GATE: no code until the spec is approved |
+| `/blueprint` | Turns an approved spec into a TDD task plan with a parallelism map + a verbatim Global-Constraints header every task inherits |
+| `/ward` | TDD engine — red → green → refactor, one behavior at a time; the RED test must fail for the reason under test |
+| `/unravel` | Systematic debugging — hypothesis before evidence; read the trace fully, reproduce first, instrument boundaries; not done until the original symptom is gone |
+| `/certify` | Full verification loop — tests · types · lint · build · browser check; evidence before any success claim |
+| `/orchestrate` | Multi-agent build from a blueprint — parallel waves + a per-task two-stage review (spec then quality), confirmed from the VCS diff |
+| `/weave` | Composes + runs a large multi-item delivery as one native Workflow with all guardrails (TDD per unit · kg grounding · certify · adversarial review) |
+| `/scrutinize` | Three specialist reviewers in parallel (correctness · security · simplification), consolidated then remediated |
+| `/divine` | Research-grounded code review — detects PR/MR/branch context, gates depth, 4 lenses, adversarially verifies findings, severity-ranked report |
+| `/sentinel` | Security scan — OWASP Top 10, secret detection, injection surfaces, dependency + git-history audit (read-only, forked context) |
+| `/knowledge-graph` | Local code knowledge-graph + cache (`kg` CLI, stdlib) — ranked `file:line` (BM25 + Personalized PageRank), neighbors, blast-radius |
+| `/chronicle` | Memory &amp; context steward — session history, global reference store, live context size + a pre-compaction resume capsule |
+| `/statusline` | Magician CLI UI — a local, zero-token status line (context % · rot warning · sparkline · model/git/cost · active skill · 🧠 effort) |
+| `/jira` · `/confluence` | Atlassian over REST via bundled CLIs (no MCP) — read/search, create/update (write-gated), throttle-aware, first-run token setup |
+| `/magic` | Research, analysis &amp; consulting — web + docs + local files; saves findings that feed conjure/blueprint/unravel |
+| `/transmute` | Comprehend an existing feature → PORT or INTEGRATE it, behind a parity contract + quality gateways |
+| `/accelerate` | Performance profiling — baseline-first, measure → optimize → re-measure |
+| `/deploy` | CI/CD pipeline create/update/monitor (GitHub Actions · GitLab CI · CircleCI) with a background CI-red watcher |
+| `/autopsy` | Blameless post-mortem — timeline · 5-Whys · action items |
+| `/almanac` | One-time workspace init — `.workspace/`, lean `CLAUDE.md`, `.gitignore`, MCP suggestions |
+| `/inscribe` | Author a new reusable skill; suggested by the pattern detector after repeated requests |
+| `/portal` | Git worktree isolation for a feature, with post-merge cleanup |
 
-Restart Codex or start a new Codex thread after enabling the plugin. Codex loads plugins at session startup, so an already-open thread may not show newly enabled skills.
+</details>
 
-For local development or branch testing, add this checkout directly:
+<img src="assets/divider.svg" alt="" width="100%">
 
-```bash
-codex plugin marketplace add /absolute/path/to/magician
-```
+## 🚀 Install
 
-Codex loads adapter skills from `.codex-plugin/skills/`. These adapters preserve Magician's workflow gates while mapping Claude Code-specific instructions to Codex tools, approvals, Browser Use, and local file editing.
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4>Claude Code</h4>
+<pre><code>/plugin marketplace add https://github.com/Alexander-Tyagunov/magician
+/plugin install magician@magician</code></pre>
+Restart if prompted, then initialize your workspace with <code>/almanac</code>.
+</td>
+<td width="50%" valign="top">
+<h4>Codex</h4>
+<pre><code>codex plugin marketplace add Alexander-Tyagunov/magician</code></pre>
+Enable magician in the Codex Plugins UI, restart, then: <i>“Set up Magician in this workspace.”</i>
+</td>
+</tr>
+</table>
 
-For Codex-specific details, see `.codex/INSTALL.md`.
+<sub>Codex loads adapter skills from <code>.codex-plugin/skills/</code>, preserving magician's gates while mapping to Codex tools. If it doesn't appear, add <code>[plugins."magician@magician"]\nenabled = true</code> to <code>~/.codex/config.toml</code>.</sub>
 
-### After install — initialize your workspace
+<img src="assets/divider.svg" alt="" width="100%">
 
-Claude Code:
+## 🗂 Workspace — team memory
 
-```
-/almanac
-```
+<table>
+<tr>
+<td width="58%" valign="top">
+<pre><code>.workspace/
+├── shared/         ← git-committed (whole team)
+│   ├── specs/       design specs   (/conjure)
+│   ├── plans/       impl plans      (/blueprint)
+│   ├── research/    findings        (/magic)
+│   ├── decisions/   ADRs
+│   └── postmortems/ (/autopsy)
+└── local/          ← always gitignored
+    ├── prefs.md     personal prefs
+    └── session.md   pre-compaction state</code></pre>
+</td>
+<td width="42%" valign="top">
+Teammates share <code>shared/</code> via git; each machine keeps its own <code>local/</code>. A machine-global reference store loads into every session, so context follows you across repos.
+<br><br>
+Subagents never inherit your conversation — every handoff ships a <b>self-contained context contract</b> (goal · scope · inputs-by-path · constraints · return format), so nothing is lost across agents, workflows, or teams.
+</td>
+</tr>
+</table>
 
-Codex:
+<img src="assets/divider.svg" alt="" width="100%">
 
-```text
-Set up Magician in this workspace.
-```
+## 🧰 Bundled CLIs &nbsp;<sub>(on <code>PATH</code> when the plugin is enabled)</sub>
 
-This loads the `almanac` workflow, detects your stack, creates `.workspace/`, generates the appropriate agent instructions for your environment, and suggests relevant MCPs.
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4><code>kg</code></h4>
+Local code knowledge-graph + cache — <code>kg init</code> → <code>kg query "&lt;topic&gt;"</code> / <code>kg blast &lt;file&gt;</code>. Stdlib, no network.
+</td>
+<td width="50%" valign="top">
+<h4><code>jira</code> · <code>confluence</code></h4>
+MCP-free Atlassian REST clients — throttle-aware, bulk-safe, one command per call.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4><code>magician-ui</code></h4>
+Manage the CLI UI status line + <code>allow</code> (read-only auto-approve) + <code>automode</code> (auto mode) — safe, backed-up <code>settings.json</code> edits.
+</td>
+<td width="50%" valign="top">
+<h4><code>magician-scan</code> · <code>ctx</code></h4>
+Standalone security scan for CI · self-managed context (size tracking + pre-compaction resume capsule).
+</td>
+</tr>
+</table>
 
----
+<img src="assets/divider.svg" alt="" width="100%">
 
-## Workspace — team memory
+<div align="center">
 
-```
-.workspace/
-├── shared/           ← git committed (team sees this)
-│   ├── context.md    team state, open decisions
-│   ├── roadmap.md    cross-session priorities
-│   ├── decisions/    architecture decision records
-│   ├── specs/        design specs from /conjure (full SDLC flow)
-│   ├── mockups/      visual-only designs from /conjure Design-Only mode
-│   ├── plans/        implementation plans from /blueprint
-│   ├── research/     research findings from /magic (feeds /conjure, /blueprint, /unravel)
-│   └── postmortems/  /autopsy outputs
-└── local/            ← always gitignored (your machine only)
-    ├── prefs.md      personal preferences
-    └── session.md    last session state (saved before compaction)
-```
+### ❤ Support this work
 
-Multiple developers on the same repo share `.workspace/shared/` via git. Each machine keeps its own `.workspace/local/`. Context flows automatically — no manual sync.
-
-### Global reference memory
-
-Beyond per-project workspace, magician keeps a machine-global reference store at `$CLAUDE_PLUGIN_DATA/references.md` — repositories, projects, and ideas worth remembering. It's loaded into **every** session at start, so context follows you across repos. When you mention something worth keeping, magician offers to remember it; it's saved only with your confirmation. Manage it with `/chronicle` (`remember`, `references`, `forget`).
-
-### Built for the multiplayer era
-
-Subagents and agent-team teammates don't inherit your conversation — so every magician handoff (skill→skill, and every spawned agent) ships a **self-contained context contract**: goal, scope, inputs (by path), constraints, and a return contract (see [`lore/subagent-context.md`](lore/subagent-context.md)). `/orchestrate` is aware of native **dynamic workflows**, **nested subagents**, and **agent teams**, and `/deploy` can start a background **CI-red watcher** — so magician fits the async, proactive way teams now work with Claude.
-
----
-
-## Security
-
-Security is infrastructure, not advice.
-
-- **PreToolUse guard** — `sentinel-guard.sh` blocks pipe-to-shell, `eval` on dynamic content, `rm -rf` on absolute paths, credential/secret file reads, and the lethal trifecta (private data + network + execution) before the command runs. This is the enforced layer (plugin `settings.json` permission rules are advisory — `/almanac` offers to write project deny rules into your own settings).
-- **`magician-scan`** — standalone CLI for CI pipelines: `magician-scan .` (on `PATH` when the plugin is enabled)
-- **`kg`** — local code knowledge-graph + cache CLI: `kg init` then `kg query "<topic>"` / `kg blast <file>` (on `PATH` when the plugin is enabled; stdlib by default, global store at `~/.claude/magician/knowledge-graph/`)
-- **`magician-ui`** — manage the Magician CLI UI status line: `magician-ui enable [--all|--only context,rot] · set · disable · status` (safe, backed-up `settings.json` edits). Renders via **`magician-statusline`** (reads Claude Code's `context_window` JSON on stdin; local, zero tokens, fails safe)
-- **`ctx`** — self-managed context CLI (on `PATH` when the plugin is enabled): tracks context size from the transcript, captures a lossless resume capsule before compaction, and records project learnings. Driven automatically by the hooks; surfaced via `/chronicle status | resume | learn | consolidate`. Honest by design — it warns and preserves, it does not (and cannot) force or steer the harness's compaction.
-- **Workspace isolation** — `.workspace/local/` is always gitignored; per-machine secrets never reach git
-
----
-
-## Support this work
-
-If magician saves you time, consider sponsoring its development.
+If magician saves you time, consider sponsoring — it funds new skills, broader framework lore, and community support.
 
 **[❤ Sponsor on GitHub →](https://github.com/sponsors/Alexander-Tyagunov)**
 
-Sponsorship funds continued development: new skills, lore coverage for additional frameworks, Windows compatibility improvements, and community support.
+<br>
 
----
+<sub>MIT © <a href="https://github.com/Alexander-Tyagunov">Alexander Tyagunov</a> · built for Claude Code &amp; Codex</sub>
 
-## License
+<img src="assets/divider.svg" alt="" width="100%">
 
-MIT © [Alexander Tyagunov](https://github.com/Alexander-Tyagunov)
+</div>
