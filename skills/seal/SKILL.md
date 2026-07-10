@@ -13,6 +13,7 @@ Take a certified feature branch through to a merged PR. This skill performs irre
 
 - Confirm /certify has been run and passed
 - Confirm the /scrutinize review + remediation cycle is complete (or explicitly skipped by user)
+- **Never ship on stale evidence** — /certify must have passed in *this* session (fresh output you read this turn), not a remembered run. See [lore/verification.md](../../lore/verification.md).
 
 ## Autonomy — approve the plan, then run
 

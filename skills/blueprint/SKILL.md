@@ -34,6 +34,19 @@ If the spec file path is not clear from context, ask: "Which spec should I plan 
 
 Steps 1–5 run as **one autonomous pass** — read the spec + `.workspace/shared/research/`, map files, decompose, build the parallelism map, and write the plan to `.workspace/shared/plans/`. Reading, searching, `kg query`/`blast`, and read-only git NEVER pause for permission, and neither does writing that plan file. The **only** gate is step 6: presenting the plan for approval. The real downstream side effects — implementation `Write`/`Edit`, `git add`/`commit`/`push`, PR create/merge — are gated later by `/orchestrate` and `/ward`, not here. See [lore/autonomy.md](../../lore/autonomy.md).
 
+## Global Constraints — inherited by every task
+
+Open the plan with a **Global Constraints** section in the header, before Task 1. Copy each project-wide requirement from the spec **verbatim — one line each**: version floors, dependency limits, naming/copy rules, platform requirements — anything that binds the whole feature rather than a single task. Lift the spec's words; don't paraphrase or re-derive.
+
+Every task **implicitly inherits** this section — say so in the plan, so each dispatched subagent carries the constraints without re-deriving them from the spec:
+
+```
+## Global Constraints
+_Every task inherits these — do not restate per task._
+- <requirement copied verbatim from the spec>
+- <requirement copied verbatim from the spec>
+```
+
 ## Task Format
 
 Each task in the plan:
@@ -52,6 +65,14 @@ Parallel: YES | NO (depends on Task M)
 - [ ] Run test: verify PASS
 - [ ] Commit: `git commit -m "feat: <description>"`
 ```
+
+## Task Right-Sizing
+
+A task is the **smallest unit that carries its own test cycle and is worth a fresh reviewer's gate** — no finer. Size each one by that rule:
+
+- **Fold in** setup, scaffolding, and docs — attach them to the task whose deliverable needs them instead of spinning them into standalone tasks.
+- **Split** only where a reviewer could accept one task while rejecting its neighbor. If two pieces always pass or fail together, they are one task.
+- Every task ends with an **independently testable deliverable** — the RED→GREEN cycle in the Task Format above is the proof it stands on its own.
 
 ## Parallelism Rules
 

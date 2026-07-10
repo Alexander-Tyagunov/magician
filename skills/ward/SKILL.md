@@ -28,8 +28,8 @@ Once the spec is settled — the failing test you can write, or the plan task in
 
 ## The Law
 
-1. **RED** — Write a failing test describing exactly one behavior. Run it. Confirm it fails with a meaningful message (not a compile error).
-2. **GREEN** — Write the minimum code to pass. Ugly is fine. Add no untested logic.
+1. **RED** — Write a failing test describing exactly one behavior. Run it and read the output: it must fail **for the reason under test** — your assertion, with a meaningful message, not a compile error, missing import, or typo. A failure for the wrong reason is a false RED → back to RED (fix the test, re-run), never forward to GREEN. If implementation code for this behavior already exists (written before its test), delete it and re-derive it from the test — code the test never drove is unproven.
+2. **GREEN** — Write the minimum code to pass. Ugly is fine. Add no untested logic. Re-run the same test; RED→GREEN is proven by the two runs you watched — the real RED output, then GREEN — not by "it should pass" ([lore/verification.md](../../lore/verification.md)).
 3. **REFACTOR** — Clean up implementation and tests. No behavior change. All tests stay green.
 4. Repeat for the next behavior.
 

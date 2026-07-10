@@ -9,6 +9,18 @@ mkdir -p "$PLUGIN_DATA/chronicle"
 
 date -u +"%Y-%m-%dT%H:%M:%SZ" > "$PLUGIN_DATA/session-start-time.txt"
 
+# SessionStart input carries a `source` (startup | resume | compact | clear). On a post-compaction /
+# resume start the agent may have lost magician's conventions, so we re-surface core doctrine below.
+SS_SOURCE=""
+if [ ! -t 0 ]; then
+  SS_INPUT=$(cat 2>/dev/null || true)
+  SS_SOURCE=$(printf '%s' "${SS_INPUT:-}" | python3 -c "import json,sys
+try:
+    print((json.load(sys.stdin).get('source') or '').strip())
+except Exception:
+    print('')" 2>/dev/null || echo "")
+fi
+
 if [ -t 2 ] || [ "${FORCE_COLOR:-}" = "1" ]; then
   BLUE='\033[0;34m'; YELLOW='\033[0;33m'; GREEN='\033[0;32m'
   PURPLE='\033[0;35m'; RED='\033[0;31m'; CYAN='\033[0;36m'
@@ -286,9 +298,19 @@ if [ -n "$UI_NOTE" ]; then
   printf '%b\n' "${PURPLE}✦ Magician CLI UI enabled${RESET} — a live status bar (context %, rot warning, token-flow sparkline, active skill). Configure with ${GREEN}/statusline${RESET} (or ${GREEN}magician-ui set context,rot${RESET}); turn it off with ${GREEN}magician-ui disable${RESET}." >&2
 fi
 
+# Post-compaction / resume: re-anchor on magician conventions the compaction may have dropped.
+DOCTRINE_NOTE=""
+case "$SS_SOURCE" in
+  compact|resume)
+    DOCTRINE_NOTE="
+
+[MAGICIAN — post-${SS_SOURCE} re-anchor] Context was just ${SS_SOURCE}d; re-load magician's working conventions before continuing: (1) if the status bar shows Auto, reads/searches/tests proceed without asking — do NOT slip back into per-tool permission requests; gate only on writes/commits/push/PR/deploys. (2) Ground via the knowledge graph (kg query/blast/neighbors) before broad greps or whole-file reads. (3) Jira/Confluence go through the bundled MCP-free jira/confluence CLIs, never an ambient MCP. (4) Approve the plan once, then execute autonomously (lore/autonomy.md). (5) No 'done/fixed/passing' claim without fresh verification evidence (lore/verification.md)."
+    ;;
+esac
+
 CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the user by printing this block inside a code fence verbatim, then proceed to help them:
 ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
-${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}"
+${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"

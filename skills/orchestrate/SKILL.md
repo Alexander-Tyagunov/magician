@@ -1,7 +1,7 @@
 ---
 name: orchestrate
 description: Drives full multi-agent implementation from a blueprint — fans out parallel-safe tasks into waves, runs sequential tasks in order, resolves conflicts, then verifies. Use to execute an approved plan.
-allowed-tools: Bash(git status:*), Bash(git log:*), Task, AskUserQuestion
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Task, AskUserQuestion
 argument-hint: [plan-file]
 ---
 
@@ -26,7 +26,7 @@ Scale `/effort` to plan size (high/xhigh for large plans). For dispatched implem
 
 1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan via **AskUserQuestion** (one option per candidate plan file, most-recent first); **end your turn at the call** and proceed with the chosen plan.
 2. **Build the execution graph** — group PARALLEL-annotated tasks into waves; SEQUENTIAL tasks are singletons that run in order.
-3. **Execute wave by wave.** For each parallel wave, dispatch all its tasks in ONE message (multiple `Task` calls) so they run concurrently. Wait for the whole wave before the next. Run sequential tasks one at a time.
+3. **Execute wave by wave.** For each parallel wave, dispatch all its tasks in ONE message (multiple `Task` calls) so they run concurrently. Wait for the whole wave before the next. Run sequential tasks one at a time. As each task's implementer returns, run the **Per-task quality loop** (below) before you mark that task done — completion is confirmed from the VCS diff, not the agent's report.
 4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session capsule so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).
 5. **After all waves** — run /certify. If it fails, fix and re-certify (bounded evaluator-optimizer loop) before reporting complete — never report done on a red certify.
 6. **Report** — completed tasks and any blockers.
@@ -50,9 +50,20 @@ Return: STATUS: DONE | BLOCKED | NEEDS_CONTEXT, then a one-paragraph summary of 
 
 ## Handle results
 
-- **DONE** — record it.
+- **DONE** — a claim, not proof: run the **Per-task quality loop** (below) and confirm the change from the VCS diff before recording it.
 - **NEEDS_CONTEXT** — this is a context-completeness bug in the spawn prompt. Add the missing input and re-dispatch; don't guess for the agent.
 - **BLOCKED** — assess the blocker, re-dispatch with more context, or escalate.
+
+## Per-task quality loop — review before "done"
+
+A subagent reporting `STATUS: DONE` is a claim, not evidence. Before you mark any task complete, confirm it from the VCS diff and put it through a **two-stage review** — see [lore/verification.md](../../lore/verification.md).
+
+1. **Confirm from the diff, not the report.** Run `git show`/`git diff` for the task's commit(s) and read the actual change. The diff is the evidence a task landed — a subagent's "success" is not. If the diff is empty, or doesn't match the deliverable, the task is not done: re-dispatch with the gap named. (These reads are read-only git and never pause — see **Autonomy** above.)
+2. **Stage 1 — spec compliance.** Against the task's full text and `.workspace/shared/specs/<feature>.md`, does the change do *exactly* what the task specified — no more, no less? Flag missing requirements, scope creep, and silent deviations.
+3. **Stage 2 — code quality.** Judge correctness, simplicity, and tests: does it hold on edge cases, is it the simplest thing that works, and are the tests real (proven RED→GREEN) and green? Prefer a fresh reviewer subagent (or [`/scrutinize`](../scrutinize/SKILL.md)) so no author bias carries over.
+4. **Fix, then re-review.** For any **Critical** or **Important** finding, dispatch a *fresh* fix-subagent — self-contained prompt, same context contract — to resolve it, then re-run this loop on the new diff. Minor findings can be recorded and batched. A task counts as DONE only once its diff is clean on both stages.
+
+**Keep moving.** Run this loop task-to-task without pausing to ask the human "should I continue?" — advancing through reviewed-and-clean tasks is exactly the autonomy the approved blueprint bought. Stop only on an unresolvable **BLOCKER**, a **merge conflict** (see **Conflict detection**), or all tasks done.
 
 ## Conflict detection
 

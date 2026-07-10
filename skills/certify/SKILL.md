@@ -73,4 +73,6 @@ Use the **Monitor tool** to tail the dev-server output and browser console in th
 
 ## Completion Signal
 
+Before emitting this signal, apply the verification gate ([lore/verification.md](../../lore/verification.md)): no "passing / clean / done" claim without the actual command output read **this run** — a remembered result or "should pass" doesn't count. /certify **is** the runnable suite; that discipline is the reason it exists. The evidence summary must reflect output you read from this pass, not extrapolation.
+
 "Certify complete. Evidence: [summary]. Ready for /scrutinize (code review) or /seal (ship)."

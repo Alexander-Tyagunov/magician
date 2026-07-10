@@ -33,8 +33,11 @@ Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomous
 
 ### Phase 2: Evidence Gathering
 5. **Read relevant code** — only the code related to the hypothesis. If a knowledge-graph index exists, `kg query "<symptom/error/symbol>"` to jump straight to the relevant `file:line` (and `kg neighbors`/`kg blast` to see what interacts with it) instead of broad greps — then read just those ranges.
+   - **Read the error and stack trace in full first** — before opening any file. The trace usually names the failing `file:line` and often the fix itself; the top frame shows where it blew up, but the first frame in your own code is usually the real culprit. Feed that symbol straight into `kg query`.
 6. **Add targeted logging/assertions** if needed — not scattered throughout
+   - In a **multi-component system** (CI → build → sign, api → service → db), instrument each component boundary — log what enters and exits every hop — and run the reproduction **once** to locate exactly where the flow breaks before changing anything. Fix where it actually breaks, not the first place you suspect.
 7. **Run the failing case** — capture exact output
+   - **Reproduce it consistently before proposing a fix** — pin down the exact steps or inputs that trigger it every time. A bug you can't reproduce on demand isn't understood yet, and a fix for it is a guess you can't verify.
    - For an intermittent or async bug, run the reproduction under the **Monitor tool** so the failing event (a 5xx, a crash, a specific log line) streams back the moment it happens instead of tailing by hand.
    - If the bug involves an unfamiliar error, library, or framework behavior, use `/magic` (context7 + web) to gather external evidence — known issues, version-specific bugs, correct API usage — and fold it into the hypothesis ranking in Phase 3.
 
@@ -45,6 +48,7 @@ Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomous
 
 ### Phase 4: Fix and Verify
 11. **Implement the fix** for the confirmed root cause
+    - **Re-run the ORIGINAL failing symptom** — the exact command or steps from Phase 1 — and confirm it no longer reproduces. A fix isn't done until the symptom you started with is re-run and gone; code changed is not the same as bug fixed. See [lore/verification.md](../../lore/verification.md).
 12. **Write a regression test** that would have caught this bug
 13. **Run full test suite** — no new failures
 14. **Commit** with message explaining root cause: `fix: <root cause>, not just symptom` — in auto mode, confirm with the user before committing (the commit is a side effect).

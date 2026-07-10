@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] — 2026-07-10
+
+**Reliability discipline — evidence over claims, diff-verified orchestration, sharper debugging & plans.** A hardening pass so skills that finish work can't talk themselves into "done" without proof.
+
+### Added
+- **`lore/verification.md`** — a magician-native *evidence over claims* discipline: no "done/fixed/passing" without a verification command run **this turn** whose output you read; an evidence table (incl. **"a subagent's task is done → the VCS diff shows it, NOT the agent's success report"**) plus red-flag and rationalization tables. Wired into `/certify`, `/seal`, `/ward`, `/unravel`, `/orchestrate`.
+- **Post-compaction re-anchor** — on a `compact`/`resume` SessionStart, magician re-surfaces its core doctrine (auto mode, kg-first, MCP-free CLIs, plan-then-execute, verification) so conventions survive a context compaction.
+
+### Changed
+- **`/orchestrate` — per-task quality loop:** each returned task is confirmed from the **VCS diff** (not the subagent's report) and put through a two-stage review — spec-compliance then code-quality — with a fresh fix-subagent on Critical/Important findings and a re-review, running task-to-task without per-task check-ins (`Bash(git diff/show)` added to its allow-list).
+- **`/unravel` — debugging technique:** read the error/stack trace in full first (it usually names the `file:line` and often the fix), reproduce consistently before proposing a fix, and in multi-component systems instrument each boundary and run once to locate the break before changing anything; a fix isn't done until the original symptom is re-run and gone.
+- **`/ward` — TDD hardening:** the RED test must fail *for the reason under test* (a wrong-reason failure is a false RED → back to RED); delete implementation written before its test and re-derive from the test.
+- **`/blueprint` — plan hardening:** a verbatim **Global Constraints** header every task inherits (subagents carry project-wide rules without re-deriving) + a task right-sizing heuristic (smallest unit worth its own test cycle and a reviewer's gate).
+
 ## [4.4.0] — 2026-07-10
 
 **Real autonomy: turn on Claude Code *auto mode*, and fix the permission/gate UX.** A live run was still prompting for everything (skills, tests, MCP, branch-compares) despite the plugin claiming "autonomous execution." Root cause: a plugin can't switch the permission mode from a skill, and the session sat in `acceptEdits` — which only auto-approves file edits, so every Bash/MCP/skill call still prompts. The fix is to enable Claude Code's **auto mode** and sharpen the gates.
