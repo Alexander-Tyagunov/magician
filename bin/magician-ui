@@ -41,27 +41,77 @@ READONLY_ALLOW = [
     "Bash(git shortlog:*)", "Bash(git for-each-ref:*)", "Bash(git show-ref:*)", "Bash(git ls-tree:*)",
     "Bash(git cat-file:*)", "Bash(git merge-base:*)", "Bash(git name-rev:*)", "Bash(git worktree list:*)",
     "Bash(git stash list:*)",
-    "Bash(kg:*)", "Bash(jira:*)", "Bash(confluence:*)", "Bash(ctx:*)", "Bash(magician-scan:*)",
+    "Bash(kg:*)", "Bash(ctx:*)", "Bash(magician-scan:*)",
+    # Jira/Confluence: READ subcommands auto-approve; WRITES (create/comment/transition/link/update)
+    # are intentionally NOT here so they gate in every mode. `raw GET` reads; `raw POST/PUT/DELETE` gate.
+    "Bash(jira get:*)", "Bash(jira search:*)", "Bash(jira myself:*)", "Bash(jira mine:*)",
+    "Bash(jira sprint:*)", "Bash(jira comments:*)", "Bash(jira board:*)", "Bash(jira transitions:*)",
+    "Bash(jira url:*)", "Bash(jira raw GET:*)",
+    "Bash(confluence whoami:*)", "Bash(confluence get:*)", "Bash(confluence search:*)", "Bash(confluence raw GET:*)",
+    # Test / typecheck / lint / build runners (the /certify + /ward loop) — no source mutation.
+    "Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run lint:*)", "Bash(npm run typecheck:*)",
+    "Bash(npm run build:*)", "Bash(npx tsc:*)", "Bash(yarn test:*)", "Bash(yarn lint:*)",
+    "Bash(pnpm test:*)", "Bash(pnpm lint:*)", "Bash(jest:*)", "Bash(vitest:*)", "Bash(pytest:*)",
+    "Bash(go test:*)", "Bash(cargo test:*)",
     "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh pr diff:*)", "Bash(gh pr list:*)",
     "Bash(gh run view:*)", "Bash(gh issue view:*)", "Bash(gh issue list:*)", "Bash(gh repo view:*)",
     "Bash(gh search:*)",
 ]
 
+# Broad grants magician shipped in earlier versions that we now REPLACE with narrower rules — stripped
+# from settings on merge so jira/confluence writes stop being blanket-approved.
+STALE_ALLOW = ["Bash(jira:*)", "Bash(confluence:*)"]
+
 
 def _merge_readonly_allow(d):
-    """Add magician's read-only allow entries to permissions.allow (dedup; never remove user rules)."""
+    """Add magician's read-only allow entries to permissions.allow (dedup; never remove user rules).
+    Also strips STALE_ALLOW broad grants magician itself shipped earlier (e.g. Bash(jira:*)) so writes
+    stop being blanket-approved."""
     perms = d.setdefault("permissions", {})
     if not isinstance(perms, dict):
         return
     allow = perms.get("allow")
     if not isinstance(allow, list):
         allow = []
+    stale = set(STALE_ALLOW)
+    allow = [r for r in allow if r not in stale]
     have = set(allow)
     for r in READONLY_ALLOW:
         if r not in have:
             allow.append(r)
             have.add(r)
     perms["allow"] = allow
+
+
+# ---------------- auto mode (Claude Code classifier-gated autonomy) ----------------
+# Auto mode is the real "reads/aligned actions proceed, writes/deploys/force-push/destructive gate"
+# mechanism (a classifier reviews each action; honors 'don't push'-style boundaries you state). On
+# Vertex/Bedrock/Foundry it is OFF until CLAUDE_CODE_ENABLE_AUTO_MODE=1 is in the settings `env` block.
+# A plugin CANNOT switch the permission mode itself — it can only set this up; the user restarts into it.
+AUTOMODE_ENV_KEY = "CLAUDE_CODE_ENABLE_AUTO_MODE"
+
+
+def _set_automode_env(d):
+    env = d.get("env")
+    if not isinstance(env, dict):
+        env = {}
+    env[AUTOMODE_ENV_KEY] = "1"
+    d["env"] = env
+
+
+def _set_default_auto(d):
+    perms = d.setdefault("permissions", {})
+    if isinstance(perms, dict):
+        perms["defaultMode"] = "auto"
+
+
+def _clear_automode(d):
+    env = d.get("env")
+    if isinstance(env, dict):
+        env.pop(AUTOMODE_ENV_KEY, None)
+    perms = d.get("permissions")
+    if isinstance(perms, dict) and perms.get("defaultMode") == "auto":
+        perms["defaultMode"] = "acceptEdits"
 
 
 def _remove_readonly_allow(d):
@@ -227,7 +277,8 @@ def cmd_status(_args):
     print(f"components:  {', '.join(comps)}")
     print(f"installed:   {INSTALLED} {'(present)' if os.path.exists(INSTALLED) else '(missing)'}")
     print(f"settings:    statusLine {'wired to magician' if wired else 'not wired to magician'}")
-    print(f"read-only allow: {cfg.get('allow', 'not set')} (autonomous auto-approve of reads/searches/read-only git)")
+    print(f"read-only allow: {cfg.get('allow', 'not set')} (auto-approve reads/searches/read-only git + jira·confluence reads + tests)")
+    print(f"auto mode:   {cfg.get('automode', 'not set')} (Claude Code classifier: reads/aligned actions auto, writes/deploys/force-push gate — `magician-ui automode`)")
 
 
 def cmd_enable(args):
@@ -292,9 +343,27 @@ def cmd_reconcile(_args):
                 _edit_settings(_merge_readonly_allow)
                 cfg["allow"] = "on"; cfg["allowVersion"] = ver
                 save_cfg(cfg)
-                print("[MAGICIAN] Enabled read-only auto-approve (Read/Grep/Glob/LS + read-only git + "
-                      "kg/jira/confluence/ctx + gh reads) so autonomous runs don't prompt per file — "
-                      "writes, commit/push, PRs, and deletes still ask. Turn off: `magician-ui allow --off`.")
+                print("[MAGICIAN] Enabled read-only auto-approve (Read/Grep/Glob/LS + read-only git + kg/ctx + "
+                      "jira/confluence READS + test/lint/build runners + gh reads) so autonomous runs don't prompt "
+                      "per file — jira/confluence writes, commit/push, PRs, and deletes still ask. Off: `magician-ui allow --off`.")
+        except Exception:
+            pass
+        # Auto mode: make it AVAILABLE (set the enable env var — harmless if the account/provider doesn't
+        # support it). Do NOT flip defaultMode automatically — that's opt-in via `magician-ui automode`.
+        try:
+            am = cfg.get("automode")
+            if am != "off" and cfg.get("automodeVersion") != ver:
+                if am == "on":
+                    _edit_settings(lambda d: (_set_automode_env(d), _set_default_auto(d)))
+                else:
+                    _edit_settings(_set_automode_env)
+                    cfg["automode"] = "available"
+                cfg["automodeVersion"] = ver
+                save_cfg(cfg)
+                print("[MAGICIAN] Claude Code AUTO mode is available (Shift+Tab to it): a classifier auto-approves "
+                      "reads + request-aligned actions and gates writes/deploys/force-push/destructive ops — the real "
+                      "'reads proceed, writes gate' autonomy this plugin is built around. Make it the default with "
+                      "`magician-ui automode`, then RESTART. Off: `magician-ui automode --off`.")
         except Exception:
             pass
         if st == "disabled":
@@ -370,17 +439,53 @@ def cmd_allow(args):
         _edit_settings(_merge_readonly_allow)
         cfg["allow"] = "on"; cfg["allowVersion"] = _plugin_version()
         save_cfg(cfg)
-        print("Read-only auto-approve ON: Read/Grep/Glob/LS + read-only git + kg/jira/confluence/ctx + gh reads "
-              "no longer prompt. Writes, commit/push, PRs, and deletes still ask. Off: `magician-ui allow --off`.")
+        print("Read-only auto-approve ON: Read/Grep/Glob/LS + read-only git + kg/ctx + jira/confluence READS "
+              "+ test/lint/build runners + gh reads no longer prompt. Jira/Confluence writes, commit/push, PRs, "
+              "and deletes still ask. Off: `magician-ui allow --off`.")
+
+
+def cmd_automode(args):
+    """Enable Claude Code AUTO mode — the real 'reads/aligned actions proceed, writes/deploys/force-push/
+    destructive gate' autonomy (a classifier reviews each action and honors 'don't push'-style boundaries
+    you state in chat). Sets CLAUDE_CODE_ENABLE_AUTO_MODE=1 (required on Vertex/Bedrock/Foundry) and
+    permissions.defaultMode=auto so NEW sessions start in auto mode. `--available` sets only the env var
+    (auto shows up in Shift+Tab but isn't the default). `--off` reverts (env var removed, defaultMode→acceptEdits).
+    NOTE: a plugin can't switch the mode of a running session — restart Claude Code for it to take effect."""
+    off = any(a in ("--off", "off", "disable", "remove") for a in args)
+    env_only = any(a in ("--available", "--env-only", "available") for a in args)
+    cfg = load_cfg()
+    if off:
+        _edit_settings(_clear_automode)
+        cfg["automode"] = "off"; cfg["automodeVersion"] = _plugin_version()
+        save_cfg(cfg)
+        print("Auto mode disabled — removed CLAUDE_CODE_ENABLE_AUTO_MODE and reset defaultMode to acceptEdits. "
+              "Re-enable: `magician-ui automode`.")
+        return
+    if env_only:
+        _edit_settings(_set_automode_env)
+        cfg["automode"] = "available"; cfg["automodeVersion"] = _plugin_version()
+        save_cfg(cfg)
+        print("Auto mode is now AVAILABLE — Shift+Tab to it in a new session. Make it the default with "
+              "`magician-ui automode` (then restart).")
+        return
+    _edit_settings(lambda d: (_set_automode_env(d), _set_default_auto(d)))
+    cfg["automode"] = "on"; cfg["automodeVersion"] = _plugin_version()
+    save_cfg(cfg)
+    print("Auto mode ENABLED (defaultMode=auto + CLAUDE_CODE_ENABLE_AUTO_MODE=1). RESTART Claude Code to enter it. "
+          "Then reads/fetches/tests/skills run without prompts and the classifier gates writes/deploys/force-push/"
+          "destructive ops — say 'don't push' to add a boundary. Requires a supported model (Opus 4.7+ / Sonnet 5) "
+          "and, on Team/Enterprise, org-owner enablement. If the mode reads 'Manual' after restart, auto mode "
+          "isn't available for your account — run `magician-ui automode --off` to return to acceptEdits.")
 
 
 CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
-        "disable": cmd_disable, "reconcile": cmd_reconcile, "allow": cmd_allow}
+        "disable": cmd_disable, "reconcile": cmd_reconcile, "allow": cmd_allow,
+        "automode": cmd_automode}
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
-        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]}")
+        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]|automode [--off|--available]}")
         print(f"components: {', '.join(ALL)}")
         return
     cmd = sys.argv[1]

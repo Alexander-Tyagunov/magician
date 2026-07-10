@@ -1,7 +1,7 @@
 ---
 name: unravel
 description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use whenever a problem is reported or something misbehaves — "I have a bug / it's broken / not working / crashing", an error/exception/stack trace, a regression, a test failure, or a production issue/outage when the app is deployed. Grounds the investigation with /magic + the knowledge graph (kg query/blast) for comprehensive root-cause research.
-allowed-tools: Read, Grep, Glob, Bash, Monitor
+allowed-tools: Read, Grep, Glob, Bash, Monitor, AskUserQuestion
 argument-hint: <bug or error description>
 ---
 
@@ -21,7 +21,11 @@ State your hypothesis and evidence BEFORE reading any code or making any change.
 1. **Describe the symptom** — exact error message, stack trace, reproduction steps
 2. **State what you believe is wrong** — one sentence: "I believe X is failing because Y"
 3. **State what evidence would confirm or refute it**
-4. Ask: "Does this hypothesis match what you're seeing, or do you have a different theory?" **End your turn. Do not read any code or make any change until the user agrees or redirects.**
+4. **Hypothesis gate (AskUserQuestion).** Put the hypothesis to the user via **AskUserQuestion** (never bare prose) — "Does this hypothesis match what you're seeing?":
+   - **Matches — investigate** *(default)* — the hypothesis fits; proceed to Phase 2 and run Phases 2–4 autonomously.
+   - **Different theory** — you have another explanation; share it and I'll re-state the hypothesis before touching anything.
+
+   **End your turn at the tool call. Do not read any code or make any change until the user picks or redirects.** Treat a free-form "yes / matches / looks right" as **Matches — investigate**.
 
 ### Autonomy — approve the plan, then run
 

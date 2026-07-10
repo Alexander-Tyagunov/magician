@@ -1,7 +1,7 @@
 ---
 name: autopsy
 description: Blameless post-mortem / RCA — gathers facts, reconstructs a timeline, runs 5-Whys, defines action items, writes the post-mortem file and commits it. Use after an incident or outage.
-allowed-tools: Bash(git log:*), Bash(git add:*), Bash(git commit:*), Bash(gh run list:*), Write, Read
+allowed-tools: Bash(git log:*), Bash(git add:*), Bash(git commit:*), Bash(gh run list:*), Write, Read, AskUserQuestion
 disable-model-invocation: true
 argument-hint: [incident name or description]
 ---
@@ -99,6 +99,13 @@ Save to `.workspace/shared/postmortems/YYYY-MM-DD-<incident-name>.md`:
 ```
 
 ### Phase 6: Commit
+
+Show the drafted post-mortem, then gate the commit with the **AskUserQuestion** tool (not a bare sentence). Frame it "Post-mortem ready — commit it?" with options:
+- **Commit it** — stage and commit the post-mortem
+- **Revise** — edit the timeline / root cause / action items first
+- **Skip commit** — leave the file uncommitted
+
+**End your turn at the AskUserQuestion call.** Treat any free-form "yes / looks good / approved" as **Commit it**. Only run `git add`/`git commit` on approval:
 ```bash
 git add .workspace/shared/postmortems/
 git commit -m "docs: add post-mortem for <incident>"
@@ -106,7 +113,11 @@ git commit -m "docs: add post-mortem for <incident>"
 
 ### Phase 7: Remember the Incident (optional)
 
-Offer to remember this incident in the global reference store via `/chronicle`: one line capturing **what + date + postmortem path**. Only do this with explicit user confirmation.
+Offer to remember this incident in the global reference store via `/chronicle` — one line capturing **what + date + postmortem path**. Ask with the **AskUserQuestion** tool (not a bare sentence), then end your turn:
+- **Remember it** — record the one-line entry via `/chronicle`
+- **Skip** — don't record it
+
+Only write via `/chronicle` on **Remember it** (or a free-form "yes"). On **Skip**, stop here.
 
 ## Completion Signal
 

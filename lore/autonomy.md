@@ -18,13 +18,31 @@ don't push the cost onto the owner. Grounded in the autonomy-slider practice fro
 4. **Execute autonomously.** Run the whole plan without stopping to ask permission for each read,
    grep, or git status. Re-gate **only** on the defined side effects.
 
-## Don't make reads a gate
+## The mechanism: Claude Code **auto mode** (a skill can't switch modes — magician configures it)
 
-Reading, searching, and read-only git are **not** decisions — they must not prompt. Magician
-auto-approves the read-only surface (Read/Grep/Glob/LS + read-only git + `kg`/`jira`/`confluence`/`ctx`
-+ `gh` reads) via `magician-ui allow` (applied on install/upgrade, opt-out with `magician-ui allow
---off`). If a repo isn't set to allow reads, enabling it is step 0 of autonomous execution — not a
-reason to hand the owner a per-file prompt stream.
+Steps 1–4 are a *posture*, not enforcement. What actually stops the prompts is Claude Code's
+**auto mode**: a classifier reviews each action, auto-approves reads + request-aligned work, and **gates**
+writes, deploys, force-push, mass-deletion, and other escalations — honoring boundaries you state in chat
+("don't push until I review"). That is exactly "reads proceed, writes gate."
+
+A plugin **cannot** switch the permission mode of a running session — mode is user-set (Shift+Tab),
+`--permission-mode`, or `defaultMode` in settings. So magician *configures* auto mode and you **restart** into it:
+
+- `magician-ui automode` sets `permissions.defaultMode: "auto"` **and** (required on Vertex/Bedrock/Foundry)
+  `env.CLAUDE_CODE_ENABLE_AUTO_MODE=1` in `~/.claude/settings.json`. Restart → sessions start in auto mode.
+- Requires a supported model (Opus 4.7+/Sonnet 5) and, on Team/Enterprise, org-owner enablement. If the
+  status bar still shows **Manual** after restart, auto mode isn't available for the account → `automode --off`.
+- `acceptEdits` mode only auto-approves file edits + `mkdir/mv/cp/sed`; **every other Bash, MCP, and skill
+  call still prompts.** A run stuck in acceptEdits *feels* un-autonomous because it is not auto mode.
+
+## Don't make reads a gate (the acceptEdits fallback)
+
+When auto mode isn't on, reading/searching/read-only git still must not prompt. Magician auto-approves a
+read-only surface (Read/Grep/Glob/LS + read-only git + `kg`/`ctx` + **jira/confluence READS** + test/lint/build
+runners + `gh` reads) via `magician-ui allow` (applied on install/upgrade, opt-out `magician-ui allow --off`).
+Jira/Confluence **writes** are deliberately *not* allowed — they gate. In auto mode the classifier supersedes
+this list (and drops broad interpreter/package-manager allow rules by design), so auto mode is strictly better;
+the allow-list is the floor for acceptEdits/Manual sessions.
 
 **Jira/Confluence: use the bundled MCP-free CLIs, never an ambient MCP.** Magician ships `jira` and
 `confluence` HTTP CLIs on PATH — already allowed, with a shared throttle/cache and bulk ops, so they

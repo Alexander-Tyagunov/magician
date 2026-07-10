@@ -37,7 +37,7 @@ Ask one clarifying question. End your turn. Wait for the answer. Repeat until yo
 
 ---
 ### GATE 0 — Design Mode
-Present the design mode options as its own message (see Design Mode section below). End your turn. **Do not propose approaches until the user picks a mode.**
+Present the design mode options via `AskUserQuestion` (see Design Mode section below). End your turn. **Do not propose approaches until the user picks a mode.**
 
 If visual mode chosen: read [references/visual-companion.md](references/visual-companion.md), run permission setup, start the companion server, open the browser, and tell user the URL. **Then ask once (AskUserQuestion): "Want an in-prototype chat companion?" — a ✦ bubble inside the prototype to talk to this session ("move the title up") without leaving the design. If yes, write `{"chat":true}` to `$VC_STATE/companion.json` so it renders** (default: off). Then proceed to GATE 1.
 
@@ -48,7 +48,7 @@ Present 2–3 approaches.
 
 **If visual mode:** write the approach comparison screen (`$VC_SCREENS/v1/approaches.html` — see [references/visual-companion.md](references/visual-companion.md)), tell user the URL and a one-sentence summary of each approach. End your turn. On the next turn read new events from `$VC_STATE/events.jsonl` (by cursor — see Companion live loop) for their click choice plus their terminal message.
 
-**If text mode:** present the approaches in text. End with: *"Which approach would you like to go with?"* End your turn.
+**If text mode:** present the approaches in text, then call `AskUserQuestion` — *"Which approach would you like to go with?"* — with one option per approach (2–3 concrete options). End your turn at the call; act on the chosen approach.
 
 **Do not present architecture until the user confirms an approach.**
 
@@ -59,7 +59,7 @@ Present the architecture for the chosen approach only.
 
 **If visual mode:** write the architecture diagram screen (`$VC_SCREENS/v1/architecture.html` — see [references/visual-companion.md](references/visual-companion.md)). Tell user the URL and describe the diagram in 2 sentences. End your turn. Wait for their feedback.
 
-**If text mode:** present the architecture (file structure, data flow, component responsibilities). End with: *"Does this architecture make sense, or do you want to change anything?"* End your turn.
+**If text mode:** present the architecture (file structure, data flow, component responsibilities), then call `AskUserQuestion` — *"Does this architecture work?"* — with options **Approve** / **Request changes**. End your turn at the call; treat free-form feedback (e.g. "change X") as Request changes.
 
 Iterate on changes if requested. Only advance when user explicitly approves.
 
@@ -70,7 +70,7 @@ If the feature has a UI, this gate produces a **design system**, not a one-off m
 
 **1. Seed + three distinct directions (variation).** Silently scan existing CSS/brand assets/README/audience for tone. Derive a per-run **style seed** (`openssl rand -hex 4`, else `date +%s`). Using the seed, pick **3 genuinely distinct archetypes** from the design-tokens.md pool — they must differ on **≥2 axes** (font *family*, layout *skeleton*, density, base personality). **NEVER default to** Inter/Roboto/system fonts, purple-on-white, Space Grotesk, or "clean modern SaaS."
    - **Visual mode:** write `$VC_SCREENS/v1/directions.html` — three cards, each a representative layout rendered in its OWN token set, each a `data-choice`. Give the URL + a one-line description of each. End your turn; next turn read `$VC_STATE/events.jsonl` (or `GET …/events.json`) for their pick.
-   - **Text mode:** describe the 3 directions; ask which. End your turn.
+   - **Text mode:** describe the 3 directions, then call `AskUserQuestion` — *"Which direction?"* — with one option per direction (3 concrete options). End your turn at the call.
 
 **2. Target viewports (responsive).** `AskUserQuestion` (multiSelect): *"Which viewports should this design target?"* → **Phone / Tablet / Desktop / Wide** (default Phone + Desktop). Record the choice; the mockup will render the SAME design across those breakpoints.
 
@@ -80,7 +80,7 @@ If the feature has a UI, this gate produces a **design system**, not a one-off m
 
 **4. Present the mockup — ONE design, light+dark, responsive.**
    - **Visual mode:** write `$VC_SCREENS/v1/mockup.css` (imports the tokens; components reference **only** `var(--semantic-*)` — never a primitive or raw hex) then `$VC_SCREENS/v1/mockup.html` (no `<style>` blocks). Ship a `[data-theme]` **light/dark toggle** so the user flips themes on the SAME screen (that's how they see it's one design, not two). Make it **responsive** across the chosen breakpoints (mobile-first + `@media (min-width:…)`). Apply the quality rules + multi-viewport preview harness in [references/visual-companion.md](references/visual-companion.md); preview each chosen viewport. Give the URL. End your turn; iterate with paired naming (`mockup-v2.css`+`.html`). Capture a Playwright screenshot **per theme** when approved.
-   - **Text mode:** describe the layout, the token direction, how it adapts across the chosen viewports, and that light/dark share one design. Ask: *"Does this direction look right?"* End your turn.
+   - **Text mode:** describe the layout, the token direction, how it adapts across the chosen viewports, and that light/dark share one design. Then call `AskUserQuestion` — *"Does this direction look right?"* — with options **Approve** / **Request changes**. End your turn at the call; treat free-form feedback as Request changes.
 
 Self-check before serving: grep the mockup for raw `#hex`/`rgb(` outside the token blocks — if found, a component is bypassing the tokens (breaks theming/variation); fix it.
 
@@ -120,11 +120,7 @@ Do **not** write a spec file. Do **not** invoke writing-plans or blueprint.
 
 ### GATE 4 — Spec Approval
 
-Write the full spec to `.workspace/shared/specs/YYYY-MM-DD-<feature>.md` using the format in [references/spec-format.md](references/spec-format.md). Then say:
-
-> "Spec written to `[path]`. Please review it and let me know if anything needs to change before we lock it in."
-
-End your turn. Wait for explicit approval — "yes", "looks good", "approved", etc. Do NOT commit until this arrives.
+Write the full spec to `.workspace/shared/specs/YYYY-MM-DD-<feature>.md` using the format in [references/spec-format.md](references/spec-format.md). Tell the user the spec path, then call `AskUserQuestion` — *"Spec ready — lock it in?"* — with options **Approve** / **Request changes**. End your turn at the call. Treat **Approve** (or any free-form "yes / looks good / approved") as approval; treat **Request changes** or specific feedback as revise. Do NOT commit until the user approves.
 
 ---
 ### Step 3 — Commit and close
@@ -140,21 +136,16 @@ Stop the visual companion if running. Then say: *"Spec approved and committed. R
 
 ## Design Mode
 
-At GATE 0, send this message — and nothing else. Do not add clarifying questions. Do not preview approaches. Just this:
+At GATE 0, call `AskUserQuestion` — question *"How would you like to work through the design?"* — offering exactly these four options and nothing else (no clarifying questions, no approach preview):
 
-> **How would you like to work through the design?**
->
-> **A — Visual + Strict** — I open a design companion in your browser. I show approach options, architecture diagrams, and UI mockups as interactive screens you can click. Approved designs become binding implementation targets — ward tasks must match them exactly.
->
-> **B — Visual + Reference** — Same visual companion, but designs are advisory. Implementation can deviate with good reason.
->
-> **C — Text only** — Skip the browser companion. Everything happens here in the terminal.
->
-> **D — Design Only (Visual)** — Full visual dialogue (approaches → architecture → mockup) with no spec and no implementation plan. Artifacts saved to `.workspace/shared/mockups/YYYY-MM-DD-<feature>/` for reuse across sessions.
+- **Visual + Strict** — I open a design companion in your browser. I show approach options, architecture diagrams, and UI mockups as interactive screens you can click. Approved designs become binding implementation targets — ward tasks must match them exactly.
+- **Visual + Reference** — Same visual companion, but designs are advisory. Implementation can deviate with good reason.
+- **Text only** — Skip the browser companion. Everything happens here in the terminal.
+- **Design Only (Visual)** — Full visual dialogue (approaches → architecture → mockup) with no spec and no implementation plan. Artifacts saved to `.workspace/shared/mockups/YYYY-MM-DD-<feature>/` for reuse across sessions.
 
-End your turn. Wait for their reply before doing anything else.
+End your turn at the call. Wait for their choice before doing anything else.
 
-Map reply to mode:
+Map the chosen option to mode:
 - `VISUAL_STRICT` → visual companion active, designs are binding in ward
 - `VISUAL_REFERENCE` → visual companion active, designs are advisory in ward
 - `TEXT_ONLY` → no visual companion

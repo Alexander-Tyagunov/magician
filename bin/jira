@@ -188,7 +188,11 @@ def c_raw(a):
     if len(a) < 2:
         die("usage: jira raw <METHOD> <rest/path> [json-body]")
     body = json.loads(a[2]) if len(a) > 2 and a[2] else None
-    print(json.dumps(api(a[0].upper(), a[1], body), indent=2)[:6000])
+    out = json.dumps(api(a[0].upper(), a[1], body), indent=2)
+    # No silent truncation — a raw fetch returns the whole resource. Set JIRA_RAW_MAX=<N> only if you
+    # deliberately want to cap output; unset/0 means full output.
+    cap = int(os.environ.get("JIRA_RAW_MAX", "0") or "0")
+    print(out[:cap] if cap > 0 else out)
 
 
 def c_url(a):

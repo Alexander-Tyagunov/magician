@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] — 2026-07-10
+
+**Real autonomy: turn on Claude Code *auto mode*, and fix the permission/gate UX.** A live run was still prompting for everything (skills, tests, MCP, branch-compares) despite the plugin claiming "autonomous execution." Root cause: a plugin can't switch the permission mode from a skill, and the session sat in `acceptEdits` — which only auto-approves file edits, so every Bash/MCP/skill call still prompts. The fix is to enable Claude Code's **auto mode** and sharpen the gates.
+
+### Added
+- **`magician-ui automode [--off|--available]`** — enables Claude Code **auto** permission mode: sets `permissions.defaultMode: auto` + `env.CLAUDE_CODE_ENABLE_AUTO_MODE=1` (required on Vertex/Bedrock/Foundry). Auto mode's classifier auto-approves reads + request-aligned work and **gates** writes/deploys/force-push/mass-deletion — honoring "don't push"-style boundaries you state in chat. This is the real "reads proceed, writes gate." A plugin can't switch a running session's mode → **restart** to enter it. `reconcile` makes auto mode available (sets the env var) and announces it; making it the default is opt-in via the command (`--off` reverts).
+
+### Changed
+- **`jira raw` no longer truncates output at 6000 chars** — the full resource is returned (opt-in `JIRA_RAW_MAX=<N>` if you ever want a cap).
+- **Allow-list refined:** added test/typecheck/lint/build runners; **narrowed `Bash(jira:*)`/`Bash(confluence:*)` to read subcommands** so Jira/Confluence *writes* gate in every mode (stale broad grants are stripped on merge).
+- **Approval/decision gates → `AskUserQuestion`:** `blueprint`, `manifest`, `conjure`, `deploy`, `scrutinize`, `seal`, `orchestrate`, `autopsy`, `unravel` now present plan/spec/report/ship/scope gates as structured choices instead of a prose "end turn and wait" (`divine`/`transmute`/`magic` already did). Free-text clarifications stay prose. `AskUserQuestion` added to each affected skill's `allowed-tools`.
+- **Docs** (`lore/autonomy.md`, statusline): auto mode is the real autonomy mechanism; the read-only allow-list is the `acceptEdits` fallback; the plugin *configures* the mode and the user *restarts* into it.
+
+### Note
+Nothing here changes a **running** session — hooks, skill guidance, and the permission mode all load at session start. **Restart Claude Code** to come up in Auto mode.
+
 ## [4.3.0] — 2026-07-09
 
 **Plan-auto consistency — every pipeline now says "approve the plan, then run."** An audit (one auditor per skill) found the plan→approve→execute-autonomously posture was only fully wired into `manifest` and `weave`; 13 other pipelines had a plan/requirements gate but no "execute autonomously after the gate" language, so a run could still drift into per-read/per-step prompting. This wires the doctrine uniformly (no existing gate weakened).

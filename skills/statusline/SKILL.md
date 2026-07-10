@@ -33,7 +33,8 @@ A native Claude Code **status line** rendered by magician. It runs **locally, co
   ```
 - **Status** — `magician-ui status` (state, components, whether it's wired into settings).
 - **Disable** — `magician-ui disable` (removes only magician's `statusLine`; records the opt-out so it isn't suggested again; re-enable anytime on request).
-- **Read-only auto-approve** — `magician-ui allow` merges a safe read-only allow-list (Read/Grep/Glob/LS + read-only git + kg/jira/confluence/ctx + gh reads) into `settings.json` so autonomous runs don't prompt per file; writes/commit/push/PR/delete still gate. Applied on install/upgrade; turn off with `magician-ui allow --off`. (Jira/Confluence go through magician's MCP-free `jira`/`confluence` CLIs — already allowed; magician nudges sessions off any ambient Atlassian MCP.) See [lore/autonomy.md](../../lore/autonomy.md).
+- **Auto mode (real autonomy)** — `magician-ui automode` turns on Claude Code's **auto** permission mode (`defaultMode: auto` + `CLAUDE_CODE_ENABLE_AUTO_MODE=1`, required on Vertex/Bedrock/Foundry). Its classifier auto-approves reads + request-aligned work and **gates** writes/deploys/force-push/destructive ops — the true "reads proceed, writes gate." A plugin can't switch the mode of a live session, so **restart** to enter it; `automode --off` reverts. Falls back to Manual if the account/model doesn't support auto.
+- **Read-only auto-approve (acceptEdits fallback)** — `magician-ui allow` merges a read-only allow-list (Read/Grep/Glob/LS + read-only git + kg/ctx + **jira/confluence reads** + test/lint/build runners + gh reads) into `settings.json` so non-auto sessions don't prompt per read; jira/confluence **writes**, commit/push/PR/delete still gate. Applied on install/upgrade; `magician-ui allow --off`. (Jira/Confluence use magician's MCP-free CLIs — magician nudges sessions off any ambient Atlassian MCP.) See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Rules
 

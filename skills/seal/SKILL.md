@@ -1,7 +1,7 @@
 ---
 name: seal
 description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
-allowed-tools: Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr checks:*), Bash(gh pr merge:*), Bash(gh pr view:*), Bash(gh run view:*), Read, Edit, Task, Monitor
+allowed-tools: Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr checks:*), Bash(gh pr merge:*), Bash(gh pr view:*), Bash(gh run view:*), Read, Edit, Task, Monitor, AskUserQuestion
 argument-hint: [pr-title]
 ---
 
@@ -45,13 +45,18 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
 ### Ship-summary gate — one outward approval
-Steps 1–4 ran autonomously. Before the first outward command (`git push`), present **one** consolidated ship-summary and **end your turn — wait for approval:**
+Steps 1–4 ran autonomously. Before the first outward command (`git push`), present **one** consolidated ship-summary, then gate the outward push/PR/merge through **AskUserQuestion** — end your turn at the call and act on the choice. The summary covers:
 - **Changed files** — the diff going out (from step 4's `git add -A`)
 - **Commit message** — what was committed in step 4
 - **PR title + body** — the title plus the Summary + Test plan from step 6
 - **Merge strategy** — e.g. `--squash --delete-branch` (step 9)
 
-On approval, run Push, Create PR, and Merge without further per-command prompts.
+Ask **"Ship this branch?"** with these options:
+- **Ship it** — run Push, Create PR, and Merge without further per-command prompts
+- **Revise** — adjust the commit, PR, or scope first; re-present the summary afterward
+- **Cancel** — stop here; do not push, open a PR, or merge
+
+Treat a free-form "yes / approved / looks good" as **Ship it**. On **Ship it**, run Push (step 5), Create PR (step 6), and Merge (step 9) without further per-command prompts.
 
 ### 5. Push
 ```bash

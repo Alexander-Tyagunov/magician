@@ -1,7 +1,7 @@
 ---
 name: blueprint
 description: Converts an approved spec into a TDD task plan with a parallelism map (PARALLEL vs SEQUENTIAL), saved to .workspace/shared/plans/. Use after a spec is approved, before implementation.
-allowed-tools: Read, Write, Glob
+allowed-tools: Read, Write, Glob, AskUserQuestion
 argument-hint: [spec-file-path]
 ---
 
@@ -22,11 +22,13 @@ If the spec file path is not clear from context, ask: "Which spec should I plan 
 3. **Decompose into tasks** — each task: one component, 2–5 minutes of work, starts with a failing test
 4. **Build parallelism map** — mark each task: PARALLEL (no shared files, no dependency) or SEQUENTIAL (depends on task N)
 5. **Write the plan** — save to `.workspace/shared/plans/YYYY-MM-DD-<feature>.md`
-6. **Present summary** — show task list with parallelism annotations, then ask:
+6. **Present summary & gate (use the AskUserQuestion tool — not plain prose)** — show the task list with parallelism annotations, then present the approval gate via **AskUserQuestion** so the user gets structured options instead of a prose question. Frame it "Blueprint ready — lock it in?" with options:
+   - **Approve → /orchestrate** — dispatch parallel agents (branch + commits happen there; push/PR still gate)
+   - **Approve → /ward** — execute tasks one at a time
+   - **Revise** — split / merge / reorder tasks (they describe the change)
+   - **Adjust scope** — add or drop tasks
 
-   > "Blueprint ready. Does this task breakdown look right — any tasks to split, merge, or reorder before we lock it in?"
-
-   **End your turn. Wait for explicit approval ("looks good", "approved", "yes", etc.) before closing.**
+   **End your turn at the AskUserQuestion call.** Act on the selection; treat any free-form "looks good / approved / yes" as Approve. This is a genuine decision gate — always the structured tool, never a bare sentence.
 
 ## Autonomy — approve the plan, then run
 

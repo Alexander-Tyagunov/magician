@@ -1,7 +1,7 @@
 ---
 name: deploy
 description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
-allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(ls:*), Read, Write, Edit, Monitor
+allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(ls:*), Read, Write, Edit, Monitor, AskUserQuestion
 disable-model-invocation: true
 argument-hint: [create|monitor|fix] [provider]
 ---
@@ -22,15 +22,19 @@ ls .circleci/config.yml 2>/dev/null
 
 ### Creating a New Pipeline
 
-Ask all three questions in one message:
-> "To create your pipeline, I need a few details:
-> 1. Which CI provider? (GitHub Actions / GitLab CI / CircleCI / other)
-> 2. What stages are needed? (lint, test, build, deploy, security scan)
-> 3. What environments? (staging, production, both)"
+Gather requirements via a **single AskUserQuestion call** (three questions in one `questions` array — not plain prose) so the user picks structured options instead of free-typing:
+- **CI provider** — GitHub Actions · GitLab CI · CircleCI · Other
+- **Stages** (multi-select) — lint · test · build · deploy · security scan
+- **Environments** — staging · production · both
 
-**End your turn. Wait for all answers before generating any pipeline template.**
+**End your turn at the AskUserQuestion call.** Wait for the answers before generating any pipeline template. If provider is "Other", follow up for the specific tool.
 
-Once answered, present a **one-shot plan** for approval — provider, stages, environments, and the exact file(s) to be written (e.g. `.github/workflows/ci.yml`) — then write the workflow file.
+Once answered, present the **one-shot plan** — provider, stages, environments, and the exact file(s) to be written (e.g. `.github/workflows/ci.yml`) — and gate it with **AskUserQuestion** (not a bare sentence). Frame it "Pipeline plan ready — write it?" with options:
+- **Approve** — write the workflow file(s) as planned
+- **Revise** — adjust stages / environments (they describe the change)
+- **Change scope** — different provider or file layout
+
+**End your turn at the AskUserQuestion call.** Act on the selection; treat any free-form "looks good / approved / yes" as Approve. Write the workflow file only on Approve — this is the write gate; do not weaken it.
 
 ### GitHub Actions Template
 

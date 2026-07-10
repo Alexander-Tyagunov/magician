@@ -1,7 +1,7 @@
 ---
 name: orchestrate
 description: Drives full multi-agent implementation from a blueprint — fans out parallel-safe tasks into waves, runs sequential tasks in order, resolves conflicts, then verifies. Use to execute an approved plan.
-allowed-tools: Bash(git status:*), Bash(git log:*), Task
+allowed-tools: Bash(git status:*), Bash(git log:*), Task, AskUserQuestion
 argument-hint: [plan-file]
 ---
 
@@ -24,7 +24,7 @@ Scale `/effort` to plan size (high/xhigh for large plans). For dispatched implem
 
 ## Process
 
-1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan; **end your turn and wait**.
+1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan via **AskUserQuestion** (one option per candidate plan file, most-recent first); **end your turn at the call** and proceed with the chosen plan.
 2. **Build the execution graph** — group PARALLEL-annotated tasks into waves; SEQUENTIAL tasks are singletons that run in order.
 3. **Execute wave by wave.** For each parallel wave, dispatch all its tasks in ONE message (multiple `Task` calls) so they run concurrently. Wait for the whole wave before the next. Run sequential tasks one at a time.
 4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session capsule so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).

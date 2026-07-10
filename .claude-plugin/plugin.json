@@ -1,6 +1,6 @@
 {
   "name": "magician",
-  "version": "4.3.0",
+  "version": "4.4.0",
   "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, parallel agent orchestration, and feature comprehend→port/integrate (/transmute)",
   "author": {
     "name": "Alexander Tyagunov",

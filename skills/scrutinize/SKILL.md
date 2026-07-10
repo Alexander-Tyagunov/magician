@@ -1,7 +1,7 @@
 ---
 name: scrutinize
 description: Multi-agent code review AND remediation — dispatches correctness, security, and simplification reviewers in parallel, consolidates findings, then fixes criticals/highs. Use when reviewing a diff or PR before shipping.
-allowed-tools: Bash(git diff:*), Bash(git status:*), Read, Edit, Task
+allowed-tools: Bash(git diff:*), Bash(git status:*), Read, Edit, Task, AskUserQuestion
 argument-hint: [base-ref, e.g. main]
 ---
 
@@ -51,7 +51,11 @@ Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches 
    Fix: remediation steps
    ...
    ```
-7. Ask: "Fix Critical/High now, or discuss any first?" **End your turn. Wait for the reply before remediating.**
+7. **Approval gate (AskUserQuestion).** Present the report, then ask how to proceed via **AskUserQuestion** (never bare prose):
+   - **Fix Critical/High now** *(default)* — proceed to Phase 2 remediation.
+   - **Discuss first** — talk through findings before any fix.
+
+   **End your turn at the tool call. Wait for the choice before remediating.** Treat a free-form "yes / approved / looks good" as **Fix Critical/High now**.
 
 ## Phase 2 — Remediate
 
@@ -65,7 +69,11 @@ Per finding (Critical and High first):
 
 **Re-review (evaluator-optimizer loop).** After the Critical/High fixes land, re-dispatch the relevant lens(es) on just the remediated files to confirm the fixes didn't introduce new Critical/High. If they did, remediate and re-review again — loop until a clean pass or 2 rounds (then report what remains). This is what makes review + fix *one loop*, not one pass.
 
-**Declining** a finding: allowed only for Low/Medium (convention conflict, readability, documented false positive). Never decline Critical/High without sign-off — ask: "I'm considering declining [finding] because [reason]. Agree, or fix it anyway?" **End your turn. Wait for explicit confirmation.**
+**Declining** a finding: allowed only for Low/Medium (convention conflict, readability, documented false positive). Never decline Critical/High without sign-off — put the decision to the user via **AskUserQuestion** ("Decline [finding] because [reason]?"):
+- **Agree — decline it** — record the rationale and skip the fix.
+- **Fix it anyway** — remediate as normal.
+
+**End your turn at the tool call. Wait for explicit confirmation** before declining any Critical/High.
 
 ## Summary
 

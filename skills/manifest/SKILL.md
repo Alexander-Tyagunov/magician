@@ -30,25 +30,23 @@ GATE 4: PR title and final go-ahead (before /seal)
 1. Ask: "What do you want to build?" (one sentence description). **End your turn. Wait for their answer before assessing anything.**
 2. Assess scope — is this one coherent feature or multiple independent subsystems?
 3. If too large: help decompose into sub-features, each with its own /manifest cycle
-4. Present scope to user. **End your turn. Wait for explicit approval before proceeding to Phase 1.**
+4. Present scope to user, then gate with **AskUserQuestion** — options: **Approve** (proceed to Phase 1), **Revise scope** (adjust the boundaries first), **Split into sub-features** (too big — decompose into separate /manifest cycles). **End your turn at the call; wait for the choice.** Treat a free-form "yes / approved / looks good" as Approve; proceed to Phase 1 only on Approve.
 
 ### Phase 1: Design [GATE 2]
 5. Run /conjure — full design dialogue
    - First, if the feature needs external research (library choice, prior art, API capabilities), run /magic — it saves findings to `.workspace/shared/research/`, which /conjure then reads. Optional; skip when the design is well understood.
 6. Write spec to `.workspace/shared/specs/`
-7. **Wait for spec approval.**
+7. Gate with **AskUserQuestion** — options: **Approve spec** (proceed to planning), **Request changes** (revise the spec first). **End your turn at the call; wait for the choice.** A free-form "approved / looks good" counts as Approve.
 
 ### Phase 2: Planning [GATE 3]
 8. Run /blueprint — create task plan with parallelism map
 9. Write plan to `.workspace/shared/plans/`
-10. **Wait for plan approval. Do NOT proceed to Phase 3 until explicit approval arrives.**
+10. Gate with **AskUserQuestion** — options: **Approve plan** (proceed to Phase 3), **Request changes** (revise the plan first). **End your turn at the call; wait for the choice. Do NOT proceed to Phase 3 until Approve arrives.** A free-form "approved / looks good" counts as Approve.
 
 ### Phase 3: Isolation [GATE 3.5]
-11. Propose a branch name derived from the feature (e.g. `feature/<kebab-case-name>`). Ask:
-    > "Ready to create a worktree for isolation. I'll use branch `feature/<name>`. Create it now, or work directly on the current branch?"
-    **End your turn. Wait for their reply.**
-    - If they confirm: run `/portal <name>` — passes the name directly, no re-prompting
-    - If they decline: note "working in current branch" and continue
+11. Propose a branch name derived from the feature (e.g. `feature/<kebab-case-name>`). Gate with **AskUserQuestion** — options: **Create worktree** (isolate on branch `feature/<name>`), **Work in current branch** (no worktree). **End your turn at the call; wait for the choice.**
+    - On **Create worktree**: run `/portal <name>` — passes the name directly, no re-prompting
+    - On **Work in current branch**: note "working in current branch" and continue
 
 ### Phase 4: Implementation
 12. **Proceed immediately after Phase 3 without waiting.** Run /orchestrate — execute all tasks using parallel agents where safe, sequential where required. For a large multi-item plan (many tickets/features/files), prefer **/weave** to deliver them as one native Workflow with guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify). For a long **unattended** run, pair with **`/goal`** so Claude keeps driving across turns until the completion condition holds.
