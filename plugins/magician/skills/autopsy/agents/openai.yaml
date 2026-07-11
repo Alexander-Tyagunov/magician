@@ -1,0 +1,6 @@
+interface:
+  display_name: "Autopsy"
+  short_description: "Run a gated incident post-mortem"
+  default_prompt: "Use $autopsy to investigate this incident and prepare a blameless post-mortem."
+policy:
+  allow_implicit_invocation: false
