@@ -1,0 +1,6 @@
+interface:
+  display_name: "Manifest"
+  short_description: "Run the gated Magician delivery lifecycle"
+  default_prompt: "Use $manifest to run the full gated SDLC for this request."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""magician confluence helper — direct Confluence REST over HTTPS, no MCP.
+
+Config via env: CONFLUENCE_BASE_URL (Cloud includes /wiki), a token
+(CONFLUENCE_API_TOKEN | CONFLUENCE_PAT | CONFLUENCE_PROD_PAT), and CONFLUENCE_EMAIL for Cloud (Basic).
+Server/Data-Center uses Bearer. One clean command per call → one `Bash(confluence:*)` allow rule.
+"""
+import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil
+
+BASE = (os.environ.get("CONFLUENCE_BASE_URL") or "").rstrip("/")
+TOKEN = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("CONFLUENCE_PAT") or os.environ.get("CONFLUENCE_PROD_PAT") or ""
+EMAIL = os.environ.get("CONFLUENCE_EMAIL") or ""
+
+# Resilience knobs (env-overridable) — mirrors bin/jira: throttle-aware retries, brief
+# GET cache, bulk-loop pacing, connect-timeout. Never hand-roll urllib (corporate-CA fails).
+TIMEOUT = int(os.environ.get("CONFLUENCE_TIMEOUT", "45"))
+RETRIES = int(os.environ.get("CONFLUENCE_RETRIES", "3"))
+CACHE_TTL = int(os.environ.get("CONFLUENCE_CACHE_TTL", "30"))
+MIN_INTERVAL = float(os.environ.get("CONFLUENCE_MIN_INTERVAL_MS", "120")) / 1000.0
+PLUGIN_DATA = (os.environ.get("MAGICIAN_HOME") or (os.path.join(os.environ["CODEX_HOME"], "magician") if os.environ.get("CODEX_HOME") else os.path.join(os.path.expanduser("~"), ".codex", "magician")))
+CACHE_DIR = os.path.join(PLUGIN_DATA, "confluence-cache")
+PACE_FILE = os.path.join(PLUGIN_DATA, "confluence-last-call")
+
+
+def die(msg, code=1):
+    print(f"confluence: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _auth():
+    if EMAIL:
+        return "Basic " + base64.b64encode(f"{EMAIL}:{TOKEN}".encode()).decode()
+    return "Bearer " + TOKEN
+
+
+def _ckey(method, path):
+    return hashlib.sha1(f"{method} {BASE}/rest/api/{path}".encode()).hexdigest()[:20]
+
+
+def _cache_get(method, path):
+    if CACHE_TTL <= 0 or method != "GET":
+        return None
+    p = os.path.join(CACHE_DIR, _ckey(method, path) + ".json")
+    try:
+        if time.time() - os.path.getmtime(p) <= CACHE_TTL:
+            return json.load(open(p))
+    except Exception:
+        pass
+    return None
+
+
+def _cache_put(method, path, val):
+    if CACHE_TTL <= 0 or method != "GET":
+        return
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        json.dump(val, open(os.path.join(CACHE_DIR, _ckey(method, path) + ".json"), "w"))
+    except Exception:
+        pass
+
+
+def _pace():
+    if MIN_INTERVAL > 0:
+        try:
+            wait = MIN_INTERVAL - (time.time() - os.path.getmtime(PACE_FILE))
+            if wait > 0:
+                time.sleep(min(wait, 5))
+        except Exception:
+            pass
+    try:
+        os.makedirs(PLUGIN_DATA, exist_ok=True)
+        open(PACE_FILE, "w").write(".")
+    except Exception:
+        pass
+
+
+def api(method, path, body=None, timeout=None):
+    if not BASE:
+        die("CONFLUENCE_BASE_URL not set — run the confluence skill setup (setup.md).")
+    if not TOKEN:
+        die("no token (set CONFLUENCE_API_TOKEN / CONFLUENCE_PAT / CONFLUENCE_PROD_PAT) — run setup.")
+    method = method.upper()
+    timeout = timeout or TIMEOUT
+    if method == "GET":
+        cached = _cache_get(method, path)
+        if cached is not None:
+            return cached
+    else:
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+    # Shell out to curl so corporate CA trust (keychain) is used. Still one `confluence` command.
+    headers = "Authorization: " + _auth() + "\nAccept: application/json\n"
+    cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
+           "-X", method, "-H", "@-"]
+    if body is not None:
+        headers += "Content-Type: application/json\n"
+        cmd += ["--data-binary", json.dumps(body)]
+    cmd += ["-w", "\n%{http_code}", f"{BASE}/rest/api/{path}"]
+    attempt = 0
+    while True:
+        _pace()
+        try:
+            p = subprocess.run(cmd, input=headers, capture_output=True, text=True, timeout=timeout + 5)
+        except subprocess.TimeoutExpired:
+            die(f"request timed out after {timeout}s — check VPN / base URL (raise CONFLUENCE_TIMEOUT if needed).")
+        if p.returncode != 0:
+            die(f"connection failed — {p.stderr.strip()[:200]} (check CONFLUENCE_BASE_URL and VPN).")
+        out = p.stdout
+        nl = out.rfind("\n")
+        code, payload = out[nl + 1:].strip(), out[:nl]
+        if not code.isdigit():
+            die(f"unexpected response: {out[:200]}")
+        code = int(code)
+        if code in (429, 503) and attempt < RETRIES:
+            time.sleep(min(2 ** attempt, 30))
+            attempt += 1
+            continue
+        if code == 429:
+            die("HTTP 429 — Confluence is rate-limiting and retries are exhausted. STOP: don't retry in a tight "
+                "loop. Wait ~60s, shrink the batch, pace requests (CONFLUENCE_MIN_INTERVAL_MS=300+). "
+                f"Body: {payload[:160]}")
+        if code >= 400:
+            die(f"HTTP {code} on {method} {path} — {payload[:400]}")
+        val = json.loads(payload) if payload.strip() else {}
+        _cache_put(method, path, val)
+        return val
+
+
+def _weburl(d):
+    links = d.get("_links", {})
+    base = links.get("base") or BASE
+    return base + links.get("webui", "")
+
+
+def _text(html, limit=600):
+    t = re.sub(r"<[^>]+>", " ", html or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    return (t[:limit] + "…") if len(t) > limit else t
+
+
+def c_whoami(a):
+    d = api("GET", "user/current")
+    print(f'{d.get("displayName")} ({d.get("username") or d.get("accountId","")})')
+
+
+def c_get(a):
+    if not a:
+        die("usage: confluence get <id> [body]")
+    d = api("GET", f"content/{a[0]}?expand=space,version,body.storage")
+    print(f'{d.get("title")} | space: {(d.get("space") or {}).get("key")} | v{(d.get("version") or {}).get("number")}')
+    print(f'  {_weburl(d)}')
+    if len(a) > 1 and a[1] == "body":
+        print()
+        print(_text(((d.get("body") or {}).get("storage") or {}).get("value", ""), 4000))
+
+
+def c_search(a):
+    if not a:
+        die("usage: confluence search <CQL>")
+    q = urllib.parse.urlencode({"cql": " ".join(a), "limit": os.environ.get("CONFLUENCE_MAX", "25"), "expand": "space"})
+    d = api("GET", f"content/search?{q}")
+    res = d.get("results", [])
+    print(f"results: {len(res)}")
+    for x in res:
+        print(f'  {x.get("id","")}  [{(x.get("space") or {}).get("key","")}] {x.get("type","")} · {x.get("title","")}')
+
+
+def c_raw(a):
+    if len(a) < 2:
+        die("usage: confluence raw <METHOD> <path> [json-body]  (path is after rest/api/)")
+    body = json.loads(a[2]) if len(a) > 2 and a[2] else None
+    print(json.dumps(api(a[0].upper(), a[1], body), indent=2)[:6000])
+
+
+def c_children(a):
+    if not a:
+        die("usage: confluence children <id>")
+    res = api("GET", f"content/{a[0]}/child/page?limit=" + os.environ.get("CONFLUENCE_MAX", "50")).get("results", [])
+    print(f"children: {len(res)}")
+    for x in res:
+        print(f'  {x.get("id")}  {x.get("title","")}')
+
+
+CMDS = {"whoami": c_whoami, "get": c_get, "search": c_search, "cql": c_search,
+        "children": c_children, "raw": c_raw}
+
+
+def main():
+    av = sys.argv[1:]
+    if not av or av[0] in ("help", "-h", "--help"):
+        print(__doc__)
+        print("commands: whoami | get <id> [body] | search <CQL> | children <id> | raw <METHOD> <path> [json-body]", file=sys.stderr)
+        return
+    fn = CMDS.get(av[0])
+    if not fn:
+        die(f"unknown command '{av[0]}' (try: confluence help)")
+    fn(av[1:])
+
+
+if __name__ == "__main__":
+    main()

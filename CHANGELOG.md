@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.2] — 2026-07-11
+
+**Codex compatibility correction — Claude Code behavior is unchanged.** Live cache validation showed that Codex skips outward symlinks while installing a marketplace plugin, so v4.7.1 still produced an empty cache even though its checkout paths resolved locally.
+
+### Fixed
+- Replaced the symlink-only Codex marketplace package with a generated, self-contained `plugins/magician/` archive: canonical root `skills/` adapters, immutable `source-skills/`, shared adapter references, lore, CLIs, and the curated Codex hook/runtime. A deterministic builder plus tests reject stale packages and any symlink.
+- Added a separate Codex-only destructive guard and regression matrix. It handles executable paths, wrappers/options, normalized roots, HOME globs, substitutions, quoted critical redirections/devices, and `git clean` variants; permits documented benign lookalikes; uses a five-second hook timeout; and honestly documents POSIX/`write_stdin` limits. Claude's existing hook and matcher are untouched.
+- Aligned all 25 Codex adapters: `$skill` syntax, available agent/process primitives, explicit-only invocation metadata, safe commit/staging gates, Codex state paths, manual lifecycle fallbacks, capability detection, and no Claude-settings writes.
+- Corrected Codex install/update/uninstall instructions and replaced the dangerous live `rm -rf /` test with a direct JSON-to-matcher simulation.
+
+### Verification
+- Added Codex package, adapter, and guard contract tests plus an isolated marketplace install/cache smoke check. The release gate verifies 25 adapters, a non-empty self-contained cache, hook discovery inputs, executable CLIs, and zero changes to Claude-owned runtime files.
+
 ## [4.7.1] — 2026-07-11
 
 **Fix: the Codex destructive-guard hook now actually installs.** Live Codex testing surfaced `/hooks → PreToolUse: Installed 0 / Active 0` — Codex's marketplace plugin root (`plugins/magician/`, a relative-symlink layout) exposed only `.codex-plugin` and `skills`, so the manifest's `./hooks/codex-hooks.json` and the hook's `$PLUGIN_ROOT/scripts/…` (and `$PLUGIN_ROOT/bin/…` for the CLIs) resolved to nothing.

@@ -1,0 +1,1179 @@
+#!/usr/bin/env python3
+"""magician kg — local code knowledge-graph + cache layer (no MCP, no network).
+
+Builds a per-repo SQLite graph of symbols + relationships at the global path
+  ${MAGICIAN_HOME:-${CODEX_HOME:-$HOME/.codex}/magician}/knowledge-graph/repos/<repohash>/
+and serves targeted, ranked file:line retrieval (BM25 + Personalized PageRank)
+so agents read the right lines instead of grepping and reading whole files.
+
+Tiered performance — lightweight by default, faster on opt-in:
+  Tier 0  stdlib only: sqlite3 + FTS5, regex parser, in-memory CSR, content cache.
+  Tier 1  auto-used iff importable: tree-sitter (parse), numpy (pagerank). Silent fallback.
+  Tier 2  opt-in: `kg daemon` (resident in-RAM server, ~1ms queries); KG_BACKEND=… pluggable.
+
+One clean command per call so a single `Bash(kg:*)` allow rule covers everything.
+
+Env: MAGICIAN_HOME, KG_PARSER (treesitter|ctags|regex|auto), KG_JOBS (parallel index),
+     KG_BACKEND (sqlite|…), KG_EMBEDDINGS (off), KG_MAX_FILE (bytes).
+"""
+import os, sys, json, re, time, hashlib, sqlite3, subprocess, shutil, socket
+
+# ─────────────────────────── paths / config ────────────────────────────────
+HOME = os.path.expanduser("~")
+MAGICIAN_HOME = (os.environ.get("MAGICIAN_HOME") or (os.path.join(os.environ["CODEX_HOME"], "magician") if os.environ.get("CODEX_HOME") else os.path.join(HOME, ".codex", "magician")))
+KG_ROOT = os.path.join(MAGICIAN_HOME, "knowledge-graph")
+MAX_FILE = int(os.environ.get("KG_MAX_FILE", str(1_000_000)))
+IGNORE_DIRS = {".git", "node_modules", "vendor", "dist", "build", "out", ".venv", "venv",
+               "__pycache__", ".next", ".nuxt", "target", ".idea", ".gradle", "coverage",
+               ".workspace", ".terraform", "bin/obj", "Pods", ".dart_tool", "site-packages"}
+CODE_EXT = {
+    ".py": "python", ".pyi": "python", ".js": "javascript", ".jsx": "javascript",
+    ".mjs": "javascript", ".cjs": "javascript", ".ts": "typescript", ".tsx": "typescript",
+    ".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".go": "go", ".rs": "rust",
+    ".rb": "ruby", ".php": "php", ".swift": "swift", ".scala": "scala", ".c": "c",
+    ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".cs": "csharp",
+    ".sh": "shell", ".bash": "shell", ".sql": "sql", ".vue": "vue", ".svelte": "svelte",
+}
+
+
+def die(msg, code=1):
+    print(f"kg: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+# ─────────────────────────── optional accelerators ─────────────────────────
+def _try(modname):
+    try:
+        return __import__(modname)
+    except Exception:
+        return None
+
+
+# Heavy/optional modules are loaded lazily so the hot path (query/check/status) pays
+# zero import cost — numpy import alone is ~100ms and is only needed at index time.
+_LAZY = {}
+
+
+def lazy(modname):
+    if modname not in _LAZY:
+        _LAZY[modname] = _try(modname)
+    return _LAZY[modname]
+
+
+def fast_hash(data):
+    if isinstance(data, str):
+        data = data.encode("utf-8", "replace")
+    b3 = lazy("blake3")
+    if b3:
+        return b3.blake3(data).hexdigest()[:32]
+    return hashlib.blake2b(data, digest_size=16).hexdigest()
+
+
+def get_treesitter(lang):
+    """Return a tree-sitter parser for lang, or None. Best-effort across packages."""
+    if os.environ.get("KG_PARSER") not in (None, "auto", "treesitter"):
+        return None
+    for pkg in ("tree_sitter_language_pack", "tree_sitter_languages"):
+        m = _try(pkg)
+        if m and hasattr(m, "get_parser"):
+            try:
+                return m.get_parser(lang)
+            except Exception:
+                return None
+    return None
+
+
+# ─────────────────────────── repo discovery ────────────────────────────────
+def repo_root():
+    try:
+        p = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, timeout=5)
+        if p.returncode == 0 and p.stdout.strip():
+            return os.path.realpath(p.stdout.strip())
+    except Exception:
+        pass
+    return os.path.realpath(os.getcwd())
+
+
+ROOT = repo_root()
+REPO_HASH = hashlib.sha256(ROOT.encode()).hexdigest()[:12]
+REPO_DIR = os.path.join(KG_ROOT, "repos", REPO_HASH)
+DB_PATH = os.path.join(REPO_DIR, "graph.db")
+META_PATH = os.path.join(REPO_DIR, "meta.json")
+CACHE_DIR = os.path.join(REPO_DIR, "cache")
+SOCK_PATH = os.path.join(REPO_DIR, "daemon.sock")
+SUGGEST_PATH = os.path.join(REPO_DIR, "suggest.json")
+
+
+def load_meta():
+    try:
+        with open(META_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_meta(m):
+    os.makedirs(REPO_DIR, exist_ok=True)
+    tmp = META_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(m, f, indent=2)
+    os.replace(tmp, META_PATH)
+
+
+# ─────────────────────────── store (sqlite) ────────────────────────────────
+def connect():
+    os.makedirs(REPO_DIR, exist_ok=True)
+    cx = sqlite3.connect(DB_PATH, timeout=15)
+    cx.execute("PRAGMA journal_mode=WAL")
+    cx.execute("PRAGMA synchronous=NORMAL")
+    try:
+        cx.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped reads
+    except Exception:
+        pass
+    return cx
+
+
+def has_fts(cx):
+    try:
+        cx.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _ftscheck USING fts5(x)")
+        cx.execute("DROP TABLE IF EXISTS _ftscheck")
+        return True
+    except Exception:
+        return False
+
+
+def init_schema(cx, fts):
+    cx.executescript("""
+    CREATE TABLE IF NOT EXISTS files(
+      path TEXT PRIMARY KEY, content_hash TEXT, lang TEXT,
+      indexed_at REAL, size INTEGER, pagerank REAL DEFAULT 0, community INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS nodes(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, kind TEXT, file TEXT,
+      line_start INTEGER, line_end INTEGER, signature TEXT, doc TEXT, content_hash TEXT);
+    CREATE TABLE IF NOT EXISTS edges(src TEXT, dst TEXT, kind TEXT, weight REAL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS entities(kind TEXT, name TEXT, attrs TEXT);
+    CREATE TABLE IF NOT EXISTS entity_edges(src TEXT, dst TEXT, kind TEXT);
+    CREATE INDEX IF NOT EXISTS ix_nodes_file ON nodes(file);
+    CREATE INDEX IF NOT EXISTS ix_nodes_name ON nodes(name);
+    CREATE INDEX IF NOT EXISTS ix_edges_src ON edges(src);
+    CREATE INDEX IF NOT EXISTS ix_edges_dst ON edges(dst);
+    """)
+    if fts:
+        cx.execute("CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING "
+                   "fts5(name, signature, doc, file, content='')")
+    cx.commit()
+
+
+# ─────────────────────────── file enumeration ──────────────────────────────
+def list_files():
+    files = []
+    try:
+        p = subprocess.run(["git", "-C", ROOT, "ls-files"], capture_output=True, text=True, timeout=30)
+        if p.returncode == 0:
+            for rel in p.stdout.splitlines():
+                if not _ignored(rel) and lang_of(rel):
+                    files.append(rel)
+            if files:
+                return files
+    except Exception:
+        pass
+    for dp, dns, fns in os.walk(ROOT):
+        dns[:] = [d for d in dns if d not in IGNORE_DIRS and not d.startswith(".")]
+        for fn in fns:
+            rel = os.path.relpath(os.path.join(dp, fn), ROOT)
+            if not _ignored(rel) and lang_of(rel):
+                files.append(rel)
+    return files
+
+
+def _ignored(rel):
+    parts = rel.split(os.sep)
+    return any(p in IGNORE_DIRS for p in parts)
+
+
+_SHEBANG = re.compile(r"^#!.*\b(python|bash|node|ruby|perl|sh)\d*\b")
+_SHEBANG_LANG = {"python": "python", "bash": "shell", "sh": "shell",
+                 "node": "javascript", "ruby": "ruby", "perl": "perl"}
+
+
+def lang_of(rel):
+    """Language for a path: by extension, else by shebang for extensionless scripts."""
+    ext = os.path.splitext(rel)[1].lower()
+    if ext in CODE_EXT:
+        return CODE_EXT[ext]
+    if ext == "":
+        try:
+            with open(os.path.join(ROOT, rel), "r", errors="replace") as f:
+                m = _SHEBANG.search(f.readline())
+            if m:
+                return _SHEBANG_LANG.get(m.group(1))
+        except Exception:
+            return None
+    return None
+
+
+# ─────────────────────────── parsers ───────────────────────────────────────
+# Per-language definition patterns: (kind, compiled-regex with a `name` group).
+_DEF_PATTERNS = {
+    "python": [("function", re.compile(r"^\s*(?:async\s+)?def\s+(?P<name>\w+)")),
+               ("class", re.compile(r"^\s*class\s+(?P<name>\w+)"))],
+    "javascript": [("function", re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+(?P<name>\w+)")),
+                   ("class", re.compile(r"^\s*(?:export\s+)?class\s+(?P<name>\w+)")),
+                   ("function", re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+(?P<name>\w+)\s*=\s*(?:async\s*)?\(?[^=]*=>"))],
+    "java": [("class", re.compile(r"\b(?:class|interface|enum|record)\s+(?P<name>\w+)")),
+             ("method", re.compile(r"^\s*(?:public|private|protected|static|final|\s)+[\w<>\[\]]+\s+(?P<name>\w+)\s*\("))],
+    "kotlin": [("function", re.compile(r"^\s*(?:.*\s)?fun\s+(?P<name>\w+)")),
+               ("class", re.compile(r"\b(?:class|object|interface)\s+(?P<name>\w+)"))],
+    "go": [("function", re.compile(r"^\s*func\s+(?:\([^)]*\)\s*)?(?P<name>\w+)")),
+           ("type", re.compile(r"^\s*type\s+(?P<name>\w+)"))],
+    "rust": [("function", re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+(?P<name>\w+)")),
+             ("type", re.compile(r"^\s*(?:pub\s+)?(?:struct|enum|trait)\s+(?P<name>\w+)"))],
+    "ruby": [("method", re.compile(r"^\s*def\s+(?P<name>[\w?!.]+)")),
+             ("class", re.compile(r"^\s*(?:class|module)\s+(?P<name>\w+)"))],
+    "php": [("function", re.compile(r"\bfunction\s+(?P<name>\w+)\s*\(")),
+            ("class", re.compile(r"\b(?:class|interface|trait)\s+(?P<name>\w+)"))],
+    "swift": [("function", re.compile(r"\bfunc\s+(?P<name>\w+)")),
+              ("type", re.compile(r"\b(?:class|struct|enum|protocol)\s+(?P<name>\w+)"))],
+    "scala": [("function", re.compile(r"\bdef\s+(?P<name>\w+)")),
+              ("type", re.compile(r"\b(?:class|object|trait)\s+(?P<name>\w+)"))],
+    "c": [("function", re.compile(r"^[\w\*\s]+?(?P<name>\w+)\s*\([^;]*\)\s*\{?\s*$")),
+          ("type", re.compile(r"^\s*(?:typedef\s+)?(?:struct|enum|union)\s+(?P<name>\w+)"))],
+    "csharp": [("class", re.compile(r"\b(?:class|interface|struct|enum|record)\s+(?P<name>\w+)")),
+               ("method", re.compile(r"^\s*(?:public|private|protected|internal|static|\s)+[\w<>\[\]]+\s+(?P<name>\w+)\s*\("))],
+    "shell": [("function", re.compile(r"^\s*(?:function\s+)?(?P<name>[\w-]+)\s*\(\)\s*\{"))],
+}
+_DEF_PATTERNS["cpp"] = _DEF_PATTERNS["c"] + _DEF_PATTERNS["csharp"][:1]
+_DEF_PATTERNS["typescript"] = _DEF_PATTERNS["javascript"] + [
+    ("type", re.compile(r"^\s*(?:export\s+)?(?:interface|type|enum)\s+(?P<name>\w+)"))]
+
+# NOTE: applied with finditer over the whole file → patterns anchored with ^ MUST
+# use re.MULTILINE, or they only match at offset 0 (silently dropping all imports).
+_IMPORT_PATTERNS = {
+    "python": [re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.M)],
+    "javascript": [re.compile(r"""(?:import[^'"]*from|require\s*\()\s*['"]([^'"]+)['"]""", re.M),
+                   re.compile(r"""^\s*import\s+['"]([^'"]+)['"]""", re.M)],
+    "java": [re.compile(r"^\s*import\s+(?:static\s+)?([\w.]+)", re.M)],
+    "go": [re.compile(r"""^\s*_?\s*['"]([\w./-]+)['"]""", re.M)],
+    "rust": [re.compile(r"^\s*use\s+([\w:]+)", re.M)],
+}
+_IMPORT_PATTERNS["typescript"] = _IMPORT_PATTERNS["javascript"]
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+_KEYWORDS = {"the", "and", "for", "this", "that", "with", "from", "import", "return",
+             "function", "class", "const", "let", "var", "def", "self", "null", "true",
+             "false", "new", "void", "int", "str", "string", "bool", "public", "private",
+             "static", "final", "async", "await", "yield", "type", "interface", "enum"}
+
+
+def extract(abspath, rel, lang):
+    """Return dict(symbols=[...], imports=[...], idents=set()). Parser cascade per file."""
+    try:
+        with open(abspath, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except Exception:
+        return None
+    if len(text) > MAX_FILE:
+        return None
+    syms = _extract_treesitter(text, lang) if get_treesitter(lang) else None
+    if syms is None:
+        syms = _extract_regex(text, lang)
+    lines = text.split("\n")
+    imports = []
+    for pat in _IMPORT_PATTERNS.get(lang, []):
+        for m in pat.finditer(text):
+            imports.append(next(g for g in m.groups() if g))
+    idents = set()
+    for m in _IDENT.finditer(text):
+        t = m.group(0)
+        if t not in _KEYWORDS and not t.isupper():
+            idents.add(t)
+    h = fast_hash(text)
+    return {"symbols": syms, "imports": imports, "idents": idents,
+            "hash": h, "size": len(text), "nlines": len(lines)}
+
+
+def _extract_regex(text, lang):
+    pats = _DEF_PATTERNS.get(lang, [])
+    if not pats:
+        return []
+    out, seen = [], set()
+    for i, line in enumerate(text.split("\n"), 1):
+        if len(line) > 400:
+            continue
+        for kind, pat in pats:
+            m = pat.search(line)
+            if m:
+                name = m.group("name")
+                key = (name, i)
+                if name and key not in seen:
+                    seen.add(key)
+                    out.append({"name": name, "kind": kind, "line": i,
+                                "end": i, "sig": line.strip()[:160]})
+                break
+    return out
+
+
+def _extract_treesitter(text, lang):
+    parser = get_treesitter(lang)
+    if not parser:
+        return None
+    try:
+        tree = parser.parse(text.encode("utf-8", "replace"))
+    except Exception:
+        return None
+    DEF = {"function_definition", "function_declaration", "method_definition",
+           "method_declaration", "class_definition", "class_declaration",
+           "function_item", "struct_item", "enum_item", "trait_item",
+           "interface_declaration", "type_alias_declaration", "function_signature"}
+    out = []
+
+    def name_of(node):
+        for c in node.children:
+            if c.type in ("identifier", "name", "type_identifier", "field_identifier",
+                          "property_identifier", "constant"):
+                return c.text.decode("utf-8", "replace")
+        return None
+
+    def walk(node):
+        if node.type in DEF:
+            nm = name_of(node)
+            if nm:
+                out.append({"name": nm, "kind": node.type.split("_")[0],
+                            "line": node.start_point[0] + 1, "end": node.end_point[0] + 1,
+                            "sig": text.split("\n")[node.start_point[0]].strip()[:160]})
+        for c in node.children:
+            walk(c)
+    try:
+        walk(tree.root_node)
+    except Exception:
+        return None
+    return out
+
+
+def ctags_available():
+    if os.environ.get("KG_PARSER") not in (None, "auto", "ctags"):
+        return False
+    return bool(shutil.which("ctags"))
+
+
+def batch_ctags(rels):
+    """One universal-ctags pass over the file set → {rel: [symbols]}. Best-effort."""
+    out = {}
+    if not rels:
+        return out
+    try:
+        names = "\n".join(os.path.join(ROOT, r) for r in rels)
+        p = subprocess.run(
+            ["ctags", "--output-format=json", "--fields=+ln", "--extras=+q", "-f", "-", "-L", "-"],
+            input=names, capture_output=True, text=True, timeout=180)
+        for line in p.stdout.splitlines():
+            try:
+                j = json.loads(line)
+            except Exception:
+                continue
+            if j.get("_type") != "tag":
+                continue
+            try:
+                rel = os.path.relpath(j.get("path", ""), ROOT)
+            except Exception:
+                continue
+            name, ln = j.get("name"), int(j.get("line", 0) or 0)
+            if not name or not ln:
+                continue
+            sig = (j.get("pattern", "") or "").strip("/^$ ").replace("\\/", "/")[:160]
+            out.setdefault(rel, []).append({"name": name, "kind": j.get("kind", "symbol"),
+                                            "line": ln, "end": int(j.get("end", ln) or ln), "sig": sig})
+    except Exception:
+        return {}
+    return out
+
+
+# ─────────────────────────── import resolution ─────────────────────────────
+def build_file_index(rels):
+    """Map plausible module paths → repo-relative file for import resolution."""
+    idx = {}
+    for rel in rels:
+        noext = os.path.splitext(rel)[0]
+        idx[rel] = rel
+        idx[noext] = rel
+        idx[noext.replace(os.sep, ".")] = rel
+        idx[noext.replace(os.sep, "/")] = rel
+        base = os.path.basename(noext)
+        idx.setdefault(base, rel)
+        if base == "__init__" or base == "index" or base == "mod":
+            d = os.path.dirname(rel)
+            idx.setdefault(d, rel)
+            idx.setdefault(d.replace(os.sep, "."), rel)
+    return idx
+
+
+def resolve_import(imp, src_rel, fidx):
+    imp = imp.strip().lstrip("./").rstrip("/")
+    for cand in (imp, imp.replace(".", "/"), imp.replace("::", "/"),
+                 os.path.normpath(os.path.join(os.path.dirname(src_rel), imp))):
+        if cand in fidx:
+            return fidx[cand]
+        for ext in CODE_EXT:
+            if cand + ext in fidx:
+                return fidx[cand + ext]
+    return None
+
+
+# ─────────────────────────── pagerank / communities ────────────────────────
+def pagerank(nodes, out_adj, damping=0.85, iters=30, tol=1e-6):
+    n = len(nodes)
+    if n == 0:
+        return {}
+    idx = {x: i for i, x in enumerate(nodes)}
+    np = lazy("numpy")
+    if np is not None:
+        deg = np.array([max(1, len(out_adj.get(x, ()))) for x in nodes], dtype="float64")
+        pr = np.full(n, 1.0 / n)
+        cols = [[idx[d] for d in out_adj.get(x, ()) if d in idx] for x in nodes]
+        for _ in range(iters):
+            contrib = pr / deg
+            nxt = np.full(n, (1 - damping) / n)
+            for i, cs in enumerate(cols):
+                if cs:
+                    c = contrib[i]
+                    for j in cs:
+                        nxt[j] += damping * c
+            if np.abs(nxt - pr).sum() < tol:
+                pr = nxt
+                break
+            pr = nxt
+        return {nodes[i]: float(pr[i]) for i in range(n)}
+    pr = {x: 1.0 / n for x in nodes}
+    deg = {x: max(1, len(out_adj.get(x, ()))) for x in nodes}
+    for _ in range(iters):
+        nxt = {x: (1 - damping) / n for x in nodes}
+        for x in nodes:
+            share = damping * pr[x] / deg[x]
+            for d in out_adj.get(x, ()):
+                if d in nxt:
+                    nxt[d] += share
+        if sum(abs(nxt[x] - pr[x]) for x in nodes) < tol:
+            pr = nxt
+            break
+        pr = nxt
+    return pr
+
+
+def communities(nodes, adj, iters=8):
+    lab = {x: i for i, x in enumerate(nodes)}
+    for _ in range(iters):
+        changed = 0
+        for x in nodes:
+            nb = adj.get(x, ())
+            if not nb:
+                continue
+            cnt = {}
+            for y in nb:
+                cnt[lab[y]] = cnt.get(lab[y], 0) + 1
+            best = max(cnt, key=cnt.get)
+            if lab[x] != best:
+                lab[x] = best
+                changed += 1
+        if not changed:
+            break
+    return lab
+
+
+# ─────────────────────────── indexing ──────────────────────────────────────
+def _index(full=True, changed_only=None):
+    t0 = time.time()
+    cx = connect()
+    fts = has_fts(cx)
+    init_schema(cx, fts)
+    meta = load_meta()
+    rels = list_files()
+    if len(rels) > 50000 and "--all" not in sys.argv and "--max" not in sys.argv:
+        die(f"large repo ({len(rels)} files) — run `kg init --all` or `--max N` to confirm.")
+    if "--max" in sys.argv:
+        try:
+            mx = int(sys.argv[sys.argv.index("--max") + 1])
+            rels = rels[:mx]
+        except Exception:
+            pass
+
+    prev = {r[0]: r[1] for r in cx.execute("SELECT path, content_hash FROM files")}
+    fidx = build_file_index(rels)
+
+    # decide which files to parse
+    if changed_only is not None:
+        todo = changed_only
+    else:
+        todo = rels
+
+    parsed = {}
+    abspaths = [(os.path.join(ROOT, r), r, lang_of(r)) for r in todo]
+    results = _parse_many(abspaths)
+    for (ap, rel, lang), res in zip(abspaths, results):
+        if res:
+            parsed[rel] = res
+
+    # Parser cascade: tree-sitter (per file, in worker) → ctags (one batch) → regex (in worker).
+    ts = bool(get_treesitter("python"))
+    use_ctags = (not ts) and ctags_available()
+    if use_ctags:
+        ctags_syms = batch_ctags(list(parsed.keys()))
+        for rel, syms in ctags_syms.items():
+            if rel in parsed and syms:
+                parsed[rel]["symbols"] = syms  # ctags symbols beat regex
+    effective_parser = "treesitter" if ts else ("ctags" if use_ctags else "regex")
+
+    # write nodes/files for parsed files (replace per file)
+    now = time.time()
+    for rel, res in parsed.items():
+        cx.execute("DELETE FROM nodes WHERE file=?", (rel,))
+        cx.execute("DELETE FROM edges WHERE src=?", (rel,))
+        cx.execute("DELETE FROM entity_edges WHERE src=?", (rel,))
+        cx.execute("INSERT OR REPLACE INTO files(path,content_hash,lang,indexed_at,size) "
+                   "VALUES(?,?,?,?,?)",
+                   (rel, res["hash"], lang_of(rel), now, res["size"]))
+        for s in res["symbols"]:
+            cur = cx.execute(
+                "INSERT INTO nodes(name,kind,file,line_start,line_end,signature,doc,content_hash) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (s["name"], s["kind"], rel, s["line"], s.get("end", s["line"]),
+                 s.get("sig", ""), "", res["hash"]))
+            if fts:
+                cx.execute("INSERT INTO nodes_fts(rowid,name,signature,doc,file) VALUES(?,?,?,?,?)",
+                           (cur.lastrowid, s["name"], s.get("sig", ""), "", rel))
+    # remove deleted files
+    if changed_only is None:
+        gone = set(prev) - set(rels)
+        for rel in gone:
+            cx.execute("DELETE FROM nodes WHERE file=?", (rel,))
+            cx.execute("DELETE FROM edges WHERE src=? OR dst=?", (rel, rel))
+            cx.execute("DELETE FROM files WHERE path=?", (rel,))
+    cx.commit()
+
+    # build edges (imports + references) — over the full known symbol table
+    name2files = {}
+    for name, file in cx.execute("SELECT name, file FROM nodes"):
+        name2files.setdefault(name, set()).add(file)
+    # Full init rebuilds the entity set from scratch; refresh keeps unchanged files'
+    # entity_edges (cleared per-file above) and dedups new ext_modules via NOT EXISTS.
+    if changed_only is None:
+        cx.execute("DELETE FROM entities")
+        cx.execute("DELETE FROM entity_edges")
+    edge_rows, ent_rows = [], []
+    for rel, res in parsed.items():
+        for imp in res["imports"]:
+            tgt = resolve_import(imp, rel, fidx)
+            if tgt and tgt != rel:
+                edge_rows.append((rel, tgt, "imports", 1.0))
+            else:
+                ent_rows.append((rel, imp.split("/")[0].split(".")[0], "imports"))
+        # references: identifiers that name symbols defined elsewhere (capped)
+        refs, cap = set(), 0
+        for ident in res["idents"]:
+            tgts = name2files.get(ident)
+            if tgts:
+                for t in tgts:
+                    if t != rel and (rel, t) not in refs:
+                        refs.add((rel, t))
+                        edge_rows.append((rel, t, "references", 0.5))
+                        cap += 1
+            if cap > 60:
+                break
+    if changed_only is not None:
+        # refresh path: only replace edges from changed files (done above per-file delete)
+        pass
+    cx.executemany("INSERT INTO edges(src,dst,kind,weight) VALUES(?,?,?,?)", edge_rows)
+    cx.executemany("INSERT INTO entities(kind,name,attrs) SELECT 'ext_module',?,'' "
+                   "WHERE NOT EXISTS(SELECT 1 FROM entities WHERE name=? AND kind='ext_module')",
+                   [(r[1], r[1]) for r in ent_rows]) if ent_rows else None
+    cx.executemany("INSERT INTO entity_edges(src,dst,kind) VALUES(?,?,?)", ent_rows)
+    cx.commit()
+
+    # pagerank + communities over the file graph
+    fnodes = [r[0] for r in cx.execute("SELECT path FROM files")]
+    out_adj, undirected = {}, {}
+    for s, d, w in cx.execute("SELECT src,dst,kind FROM edges"):
+        out_adj.setdefault(s, []).append(d)
+        undirected.setdefault(s, set()).add(d)
+        undirected.setdefault(d, set()).add(s)
+    pr = pagerank(fnodes, out_adj)
+    comm = communities(fnodes, {k: list(v) for k, v in undirected.items()}) if fnodes else {}
+    for f in fnodes:
+        cx.execute("UPDATE files SET pagerank=?, community=? WHERE path=?",
+                   (pr.get(f, 0.0), comm.get(f, 0), f))
+    cx.commit()
+
+    nc = cx.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    ec = cx.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+    fc = cx.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+    cx.close()
+    meta.update({"root": ROOT, "index_version": meta.get("index_version", 0) + 1,
+                 "last_index": now, "file_count": fc, "node_count": nc, "edge_count": ec,
+                 "parser": effective_parser, "fts": fts,
+                 "accel": {"numpy": bool(lazy("numpy")), "blake3": bool(lazy("blake3"))}})
+    meta.setdefault("cache", {"hit": 0, "miss": 0})
+    save_meta(meta)
+    return {"files": fc, "nodes": nc, "edges": ec, "parser": effective_parser,
+            "secs": round(time.time() - t0, 2), "parsed": len(parsed)}
+
+
+def _parse_many(abspaths):
+    # Default SERIAL on purpose: ctags already batch-parses in one process and the
+    # per-file Python work (regex idents/imports/hash) is too light to amortize
+    # process-spawn overhead — measured ~14x SLOWER in parallel at 500 files. Opt in
+    # with KG_JOBS=N only for very large trees parsed via tree-sitter (heavy per-file
+    # work), where the pool actually wins.
+    jobs = os.environ.get("KG_JOBS")
+    want = int(jobs) if (jobs and jobs.isdigit()) else 1
+    if want > 1 and len(abspaths) > 400:
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            with ProcessPoolExecutor(max_workers=min(want, 8)) as ex:
+                return list(ex.map(_worker, abspaths, chunksize=32))
+        except Exception:
+            pass
+    return [_worker(a) for a in abspaths]
+
+
+def _worker(triple):
+    ap, rel, lang = triple
+    try:
+        return extract(ap, rel, lang)
+    except Exception:
+        return None
+
+
+# ─────────────────────────── in-memory index (for query/daemon) ────────────
+class Index:
+    def __init__(self):
+        self.cx = connect()
+        self.meta = load_meta()
+        self.fts = self.meta.get("fts", False)
+        self.out, self.inn, self.pr = {}, {}, {}
+        for s, d, w in self.cx.execute("SELECT src,dst,weight FROM edges"):
+            self.out.setdefault(s, []).append((d, w))
+            self.inn.setdefault(d, []).append((s, w))
+        for path, prk in self.cx.execute("SELECT path,pagerank FROM files"):
+            self.pr[path] = prk
+
+    def bm25(self, q, limit=60):
+        toks = [t for t in _IDENT.findall(q)]
+        if not toks:
+            toks = q.split()
+        rows = []
+        if self.fts:
+            match = " OR ".join(f'"{t}"' for t in toks if t)
+            try:
+                rows = self.cx.execute(
+                    "SELECT n.id,n.name,n.kind,n.file,n.line_start,n.line_end,n.signature, "
+                    "bm25(nodes_fts) AS r FROM nodes_fts JOIN nodes n ON n.id=nodes_fts.rowid "
+                    "WHERE nodes_fts MATCH ? ORDER BY r LIMIT ?", (match, limit)).fetchall()
+                # Rows are best-first (FTS5 bm25 lower = better). Score by rank so the
+                # relevance weight is monotonic with the match regardless of bm25's sign.
+                n = len(rows)
+                rows = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], float(n - i)) for i, r in enumerate(rows)]
+            except Exception:
+                rows = []
+        if not rows:
+            like = "%" + (toks[0] if toks else q) + "%"
+            raw = self.cx.execute(
+                "SELECT id,name,kind,file,line_start,line_end,signature FROM nodes "
+                "WHERE name LIKE ? OR signature LIKE ? LIMIT ?", (like, like, limit)).fetchall()
+            rows = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], 0.5) for r in raw]
+        return rows
+
+    def ppr(self, seeds, damping=0.7, iters=20):
+        if not seeds:
+            return {}
+        tot = sum(seeds.values()) or 1.0
+        restart = {k: v / tot for k, v in seeds.items()}
+        score = dict(restart)
+        for _ in range(iters):
+            nxt = {k: (1 - damping) * v for k, v in restart.items()}
+            for node, s in score.items():
+                nbrs = self.out.get(node, []) + self.inn.get(node, [])
+                if not nbrs:
+                    continue
+                share = damping * s / len(nbrs)
+                for d, w in nbrs:
+                    nxt[d] = nxt.get(d, 0.0) + share * w
+            score = nxt
+        return score
+
+
+def _norm(d):
+    if not d:
+        return {}
+    mx = max(d.values()) or 1.0
+    return {k: v / mx for k, v in d.items()}
+
+
+def query(q, k=12, ix=None):
+    ix = ix or Index()
+    rows = ix.bm25(q)
+    if not rows:
+        return {"results": [], "stale": []}
+    bm = {}
+    seeds = {}
+    for r in rows:
+        bm[r[0]] = r[7]
+        seeds[r[3]] = max(seeds.get(r[3], 0), r[7])
+    nb = _norm(bm)
+    fppr = _norm(ix.ppr(seeds))
+    fpr = _norm(ix.pr)  # global pagerank prior, normalized once (not per row)
+    scored = []
+    for r in rows:
+        nid, name, kind, file, ls, le, sig, _ = r
+        sc = 0.55 * nb.get(nid, 0) + 0.30 * fppr.get(file, 0) + 0.15 * fpr.get(file, 0)
+        scored.append({"file": file, "line_start": ls, "line_end": le,
+                       "kind": kind, "name": name, "sig": sig, "score": round(sc, 4)})
+    scored.sort(key=lambda x: -x["score"])
+    # Freshness is checked at the presentation layer (c_query → stale_files) so it
+    # runs on cache/daemon hits too; query() itself stays pure compute.
+    return {"results": scored[:k], "stale": []}
+
+
+def neighbors(target, depth=1, ix=None):
+    ix = ix or Index()
+    file = _resolve_target(ix, target)
+    if not file:
+        return {"target": target, "neighbors": []}
+    seen, frontier = {file}, [file]
+    for _ in range(depth):
+        nxt = []
+        for f in frontier:
+            for d, w in ix.out.get(f, []) + ix.inn.get(f, []):
+                if d not in seen:
+                    seen.add(d)
+                    nxt.append(d)
+        frontier = nxt
+    seen.discard(file)
+    out = []
+    for f in sorted(seen, key=lambda x: -ix.pr.get(x, 0))[:25]:
+        syms = ix.cx.execute("SELECT name,kind,line_start FROM nodes WHERE file=? "
+                             "ORDER BY line_start LIMIT 3", (f,)).fetchall()
+        out.append({"file": f, "pagerank": round(ix.pr.get(f, 0), 5),
+                    "symbols": [f"{s[0]}({s[1]})" for s in syms]})
+    return {"target": file, "neighbors": out}
+
+
+def blast(target, depth=2, ix=None):
+    ix = ix or Index()
+    file = _resolve_target(ix, target)
+    if not file:
+        return {"target": target, "impacted": []}
+    seen, frontier = {file}, [file]
+    levels = {}
+    for lvl in range(1, depth + 1):
+        nxt = []
+        for f in frontier:
+            for s, w in ix.inn.get(f, []):  # who depends ON f
+                if s not in seen:
+                    seen.add(s)
+                    levels[s] = lvl
+                    nxt.append(s)
+        frontier = nxt
+    impacted = sorted(levels, key=lambda x: (-ix.pr.get(x, 0)))
+    return {"target": file,
+            "impacted": [{"file": f, "depth": levels[f], "pagerank": round(ix.pr.get(f, 0), 5)}
+                         for f in impacted[:40]]}
+
+
+def _resolve_target(ix, target):
+    if ix.cx.execute("SELECT 1 FROM files WHERE path=?", (target,)).fetchone():
+        return target
+    row = ix.cx.execute("SELECT file FROM nodes WHERE name=? ORDER BY 1 LIMIT 1", (target,)).fetchone()
+    if row:
+        return row[0]
+    row = ix.cx.execute("SELECT path FROM files WHERE path LIKE ? LIMIT 1",
+                        ("%" + target + "%",)).fetchone()
+    return row[0] if row else None
+
+
+# ─────────────────────────── cache ─────────────────────────────────────────
+def cache_key(cmd, args):
+    iv = load_meta().get("index_version", 0)
+    return fast_hash(f"{cmd}|{json.dumps(args, sort_keys=True)}|{iv}")
+
+
+def cache_get(cmd, args, ttl=604800):
+    p = os.path.join(CACHE_DIR, cache_key(cmd, args) + ".json")
+    try:
+        st = os.stat(p)
+        if time.time() - st.st_mtime > ttl:
+            return None
+        with open(p) as f:
+            _bump_cache("hit")
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def cache_put(cmd, args, value):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    p = os.path.join(CACHE_DIR, cache_key(cmd, args) + ".json")
+    try:
+        with open(p, "w") as f:
+            json.dump(value, f)
+        _bump_cache("miss")
+        _cache_evict()
+    except Exception:
+        pass
+
+
+def _bump_cache(which):
+    m = load_meta()
+    m.setdefault("cache", {"hit": 0, "miss": 0})
+    m["cache"][which] = m["cache"].get(which, 0) + 1
+    save_meta(m)
+
+
+def _cache_evict(cap=500):
+    try:
+        files = [os.path.join(CACHE_DIR, x) for x in os.listdir(CACHE_DIR) if x.endswith(".json")]
+        if len(files) > cap:
+            files.sort(key=lambda p: os.stat(p).st_mtime)
+            for p in files[:len(files) - cap]:
+                os.remove(p)
+    except Exception:
+        pass
+
+
+# ─────────────────────────── daemon (Tier 2, opt-in) ───────────────────────
+def daemon_serve(idle=900):
+    if os.path.exists(SOCK_PATH):
+        os.remove(SOCK_PATH)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(SOCK_PATH)
+    srv.listen(8)
+    srv.settimeout(idle)
+    # Hold ONE in-RAM Index and reuse it across requests — the whole point of the
+    # daemon. Reload only when the index_version changes (after init/refresh), so we
+    # never serve a structurally-stale graph.
+    state = {"ix": None, "iv": None}
+
+    def ix_now():
+        iv = load_meta().get("index_version")
+        if state["ix"] is None or state["iv"] != iv:
+            if state["ix"] is not None:
+                try:
+                    state["ix"].cx.close()
+                except Exception:
+                    pass
+            state["ix"], state["iv"] = Index(), iv
+        return state["ix"]
+
+    funcs = {"query": lambda a: query(a.get("q", ""), a.get("k", 12), ix=ix_now()),
+             "neighbors": lambda a: neighbors(a.get("target"), a.get("depth", 1), ix=ix_now()),
+             "blast": lambda a: blast(a.get("target"), a.get("depth", 2), ix=ix_now()),
+             "status": lambda a: status_data(),
+             "ping": lambda a: {"ok": True}}
+    while True:
+        try:
+            conn, _ = srv.accept()
+        except socket.timeout:
+            break
+        try:
+            data = conn.recv(65536).decode()
+            req = json.loads(data)
+            if req.get("cmd") == "__shutdown__":
+                conn.sendall(b'{"ok":true}')
+                conn.close()
+                break
+            res = funcs.get(req.get("cmd"), lambda a: {"error": "unknown"})(req.get("args", {}))
+            conn.sendall(json.dumps(res).encode())
+        except Exception as e:
+            try:
+                conn.sendall(json.dumps({"error": str(e)[:200]}).encode())
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    try:
+        os.remove(SOCK_PATH)
+    except Exception:
+        pass
+
+
+def daemon_call(cmd, args):
+    if not os.path.exists(SOCK_PATH):
+        return None
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect(SOCK_PATH)
+        s.sendall(json.dumps({"cmd": cmd, "args": args}).encode())
+        buf = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        s.close()
+        return json.loads(buf.decode())
+    except Exception:
+        return None
+
+
+# ─────────────────────────── status / check / stale ────────────────────────
+def status_data():
+    m = load_meta()
+    if not os.path.exists(DB_PATH):
+        return {"indexed": False, "root": ROOT}
+    cx = connect()
+    central = cx.execute("SELECT n.name,n.kind,n.file,f.pagerank FROM files f "
+                         "JOIN nodes n ON n.file=f.path ORDER BY f.pagerank DESC LIMIT 6").fetchall()
+    ncomm = cx.execute("SELECT COUNT(DISTINCT community) FROM files").fetchone()[0]
+    cx.close()
+    st = stale_data()
+    cache = m.get("cache", {"hit": 0, "miss": 0})
+    tot = cache.get("hit", 0) + cache.get("miss", 0)
+    return {"indexed": True, "root": ROOT, "repo_hash": REPO_HASH,
+            "index_version": m.get("index_version"), "last_index": m.get("last_index"),
+            "files": m.get("file_count"), "nodes": m.get("node_count"),
+            "edges": m.get("edge_count"), "parser": m.get("parser"),
+            "fts": m.get("fts"), "accel": m.get("accel", {}),
+            "communities": ncomm, "stale": st["count"],
+            "cache_hit": cache.get("hit", 0), "cache_miss": cache.get("miss", 0),
+            "cache_rate": round(100 * cache.get("hit", 0) / tot, 1) if tot else 0.0,
+            "daemon": os.path.exists(SOCK_PATH),
+            "central": [{"name": c[0], "kind": c[1], "file": c[2]} for c in central]}
+
+
+def stale_files(paths):
+    """Re-hash specific returned files vs the stored index → which are now stale.
+    Runs at the presentation layer so even cached/daemon results get a live check."""
+    if not os.path.exists(DB_PATH) or not paths:
+        return []
+    cx = connect()
+    out = []
+    for f in set(paths):
+        try:
+            cur = fast_hash(open(os.path.join(ROOT, f), "r", encoding="utf-8", errors="replace").read())
+            row = cx.execute("SELECT content_hash FROM files WHERE path=?", (f,)).fetchone()
+            if row and row[0] != cur:
+                out.append(f)
+        except Exception:
+            pass
+    cx.close()
+    return out
+
+
+def stale_data():
+    if not os.path.exists(DB_PATH):
+        return {"count": 0, "files": []}
+    cx = connect()
+    stored = {r[0]: r[1] for r in cx.execute("SELECT path, content_hash FROM files")}
+    cx.close()
+    changed = []
+    cur = set(list_files())
+    for rel in cur:
+        ab = os.path.join(ROOT, rel)
+        try:
+            h = fast_hash(open(ab, "r", encoding="utf-8", errors="replace").read())
+            if rel not in stored or stored[rel] != h:
+                changed.append(rel)
+        except Exception:
+            pass
+    changed += [r for r in stored if r not in cur]
+    return {"count": len(changed), "files": changed[:20]}
+
+
+def _rel(ts):
+    if not ts:
+        return "never"
+    d = time.time() - ts
+    for unit, s in (("d", 86400), ("h", 3600), ("m", 60)):
+        if d >= s:
+            return f"{int(d / s)}{unit} ago"
+    return "just now"
+
+
+# ─────────────────────────── command handlers ──────────────────────────────
+def c_check(a):
+    m = load_meta()
+    if not os.path.exists(DB_PATH):
+        print("no index for this repo")
+        return
+    st = stale_data()
+    if st["count"]:
+        print(f"stale: {st['count']} changed since last index ({_rel(m.get('last_index'))})")
+    else:
+        print(f"indexed: {m.get('file_count')} files, {m.get('node_count')} symbols, fresh")
+
+
+def c_init(a):
+    r = _index(full=True)
+    print(f"indexed {r['files']} files · {r['nodes']} symbols · {r['edges']} edges "
+          f"· parser={r['parser']} · {r['secs']}s")
+
+
+def c_refresh(a):
+    if not os.path.exists(DB_PATH):
+        return c_init(a)
+    st = stale_data()
+    if not st["count"]:
+        print("up to date — nothing changed")
+        return
+    changed = [f for f in st["files"] if os.path.exists(os.path.join(ROOT, f))]
+    r = _index(full=False, changed_only=changed)
+    print(f"refreshed {len(changed)} files · now {r['nodes']} symbols · {r['edges']} edges · {r['secs']}s")
+
+
+def c_status(a):
+    d = daemon_call("status", {}) or status_data()
+    if "--json" in a:
+        print(json.dumps(d, indent=2))
+        return
+    if not d.get("indexed"):
+        print(f"no index for {d['root']}\n  build one: kg init")
+        return
+    print(f"knowledge-graph · {os.path.basename(d['root'])} ({d['repo_hash']})")
+    print(f"  index v{d['index_version']} · {_rel(d['last_index'])} · parser={d['parser']}"
+          f"{' · daemon' if d.get('daemon') else ''}")
+    print(f"  {d['files']} files · {d['nodes']} symbols · {d['edges']} edges · {d['communities']} communities")
+    acc = ",".join(k for k, v in d.get("accel", {}).items() if v) or "stdlib"
+    print(f"  fts={d['fts']} · accel={acc} · stale={d['stale']}")
+    print(f"  cache: {d['cache_hit']} hit / {d['cache_miss']} miss ({d['cache_rate']}%)")
+    if d.get("central"):
+        print("  central:")
+        for c in d["central"][:5]:
+            print(f"    {c['name']} ({c['kind']}) — {c['file']}")
+    if d["stale"]:
+        print(f"  ⚠ {d['stale']} files changed — run `kg refresh`")
+
+
+def c_reset(a):
+    if os.path.isdir(REPO_DIR):
+        shutil.rmtree(REPO_DIR, ignore_errors=True)
+        print(f"reset — wiped index + cache for {os.path.basename(ROOT)}")
+    else:
+        print("nothing to reset")
+
+
+def c_query(a):
+    if not a:
+        die("usage: kg query <text> [--k N]")
+    k = 12
+    if "--k" in a:
+        i = a.index("--k")
+        k = int(a[i + 1]); a = a[:i] + a[i + 2:]
+    q = " ".join(a)
+    if not os.path.exists(DB_PATH):
+        die("no index — run `kg init` first")
+    cached = cache_get("query", [q, k])
+    res = cached or daemon_call("query", {"q": q, "k": k}) or query(q, k)
+    if not cached:
+        cache_put("query", [q, k], res)
+    if not res["results"]:
+        print("no matches")
+        return
+    for r in res["results"]:
+        loc = f"{r['file']}:{r['line_start']}" + (f"-{r['line_end']}" if r['line_end'] > r['line_start'] else "")
+        print(f"  {loc}  {r['kind']} {r['name']}  ({r['score']})")
+    # Live freshness check on the returned files — runs even on cache/daemon hits,
+    # so a file edited between reindexes can never be served as fresh.
+    stale = stale_files([r["file"] for r in res["results"]])
+    if stale:
+        print(f"  ⚠ stale (changed since index): {', '.join(stale[:5])} — `kg refresh`")
+
+
+def c_neighbors(a):
+    if not a:
+        die("usage: kg neighbors <symbol|file> [--depth N]")
+    depth = 1
+    if "--depth" in a:
+        i = a.index("--depth"); depth = int(a[i + 1]); a = a[:i] + a[i + 2:]
+    res = daemon_call("neighbors", {"target": a[0], "depth": depth}) or neighbors(a[0], depth)
+    print(f"neighbors of {res['target']}:")
+    for n in res["neighbors"]:
+        print(f"  {n['file']}  [{', '.join(n['symbols'])}]")
+
+
+def c_blast(a):
+    if not a:
+        die("usage: kg blast <file|symbol> [--depth N]")
+    depth = 2
+    if "--depth" in a:
+        i = a.index("--depth"); depth = int(a[i + 1]); a = a[:i] + a[i + 2:]
+    if not os.path.exists(DB_PATH):
+        die("no index — run `kg init` first")
+    res = cache_get("blast", [a[0], depth]) or daemon_call("blast", {"target": a[0], "depth": depth}) or blast(a[0], depth)
+    cache_put("blast", [a[0], depth], res)
+    print(f"blast radius of {res['target']} ({len(res['impacted'])} impacted):")
+    for x in res["impacted"]:
+        print(f"  d{x['depth']}  {x['file']}  (pr={x['pagerank']})")
+
+
+def c_stale(a):
+    st = stale_data()
+    print(f"stale: {st['count']} files")
+    for f in st["files"]:
+        print(f"  {f}")
+
+
+def c_cache(a):
+    sub = a[0] if a else "stats"
+    if sub == "clear":
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+        m = load_meta(); m["cache"] = {"hit": 0, "miss": 0}; save_meta(m)
+        print("cache cleared")
+        return
+    m = load_meta().get("cache", {"hit": 0, "miss": 0})
+    n = len(os.listdir(CACHE_DIR)) if os.path.isdir(CACHE_DIR) else 0
+    print(f"cache: {n} entries · {m.get('hit',0)} hit / {m.get('miss',0)} miss")
+
+
+def c_daemon(a):
+    sub = a[0] if a else "status"
+    if sub == "status":
+        if daemon_call("ping", {}):
+            print("daemon: running")
+        else:
+            print("daemon: stopped")
+    elif sub == "stop":
+        r = daemon_call("__shutdown__", {})
+        print("daemon: stopped" if r else "daemon: not running")
+    elif sub == "start":
+        if daemon_call("ping", {}):
+            print("daemon: already running")
+            return
+        if not os.path.exists(DB_PATH):
+            die("no index — run `kg init` first")
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            if os.fork() != 0:
+                os._exit(0)
+            sys.stdin.close()
+            with open(os.devnull, "w") as dn:
+                os.dup2(dn.fileno(), 1); os.dup2(dn.fileno(), 2)
+            daemon_serve()
+            os._exit(0)
+        time.sleep(0.6)
+        print("daemon: started" if daemon_call("ping", {}) else "daemon: failed to start")
+    else:
+        die("usage: kg daemon start|stop|status")
+
+
+CMDS = {"check": c_check, "init": c_init, "refresh": c_refresh, "status": c_status,
+        "reset": c_reset, "query": c_query, "q": c_query, "neighbors": c_neighbors,
+        "blast": c_blast, "stale": c_stale, "cache": c_cache, "daemon": c_daemon}
+
+
+def main():
+    av = [x for x in sys.argv[1:] if x not in ("--all",)]
+    if not av or av[0] in ("help", "-h", "--help"):
+        print(__doc__)
+        print("commands: check | init [--max N|--all] | refresh | status [--json] | reset |\n"
+              "          query <text> [--k N] | neighbors <sym|file> [--depth N] |\n"
+              "          blast <file|sym> [--depth N] | stale | cache stats|clear |\n"
+              "          daemon start|stop|status", file=sys.stderr)
+        return
+    fn = CMDS.get(av[0])
+    if not fn:
+        die(f"unknown command '{av[0]}' (try: kg help)")
+    fn(av[1:])
+
+
+if __name__ == "__main__":
+    main()

@@ -165,7 +165,9 @@ Jira &amp; Confluence over their REST APIs via bundled CLIs — throttle-aware, 
 
 > Security is infrastructure, not advice.
 
-A `PreToolUse(Bash|PowerShell)` hook inspects every shell command and **unconditionally blocks** the catastrophic ones. Because it exits before Claude Code evaluates permission rules, the block **overrides `allow` rules and fires in every mode** — default · acceptEdits · auto · bypass — **with no escape hatch by design.** Same guard, **both runtimes**: auto-on in Claude Code; in Codex it ships as a `PreToolUse` deny hook (trust it once via `/hooks`), layered over Codex's own sandbox.
+Claude Code keeps its existing `PreToolUse(Bash|PowerShell)` guard unchanged. Codex ships a separate POSIX `PreToolUse(Bash)` matcher tailored to Codex's event schema; trust it once via `/hooks` and keep Codex sandboxing + approvals enabled. Both are deterministic defense-in-depth layers, not replacements for the host sandbox.
+
+The Codex adapter requires Python 3.10+ for its safety hook and bundled helpers.
 
 <table>
 <tr>
@@ -200,7 +202,7 @@ download piped into a shell · <code>base64 -d</code> → shell · <code>eval "$
 </tr>
 </table>
 
-Wrappers (`sudo`, `env`, `timeout`, …) and `sh -c '…'` payloads are unwrapped first; a dangerous command merely *named* in a quoted argument (like a commit message) is not mistaken for execution. **Honest scope:** a denylist can't catch every obfuscation, so this is a deterministic floor layered *under* OS sandboxing, auto-mode's classifier, and model judgment — not a complete sandbox. Verified against a 90-case block/allow matrix.
+Wrappers and nested payloads are inspected while quoted inert mentions remain allowed. **Honest scope:** a denylist cannot catch every obfuscation. Codex currently invokes `PreToolUse` for a new Bash tool call, not for later bytes sent to an existing process through `write_stdin`; the bundled Codex launcher is POSIX-only. Keep the sandbox and approval policy active.
 
 <img src="assets/divider.svg" alt="" width="100%">
 
@@ -288,13 +290,14 @@ Restart if prompted, then initialize your workspace with <code>/almanac</code>.
 </td>
 <td width="50%" valign="top">
 <h4>Codex</h4>
-<pre><code>codex plugin marketplace add Alexander-Tyagunov/magician</code></pre>
-Enable magician in the Codex Plugins UI, restart, then: <i>“Set up Magician in this workspace.”</i>
+<pre><code>codex plugin marketplace add Alexander-Tyagunov/magician
+codex plugin add magician@magician</code></pre>
+Restart or open a new task, then: <i>“Use $almanac to set up Magician in this workspace.”</i>
 </td>
 </tr>
 </table>
 
-<sub>Codex loads adapter skills from <code>.codex-plugin/skills/</code>, preserving magician's gates while mapping to Codex tools. If it doesn't appear, add <code>[plugins."magician@magician"]\nenabled = true</code> to <code>~/.codex/config.toml</code>.</sub>
+<sub>Codex installs a self-contained package with adapters under <code>skills/</code>. Use <code>codex plugin list</code> to confirm it is installed and enabled; an enable flag alone does not install package contents.</sub>
 
 <img src="assets/divider.svg" alt="" width="100%">
 

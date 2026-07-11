@@ -1,0 +1,74 @@
+---
+name: orchestrate
+description: Drives full multi-agent implementation from a blueprint — fans out parallel-safe tasks into waves, runs sequential tasks in order, resolves conflicts, then verifies. Use to execute an approved plan.
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Task, AskUserQuestion
+argument-hint: [plan-file]
+---
+
+# /orchestrate — Multi-Agent Implementation
+
+Execute an entire blueprint with parallel + sequential agent dispatch. (This skill absorbed the former `/summon` — wave coordination and parallel spawning are one skill.)
+
+## Pick the right engine first
+
+- **This skill** — the default: you control waves explicitly from a blueprint, with conflict checks between them.
+- **[`/weave`](../weave/SKILL.md)** — for *adaptive multi-item delivery* (N tickets/features, a migration, a batch sweep) where you compose the pipeline to the work: it builds ONE native Workflow with magician's guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify, write gates). Prefer it over hand-rolling many agents.
+- **Native dynamic workflows** — for very large plans (hundreds of independent units: migrations, sweeping refactors), mention "workflow" so Claude builds a dynamic orchestration plan that fans across many subagents with self-verification. Works best in **auto mode**. Nested subagents (agents spawning agents, capped depth) help manage context on deep work.
+- **Agent teams** — when independent workers need to talk to each other and share a task list (research/review, cross-layer features), prefer an agent team over one-way subagents.
+
+Choose by scale and whether workers must communicate; otherwise proceed with waves below. **Whichever engine you pick, the context contract (below) applies to every spawned agent** — no worker inherits this conversation.
+
+## Effort & model
+
+Scale `/effort` to plan size (high/xhigh for large plans). For dispatched implementation agents, pick the coding-optimal tier and suggest upgrading the session model if it's older than the latest. See [lore/models.md](../../lore/models.md).
+
+## Process
+
+1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan via **AskUserQuestion** (one option per candidate plan file, most-recent first); **end your turn at the call** and proceed with the chosen plan.
+2. **Build the execution graph** — group PARALLEL-annotated tasks into waves; SEQUENTIAL tasks are singletons that run in order.
+3. **Execute wave by wave.** For each parallel wave, dispatch all its tasks in ONE message (multiple `Task` calls) so they run concurrently. Wait for the whole wave before the next. Run sequential tasks one at a time. As each task's implementer returns, run the **Per-task quality loop** (below) before you mark that task done — completion is confirmed from the VCS diff, not the agent's report.
+4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session capsule so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).
+5. **After all waves** — run /certify. If it fails, fix and re-certify (bounded evaluator-optimizer loop) before reporting complete — never report done on a red certify.
+6. **Report** — completed tasks and any blockers.
+
+## Autonomy — approve the plan, then run
+
+The blueprint is the gate. Once it's approved (step 1), run the rest — **Execute wave by wave**, the per-wave sanity checks, and the capsule refresh — **autonomously**: reading, searching, `kg query`/`blast`, and read-only git (the `git status`/`git log --oneline` checks in steps 4–5) NEVER pause for permission, and never re-gate between waves. Re-gate **only** on real side effects: the writes/`git add`·`commit`·`push`/PR actions the dispatched agents perform, a merge conflict surfaced by **Conflict detection**, and the final **/certify**. Optionally show the wave graph + rough agent/token cost once for a go-ahead before the first fan-out. See [lore/autonomy.md](../../lore/autonomy.md).
+
+## Agent prompt — context contract (no context loss)
+
+Spawned agents see NONE of this conversation. Every `Task` prompt MUST be self-contained (see [lore/subagent-context.md](../../lore/subagent-context.md)):
+
+```
+Goal: implement task <N> — <one-line deliverable>.
+Scope: files/paths in play: <exact list>. Out of scope: <...>.
+Inputs: full task text from the plan (paste it), and the spec at .workspace/shared/specs/<feature>.md. FIRST read .workspace/local/session-state.md if it exists (current goal, decisions, blockers, artifact paths). Locate code with `kg query`/`kg blast`, not broad greps.
+Constraints: follow TDD via /ward; conventions/lore: <...>; do not touch <deny paths>; definition of done: <...>.
+Available magician skills: /conjure /blueprint /ward /unravel /certify /orchestrate /scrutinize /portal /seal /manifest /almanac /chronicle /magic /sentinel /accelerate /deploy /inscribe /autopsy
+Return: STATUS: DONE | BLOCKED | NEEDS_CONTEXT, then a one-paragraph summary of what was implemented and committed.
+```
+
+## Handle results
+
+- **DONE** — a claim, not proof: run the **Per-task quality loop** (below) and confirm the change from the VCS diff before recording it.
+- **NEEDS_CONTEXT** — this is a context-completeness bug in the spawn prompt. Add the missing input and re-dispatch; don't guess for the agent.
+- **BLOCKED** — assess the blocker, re-dispatch with more context, or escalate.
+
+## Per-task quality loop — review before "done"
+
+A subagent reporting `STATUS: DONE` is a claim, not evidence. Before you mark any task complete, confirm it from the VCS diff and put it through a **two-stage review** — see [lore/verification.md](../../lore/verification.md).
+
+1. **Confirm from the diff, not the report.** Run `git show`/`git diff` for the task's commit(s) and read the actual change. The diff is the evidence a task landed — a subagent's "success" is not. If the diff is empty, or doesn't match the deliverable, the task is not done: re-dispatch with the gap named. (These reads are read-only git and never pause — see **Autonomy** above.)
+2. **Stage 1 — spec compliance.** Against the task's full text and `.workspace/shared/specs/<feature>.md`, does the change do *exactly* what the task specified — no more, no less? Flag missing requirements, scope creep, and silent deviations.
+3. **Stage 2 — code quality.** Judge correctness, simplicity, and tests: does it hold on edge cases, is it the simplest thing that works, and are the tests real (proven RED→GREEN) and green? Prefer a fresh reviewer subagent (or [`/scrutinize`](../scrutinize/SKILL.md)) so no author bias carries over.
+4. **Fix, then re-review.** For any **Critical** or **Important** finding, dispatch a *fresh* fix-subagent — self-contained prompt, same context contract — to resolve it, then re-run this loop on the new diff. Minor findings can be recorded and batched. A task counts as DONE only once its diff is clean on both stages.
+
+**Keep moving.** Run this loop task-to-task without pausing to ask the human "should I continue?" — advancing through reviewed-and-clean tasks is exactly the autonomy the approved blueprint bought. Stop only on an unresolvable **BLOCKER**, a **merge conflict** (see **Conflict detection**), or all tasks done.
+
+## Conflict detection
+
+After each wave: `git status | grep -i conflict`. If conflicts are found, pause and resolve before continuing. (For parallel tasks that edit overlapping files, prefer worktree isolation per task.)
+
+## Completion Signal
+
+"Orchestrate complete. N tasks executed across M waves. Run /scrutinize for review."
