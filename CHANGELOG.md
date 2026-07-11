@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] — 2026-07-11
+
+**The destructive-command hard gate now covers Codex too.** Verified against the current Codex model: Codex supports the same `PreToolUse` hook contract as Claude Code (deny via `permissionDecision: "deny"` / `{"decision":"block"}` / **exit code 2**, reading `tool_input.command`), and plugins can bundle hooks. Previously magician's `.codex-plugin` shipped skills only, so the guard did **not** run under Codex — users there relied solely on Codex's sandbox.
+
+### Added
+- **Codex destructive-guard** — `hooks/codex-hooks.json` (declared via the `hooks` field in `.codex-plugin/plugin.json`, so Codex uses this curated set, not the full Claude `hooks/hooks.json`) wires a `PreToolUse(Bash)` hook that runs `"$PLUGIN_ROOT/scripts/destructive-guard.sh"` — using **Codex's own native `$PLUGIN_ROOT`** (set for every plugin hook, **no Claude required**), reusing the same matcher, which already speaks Codex's exit-2 deny contract. Verified with Codex-shaped payloads: `rm -rf /` · `~` · `$HOME` · `dd` to a device → denied (exit 2); safe commands pass.
+- **Codex CLI resolution** — Codex has no `bin`-on-`PATH`, so `codex-adapter.md` now instructs adapters to invoke the bundled CLIs (`jira`/`confluence`/`kg`/`ctx`/`magician-scan`/`magician-ui`) by **absolute path** (`<plugin-root>/bin/<cli>`, resolved from the skill's base directory) instead of by bare name. Wherever a skill says "on PATH when the plugin is enabled," Codex reads it as `<plugin-root>/bin/<cli>`.
+
+### Note
+Codex does **not** auto-trust a plugin's hooks — after enabling magician, run `/hooks` once to trust `destructive-guard`, or Codex skips it. Independently, Codex's `workspace-write`/`read-only` **sandbox** already blocks writes/deletes outside the workspace root (so `rm -rf ~` fails there regardless); the hook adds a deterministic layer that also covers `danger-full-access`. Docs: `.codex-plugin/references/codex-adapter.md`, `.codex/INSTALL.md`. Also fixed a stale "21 skills" count in the Codex install guide (now 25).
+
+**Codex compatibility is under active end-to-end validation on a live Codex install** (skill loading, hook trust + firing, absolute-path CLI resolution). The wiring is verified in simulation; any gaps found on real Codex will ship as **4.7.1**.
+
 ## [4.6.0] — 2026-07-10
 
 **An absolute destructive-command hard gate — plus a rebuilt, animated README.**

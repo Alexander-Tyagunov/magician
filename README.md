@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-4.6.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.7.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
 [![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
@@ -165,7 +165,7 @@ Jira &amp; Confluence over their REST APIs via bundled CLIs — throttle-aware, 
 
 > Security is infrastructure, not advice.
 
-A `PreToolUse(Bash|PowerShell)` hook inspects every shell command and **unconditionally blocks** the catastrophic ones. Because it exits before Claude Code evaluates permission rules, the block **overrides `allow` rules and fires in every mode** — default · acceptEdits · auto · bypass — **with no escape hatch by design.**
+A `PreToolUse(Bash|PowerShell)` hook inspects every shell command and **unconditionally blocks** the catastrophic ones. Because it exits before Claude Code evaluates permission rules, the block **overrides `allow` rules and fires in every mode** — default · acceptEdits · auto · bypass — **with no escape hatch by design.** Same guard, **both runtimes**: auto-on in Claude Code; in Codex it ships as a `PreToolUse` deny hook (trust it once via `/hooks`), layered over Codex's own sandbox.
 
 <table>
 <tr>

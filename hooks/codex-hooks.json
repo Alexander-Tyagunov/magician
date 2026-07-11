@@ -1,0 +1,16 @@
+{
+  "_comment": "Codex-only hook set (magician). Referenced by .codex-plugin/plugin.json's `hooks` field so Codex uses THIS curated set, not the full Claude hooks/hooks.json. ${PLUGIN_ROOT} is Codex's OWN native variable (set for every plugin hook, no Claude required) and points to the installed plugin root, which contains scripts/. The wrapper then self-locates its python via dirname($0), so no env var is needed once it runs. Codex requires trusting plugin hooks via `/hooks` before they run.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/destructive-guard.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

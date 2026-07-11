@@ -11,6 +11,14 @@ Magician's source skills are Claude Code-first. Codex loads the adapter skills f
 - If a source skill says Claude reads, writes, asks, or executes something, translate that actor to Codex.
 - If you were spawned as a subagent for a bounded task, do not start broad Magician lifecycle flows such as `/manifest`, `/almanac`, `/conjure`, `/blueprint`, `/orchestrate`, or `/seal` unless the dispatch prompt explicitly asks for them.
 
+## Safety — destructive-command hard gate
+
+Magician ships a Codex `PreToolUse` hook (`hooks/codex-hooks.json`, referenced by `.codex-plugin/plugin.json`'s `hooks` field → runs `"$PLUGIN_ROOT/scripts/destructive-guard.sh"` using Codex's own `$PLUGIN_ROOT`, no Claude required) that **denies catastrophic shell commands** (`rm -rf /` · `~` · `$HOME` · `--no-preserve-root` · system roots; `dd`/`mkfs`/`wipefs`/`blkdiscard`/`shred` on devices; redirection onto a block device or over `/etc/passwd|shadow|sudoers|fstab`; fork bombs; recursive `chmod`/`chown` on roots; download-piped-to-shell / `base64 -d | sh` / `eval "$(…)"`; `git clean -x`). It returns a deny via **exit code 2**, which Codex honors as a `PreToolUse` block before the command runs.
+
+- **Codex requires trusting plugin hooks.** Enabling the plugin does **not** auto-trust its hooks — run **`/hooks`** once to review and trust magician's `destructive-guard`, otherwise Codex skips it. (Do not use `--dangerously-bypass-hook-trust`.)
+- **Native fallback (always on):** independent of this hook, Codex's own **sandbox** (`workspace-write` / `read-only`) makes everything outside the workspace root read-only, so `rm -rf ~` fails there anyway. `danger-full-access` removes that boundary — which is exactly when this hook matters most.
+- **Honest scope (CWE-78):** the hook is a deterministic guardrail, not a complete enforcement boundary — Codex notes `PreToolUse` "doesn't intercept all shell calls yet." Layer it under the sandbox + approvals; don't rely on it alone.
+
 ## Tool Mapping
 
 | Source skill term | Codex equivalent |
@@ -20,9 +28,22 @@ Magician's source skills are Claude Code-first. Codex loads the adapter skills f
 | `TodoWrite` | Use `update_plan`. |
 | `Read`, `Write`, `Edit` | Use Codex file reads and `apply_patch` for edits. |
 | `Bash` | Use Codex shell commands with the active sandbox and approval policy. |
+| Bundled CLIs (`jira`/`confluence`/`kg`/`ctx`/`magician-scan`/`magician-ui`) | **NOT on PATH in Codex.** Invoke by absolute path `"$PLUGIN_ROOT/bin/<cli>"` — see **Bundled CLIs** below. |
 | `WebSearch` or `WebFetch` | Use Codex web search/browsing when available and cite sources. |
 | Playwright MCP browser tools | Prefer Codex Browser Use for local browser targets, or the available browser automation tool. |
 | `claude mcp ...` | Translate to Codex MCP setup only if the user explicitly asks to configure MCPs. |
+
+## Bundled CLIs — resolve by absolute path (they are NOT on PATH in Codex)
+
+Magician's helper CLIs live at `<plugin-root>/bin/`: `jira`, `confluence`, `kg`, `ctx`, `magician-scan`, `magician-ui`, `magician-statusline`. **Codex does not add a plugin's `bin/` to `PATH`** (that is a Claude Code behavior), so calling them by bare name (`jira …`, `kg …`) fails with "command not found" in a Codex-only setup. There is no Claude here — **do not rely on `CLAUDE_PLUGIN_ROOT`.**
+
+Invoke them by **absolute path**, resolved from **this adapter skill's base directory** (Codex provides it when the skill loads):
+
+- Compute the plugin root = the skill base dir with the trailing `/.codex-plugin/skills/<name>` removed. The CLIs are then at `<plugin-root>/bin/<cli>` (equivalently `../../../bin/<cli>` from the adapter skill).
+- Run the executable directly — e.g. `"<plugin-root>/bin/jira" myself` — or `python3 "<plugin-root>/bin/kg" query "<terms>"` (each CLI is a stdlib `python3` script with a shebang; `python3` is required, a Codex prerequisite anyway).
+- Inside a **hook** (not a skill) the same files are reachable via Codex's native `"$PLUGIN_ROOT/bin/<cli>"` — Codex sets `$PLUGIN_ROOT` for every plugin hook, with no dependency on Claude.
+
+Everything else about each CLI — subcommands, throttle/cache, one-command-per-call, write gates, first-run token setup — is unchanged from the source skill; only the invocation path differs. **Wherever a source or adapter skill says "on PATH when the plugin is enabled," in Codex read it as "at `<plugin-root>/bin/<cli>`."**
 
 ## Design Capability Routing
 

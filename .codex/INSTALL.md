@@ -49,11 +49,25 @@ Start a new Codex session and ask:
 Set up Magician in this workspace.
 ```
 
-Codex should load the `almanac` adapter skill from `.codex-plugin/skills/almanac/SKILL.md`. A local checkout should contain 21 Codex adapter skills:
+Codex should load the `almanac` adapter skill from `.codex-plugin/skills/almanac/SKILL.md`. A local checkout should contain 25 Codex adapter skills:
 
 ```bash
 find ~/.codex/magician/.codex-plugin/skills -name SKILL.md | wc -l
 ```
+
+## Safety — trust the destructive-command hard gate
+
+Magician ships a Codex `PreToolUse` hook that **denies catastrophic shell commands** (`rm -rf /` · `~` · `$HOME`, disk/device wipes, block-device/critical-file overwrites, fork bombs, recursive `chmod`/`chown` on system roots, download-piped-to-shell, `git clean -x`) before they run.
+
+Codex does **not** auto-trust a plugin's hooks. After enabling magician, run:
+
+```text
+/hooks
+```
+
+Review and **trust** magician's `destructive-guard` hook — otherwise Codex silently skips it. Verify it's active by asking Codex to run a harmless test like `rm -rf /` in a throwaway dir; it should be refused with `[MAGICIAN HARD-GATE]`.
+
+Independent of this hook, Codex's own **sandbox** (`workspace-write` / `read-only`) already blocks writes and deletes outside the workspace root, so `rm -rf ~` fails there regardless. The hook adds a deterministic layer that also covers `danger-full-access`. It's a guardrail, not a complete sandbox — keep Codex's sandbox + approvals on.
 
 ## Design Capabilities
 

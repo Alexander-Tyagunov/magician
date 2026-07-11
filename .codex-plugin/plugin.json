@@ -1,6 +1,6 @@
 {
   "name": "magician",
-  "version": "4.6.0",
+  "version": "4.7.0",
   "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, and parallel agent orchestration.",
   "author": {
     "name": "Alexander Tyagunov",
@@ -23,6 +23,7 @@
     "orchestration"
   ],
   "skills": "./.codex-plugin/skills/",
+  "hooks": "./hooks/codex-hooks.json",
   "interface": {
     "displayName": "Magician",
     "shortDescription": "Autonomous SDLC workflows for coding agents",
