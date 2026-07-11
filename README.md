@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-4.7.1-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.7.2-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
 [![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
@@ -202,7 +202,25 @@ download piped into a shell · <code>base64 -d</code> → shell · <code>eval "$
 </tr>
 </table>
 
-Wrappers and nested payloads are inspected while quoted inert mentions remain allowed. **Honest scope:** a denylist cannot catch every obfuscation. Codex currently invokes `PreToolUse` for a new Bash tool call, not for later bytes sent to an existing process through `write_stdin`; the bundled Codex launcher is POSIX-only. Keep the sandbox and approval policy active.
+Wrappers and nested payloads are inspected (`sudo`/`env`/`timeout` prefixes and one level of `sh -c '…'` are unwrapped before matching) while quoted inert mentions remain allowed.
+
+### What it guarantees — and what it does not
+
+This is a **denylist, not a sandbox** ([CWE-78](https://cwe.mitre.org/data/definitions/78.html)). Be honest about the boundary:
+
+**It guarantees** — once installed, and on Codex once trusted via `/hooks`:
+
+- **Deterministic.** The listed catastrophic patterns are blocked by a fixed matcher, not by model judgment — same input, same block, every time.
+- **Pre-execution.** The deny fires in `PreToolUse`, before the shell runs. In Claude Code it runs *before* permission/allow rules, so an over-broad allow-rule or auto-mode can't wave these through.
+- **Wrapper-aware.** Common wrappers and one level of `sh -c` nesting are unwrapped before the pattern check.
+
+**It does _not_ guarantee** — treat these as hard limits, not caveats:
+
+- **Not a complete boundary.** It blocks known catastrophic *forms*. A novel obfuscation, an unlisted tool, or destruction through a language runtime (e.g. a Python script calling `os.remove`) can slip past. The real containment layer is the host sandbox — Claude Code's sandbox and Codex's `workspace-write` / `read-only`.
+- **Shell-tool scoped.** It matches the Bash/PowerShell tool it is wired to. It does not inspect bytes sent to an already-running process (Codex `write_stdin`) or non-shell tools. The Codex launcher is POSIX-only.
+- **Codex must trust it.** Enabling the plugin does not auto-run its hooks — untrusted, Codex skips the guard entirely. Requires Python 3.10+.
+
+**Bottom line:** it is deterministic defense-in-depth that sits *under* the sandbox, approval policy, and model judgment — not a replacement for any of them. Keep the sandbox and approvals on.
 
 <img src="assets/divider.svg" alt="" width="100%">
 
