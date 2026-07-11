@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.1] — 2026-07-11
+
+**Fix: the Codex destructive-guard hook now actually installs.** Live Codex testing surfaced `/hooks → PreToolUse: Installed 0 / Active 0` — Codex's marketplace plugin root (`plugins/magician/`, a relative-symlink layout) exposed only `.codex-plugin` and `skills`, so the manifest's `./hooks/codex-hooks.json` and the hook's `$PLUGIN_ROOT/scripts/…` (and `$PLUGIN_ROOT/bin/…` for the CLIs) resolved to nothing.
+
+### Fixed
+- **`plugins/magician/` now also symlinks `hooks/`, `scripts/`, and `bin/`** (relative, matching the existing `.codex-plugin`/`skills` symlinks) → Codex discovers `destructive-guard` (`Installed 1`), the hook resolves to the real guard, and the bundled CLIs are reachable at `$PLUGIN_ROOT/bin/<cli>`. Verified with `PLUGIN_ROOT` set to the actual install root (`plugins/magician`): `dd`→device and `rm -rf /` → exit-2 deny; safe commands pass.
+
+Codex A (skills load) and D (only the curated hook) passed on 4.7.0; this unblocks B (guard fires after `/hooks` trust) and C (CLI resolves by absolute path).
+
 ## [4.7.0] — 2026-07-11
 
 **The destructive-command hard gate now covers Codex too.** Verified against the current Codex model: Codex supports the same `PreToolUse` hook contract as Claude Code (deny via `permissionDecision: "deny"` / `{"decision":"block"}` / **exit code 2**, reading `tool_input.command`), and plugins can bundle hooks. Previously magician's `.codex-plugin` shipped skills only, so the guard did **not** run under Codex — users there relied solely on Codex's sandbox.
