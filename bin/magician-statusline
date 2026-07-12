@@ -16,7 +16,7 @@ import sys, os, json, subprocess, time, re
 HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
 CFG = os.path.join(HOME, "cli-ui.json")
 STATUS_DIR = os.path.join(HOME, "status")
-ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill", "effort"]
+ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill", "effort", "lore"]
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
 
@@ -218,6 +218,25 @@ def _effort(d, sid):
         return "", ""
 
 
+def _lore(sid):
+    """(label, color) for the lore chip from the per-session marker written by SessionStart, or ('','').
+    Shows whether magician's bundled lore is shaping the session: `lore:N` (N cores injected) when
+    enabled, or a clear `lore:off` when the user disabled it."""
+    try:
+        p = os.path.join(STATUS_DIR, f"{sid}.lore.json")
+        if not os.path.exists(p):
+            return "", ""
+        m = _load_json(p)
+        if "enabled" not in m:
+            return "", ""          # missing/corrupt marker → no chip (not a false "off")
+        if m.get("enabled"):
+            n = int(m.get("count") or 0)
+            return (f"lore:{n}" if n else "lore:on"), "dim"
+        return "lore:off", "yellow"
+    except Exception:
+        return "", ""
+
+
 def _vlen(s):
     return len(_ANSI.sub("", s))
 
@@ -264,6 +283,13 @@ def main():
         s = _spark(sid, pct)
         if s:
             segs.append((3, _color(s, "dim")))
+    if "lore" in comps:
+        try:
+            ll, lc = _lore(sid)
+            if ll:
+                segs.append((5, _color("📚 " + ll, lc)))
+        except Exception:
+            pass   # a bad lore marker drops only this chip, never the whole bar
     if "meta" in comps:
         m = []
         if model:

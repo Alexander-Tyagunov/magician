@@ -25,7 +25,7 @@ HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician
 CFG = os.path.join(HOME, "cli-ui.json")
 SETTINGS = os.environ.get("MAGICIAN_SETTINGS") or os.path.expanduser("~/.claude/settings.json")
 INSTALLED = os.path.join(HOME, "statusline.py")   # stable path, version-independent
-ALL = ["context", "rot", "spark", "meta", "skill", "effort"]
+ALL = ["context", "rot", "spark", "meta", "skill", "effort", "lore"]
 MARK = "magician"   # substring used to recognise our own statusLine entry
 
 # Read-only surface magician auto-approves so autonomous runs don't prompt per file/search.
@@ -478,14 +478,40 @@ def cmd_automode(args):
           "isn't available for your account — run `magician-ui automode --off` to return to acceptEdits.")
 
 
+def cmd_lore(args):
+    """Enable/disable magician's bundled language & database lore (default ENABLED).
+    Lore is a baseline BELOW the repo's own rules — turn it off if it conflicts with your local/project
+    knowledge or gives wrong judgment. `magician-ui lore` / `lore on` enables; `lore off` disables (the
+    SessionStart hook then injects NO lore); `lore status` prints the state. Per-project override: create
+    `.magician/lore.off` in a repo (disables lore there only). Env override: MAGICIAN_LORE=0. The bundled
+    on/off state lives in cli-ui.json; the status bar's `lore` chip shows it live. Takes effect next session."""
+    cfg = load_cfg()
+    if args and args[0] in ("status", "--status"):
+        st = "disabled" if cfg.get("lore") == "disabled" else "enabled"
+        shown = "lore" in (cfg.get("components") or ALL)
+        print(f"lore injection:  {st} (default: enabled)")
+        print(f"status-bar chip: {'shown' if shown else 'hidden'}  (toggle via `magician-ui set ...,lore`)")
+        print("overrides:       per-project `.magician/lore.off` · env `MAGICIAN_LORE=0`")
+        return
+    off = any(a in ("off", "--off", "disable", "no", "false", "0") for a in args)
+    if off:
+        cfg["lore"] = "disabled"; save_cfg(cfg)
+        print("Magician lore DISABLED — SessionStart will not inject language/DB lore; your project/local "
+              "knowledge stands alone. Re-enable: `magician-ui lore on`. Takes effect next session start.")
+    else:
+        cfg["lore"] = "enabled"; save_cfg(cfg)
+        print("Magician lore ENABLED (default) — SessionStart injects the detected stack's concise cores "
+              "(deep-dives stay on-demand, and repo rules always win). Disable: `magician-ui lore off`.")
+
+
 CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
         "disable": cmd_disable, "reconcile": cmd_reconcile, "allow": cmd_allow,
-        "automode": cmd_automode}
+        "automode": cmd_automode, "lore": cmd_lore}
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
-        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]|automode [--off|--available]}")
+        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]|automode [--off|--available]|lore [on|off|status]}")
         print(f"components: {', '.join(ALL)}")
         return
     cmd = sys.argv[1]

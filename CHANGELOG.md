@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.0] — 2026-07-12
+
+**Knowledge lore overhaul + platform-aware logging.** Magician now ships deep, live-doc-verified guidance for the languages, databases, and observability platforms a project actually uses — injected concisely at session start (progressive disclosure: small always-injected cores, rich on-demand deep-dive trees), version-adaptive, and switchable off when it conflicts with your own conventions.
+
+### Added
+- **Language lore** — concise, version-adaptive cores + on-demand deep-dive trees for Rust, Java (+ the JVM ecosystem: Spring/Micronaut/Quarkus/JDBC/ORM/migrations), JavaScript/TypeScript (frameworks, ORMs, UI-styling), Python (web/data/ML-AI/ORM), and Go — each grounded in current official docs.
+- **Database lore** — 7 tracks, ~30 engines, each with a concise core, an on-demand deep-dive tree, and a canonical `performance.md` playbook: Relational/OLTP (Postgres, MySQL, Oracle, SQL Server, SQLite), Analytics/OLAP (DuckDB, ClickHouse, Snowflake, BigQuery, Redshift), Document/NoSQL (MongoDB, DynamoDB, Cassandra, Couchbase, Firestore), Key-value/Cache (Redis, Memcached), Vector (Pinecone, Weaviate, Qdrant, Milvus, Chroma, pgvector), Graph (Neo4j, Neptune, ArangoDB), Search/Time-series (Elasticsearch, InfluxDB, TimescaleDB, Prometheus) — plus a shared cross-engine `databases` foundation.
+- **Logging & observability lore** — a language-agnostic logging-principles core (levels × environment, what/where to log for flow capture, structured/correlation IDs, errors, PII/secrets, sampling) + six platform stacks centered on log shipping and the exact query language: Dynatrace (DQL), Grafana/Loki (LogQL), Splunk (SPL), Google Cloud Logging, Amazon CloudWatch (Logs Insights), Azure Monitor (KQL).
+- **Platform-aware logging behavior** — SessionStart detects the project's log platform (from SDKs/config) or, when unknown, prompts once (AskUserQuestion) and records the choice per-project; thereafter it writes platform-shaped structured logs at meaningful execution points and proposes exact queries in that platform's language. It updates when you say the platform changed and never re-asks once known.
+- **Lore enable/disable flag** (default ON) — `magician-ui lore on|off|status`, a per-project `.magician/lore.off`, or `MAGICIAN_LORE=0`; plus a `📚 lore:N` / `lore:off` status-bar chip. Bundled lore is a baseline *below* the repo's own rules; this is the escape hatch when it conflicts with local/project knowledge.
+
+### Changed
+- **Cross-ecosystem stack + database detection** in SessionStart (drivers/clients across JS/Python/Go/JVM + docker-compose images + connection URIs), with **tier-ordered injection** (primary language → database/observability layer → frameworks → security) so the most relevant lore is never crowded out.
+- Always-injected lore budget raised (`MAX_LORE` 3000 → 8000; ≈2k tokens once per session, **zero per-turn** — deep-dive trees stay on-demand). The `security` core is now reserved so it is never budget-starved.
+
+### Performance
+- Rewrote the `kg-nudge` PreToolUse hook: a pure-bash throttle fast-path + a single collapsed Python pass (was up to three interpreter spawns + a git call). ~4× faster on the hot paths (≈62 → ≈14 ms post-cap) with byte-for-byte identical behavior, adversarially verified.
+
+### Notes
+- Codex parity: the language/database/observability lore ships in the Codex package for on-demand use; the lore flag and SessionStart injection are Claude Code features.
+
 ## [4.7.2] — 2026-07-11
 
 **Codex compatibility correction — Claude Code behavior is unchanged.** Live cache validation showed that Codex skips outward symlinks while installing a marketplace plugin, so v4.7.1 still produced an empty cache even though its checkout paths resolved locally.
