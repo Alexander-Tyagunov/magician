@@ -12,7 +12,7 @@
 
 <h3>From idea to merged PR — autonomously, grounded in your code, gated only where it matters.</h3>
 
-<sub>25 skills · a local code knowledge-graph · cross-session memory · parallel agent orchestration · an absolute destructive-command guard · zero required network calls or dependencies</sub>
+<sub>25 skills · deep live-verified stack lore (languages · frameworks · databases · observability) · a local code knowledge-graph · cross-session memory · parallel agent orchestration · an absolute destructive-command guard · zero required deps</sub>
 
 </div>
 
@@ -158,6 +158,85 @@ Jira &amp; Confluence over their REST APIs via bundled CLIs — throttle-aware, 
 </td>
 </tr>
 </table>
+
+<img src="assets/divider.svg" alt="" width="100%">
+
+## 🔮 Lore — deep, live-verified stack knowledge &nbsp;<sub><code>new in 4.8.0</code></sub>
+
+> It doesn't guess your stack. It *knows* it — and stays honest about versions.
+
+Every session, magician detects the languages, frameworks, databases, and log platform you're actually using and injects **concise, version-adaptive guidance** for exactly those — the rich detail one hop away, on demand. Every rule is traceable to current official docs (authored **and** adversarially re-checked against live docs — not model memory), and it's version-aware (Java 8→25, Python 3.8→3.14, and so on). Your repo's own conventions always win; lore is the baseline for when the repo is silent.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<h4>📚 Languages &amp; frameworks</h4>
+Rust · Java (+JVM: Spring · Micronaut · Quarkus) · JavaScript/TypeScript (+React/Next · Vue · Angular · Svelte · Express · NestJS · GraphQL · ORMs · UI-styling) · Python (+data &amp; ML/AI) · Go — each version-adaptive.
+</td>
+<td width="50%" valign="top">
+<h4>🗄 Databases</h4>
+~30 engines across 7 tracks — relational · OLAP · document/NoSQL · key-value · <b>vector</b> · graph · search/time-series — each with its own <b>performance playbook</b> and a shared cross-engine foundation.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>📈 Observability &amp; logging</h4>
+Log at the right level for each environment, at the meaningful points — then actually find it. Six platforms, each with its <b>exact query language</b>: Dynatrace (DQL) · Grafana/Loki (LogQL) · Splunk (SPL) · GCP Cloud Logging · CloudWatch (Logs Insights) · Azure Monitor (KQL).
+</td>
+<td width="50%" valign="top">
+<h4>🎯 Platform-aware, by memory</h4>
+magician asks <b>once</b> where your app is deployed (or detects it), remembers it per-project, then writes platform-shaped logs and proposes exact queries. Migrated? Say <i>“we moved to Dynatrace”</i> and it updates.
+</td>
+</tr>
+</table>
+
+**Progressive disclosure — big knowledge, tiny footprint:**
+
+```mermaid
+flowchart LR
+    A["session start"] --> B["detect languages · DBs · log platform"]
+    B --> C["inject small cores<br/>(≤1.5 KB each, bounded)"]
+    C --> D["session context<br/>(~once, zero per-turn cost)"]
+    B -. "only when you touch that tech" .-> E["deep-dive trees on demand"]
+    E -. " " .-> F["exact APIs · perf tuning · correct queries"]
+    style A fill:#0d1117,color:#ccc,stroke:#555
+    style C fill:#6c63ff,color:#fff
+    style D fill:#43e97b,color:#000
+    style E fill:#4facfe,color:#000
+    style F fill:#4facfe,color:#000
+```
+
+Always-injected **cores** stay small and bounded; the rich per-topic **deep-dives** (and every database's `performance.md`) load **only when you touch that tech** — so no matter how much lore ships, your per-turn context stays flat.
+
+<details>
+<summary><b>📖 The full lore catalog</b> — every language, database &amp; platform covered (click to expand)</summary>
+
+<br>
+
+**Languages &amp; ecosystems**
+
+- **Rust**, **Go** (Gin · Echo · Chi · Fiber · GORM · sqlc · sqlx · ent · gRPC · Cobra · Viper · slog)
+- **Java + JVM** — Spring · Micronaut · Quarkus · JDBC · ORM (Hibernate/JPA · jOOQ · MyBatis) · migrations (Flyway · Liquibase)
+- **JavaScript / TypeScript / Node** — React+Next · Vue+Nuxt · Angular · Svelte+SvelteKit · Express · Fastify · NestJS · GraphQL · ORMs (Prisma · Drizzle · TypeORM · Sequelize · Mongoose · Kysely) · UI-styling (Tailwind · Sass · Less · Bootstrap · MUI · Ant Design · Chakra · Mantine · styled-components · Emotion · Radix/shadcn · vanilla-extract)
+- **Python** — FastAPI · Django · Flask · Litestar · pandas · NumPy · Polars · PyTorch · scikit-learn · TensorFlow · JAX · Transformers · LangChain · SQLAlchemy · Alembic · SQLModel
+
+**Databases** — *each with a core, deep-dive tree, and a `performance.md`*
+
+| Track | Engines |
+|---|---|
+| Relational / OLTP | PostgreSQL · MySQL · Oracle · SQL Server · SQLite |
+| Analytics / OLAP | DuckDB · ClickHouse · Snowflake · BigQuery · Redshift |
+| Document / NoSQL | MongoDB · DynamoDB · Cassandra · Couchbase · Firestore |
+| Key-value / Cache | Redis · Memcached |
+| Vector | Pinecone · Weaviate · Qdrant · Milvus · Chroma · pgvector |
+| Graph | Neo4j · Neptune · ArangoDB |
+| Search / Time-series | Elasticsearch/OpenSearch · InfluxDB · TimescaleDB · Prometheus |
+
+**Observability &amp; logging** — principles (levels × environment · what/where to log · structured + correlation IDs · errors · PII/secrets · sampling) + platforms: Dynatrace · Grafana/Loki · Splunk · GCP Cloud Logging · CloudWatch · Azure Monitor.
+
+</details>
+
+<sub>🎚 <b>Not your style?</b> Lore is a baseline <i>below</i> your repo's own rules — turn it off anytime with <code>magician-ui lore off</code>, a per-project <code>.magician/lore.off</code>, or <code>MAGICIAN_LORE=0</code>. The status bar shows <code>📚 lore:on</code> / <code>lore:off</code> so you always know what's shaping the session.</sub>
 
 <img src="assets/divider.svg" alt="" width="100%">
 
