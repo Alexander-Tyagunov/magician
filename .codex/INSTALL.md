@@ -55,9 +55,13 @@ Codex should load the `$almanac` adapter from the installed plugin's `skills/alm
 
 ```bash
 codex plugin add magician@magician --json
-# Inspect the returned installedPath: it must contain 25 skills/*/SKILL.md files,
+# Inspect the returned installedPath: it must contain 26 skills/*/SKILL.md files,
 # hooks/codex-hooks.json, scripts/codex-destructive-guard.sh, and bin/kg.
 ```
+
+The twenty-sixth skill is Codex-only: `$project-context` detects root-level stack markers and
+progressively loads relevant packaged lore cores and task-matched deep dives. It does not install or
+emulate Claude's `SessionStart` hook.
 
 ## Safety — trust the destructive-command hard gate
 

@@ -407,12 +407,14 @@ Restart if prompted, then initialize your workspace with <code>/almanac</code>.
 <h4>Codex</h4>
 <pre><code>codex plugin marketplace add Alexander-Tyagunov/magician
 codex plugin add magician@magician</code></pre>
-Restart or open a new task, then: <i>“Use $almanac to set up Magician in this workspace.”</i>
+Restart or open a new task, then: <i>“Use $almanac to set up Magician in this workspace.”</i><br>
+Codex also ships <code>$project-context</code>, a read-only stack detector that progressively loads
+only relevant lore cores and task-matched deep dives.
 </td>
 </tr>
 </table>
 
-<sub>Codex installs a self-contained package with adapters under <code>skills/</code>. Use <code>codex plugin list</code> to confirm it is installed and enabled; an enable flag alone does not install package contents.</sub>
+<sub>Codex installs a self-contained package with 25 shared adapters plus the Codex-only <code>$project-context</code> skill under <code>skills/</code>. Use <code>codex plugin list</code> to confirm it is installed and enabled; an enable flag alone does not install package contents.</sub>
 
 <img src="assets/divider.svg" alt="" width="100%">
 

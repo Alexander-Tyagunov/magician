@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 AUTHORING = ROOT / ".codex-plugin" / "skills"
 PACKAGE = ROOT / "plugins" / "magician"
 EXPLICIT_ONLY = {"almanac", "autopsy", "deploy", "inscribe", "manifest", "transmute"}
+CODEX_ONLY = {"project-context"}
 
 
 def skill_names(root: Path) -> set[str]:
@@ -21,9 +22,25 @@ class AdapterContracts(unittest.TestCase):
     def test_adapter_source_and_packaged_skill_sets_match(self) -> None:
         source = skill_names(ROOT / "skills")
         self.assertEqual(len(source), 25)
-        self.assertEqual(skill_names(AUTHORING), source)
-        self.assertEqual(skill_names(PACKAGE / "skills"), source)
+        self.assertEqual(skill_names(AUTHORING), source | CODEX_ONLY)
+        self.assertEqual(skill_names(PACKAGE / "skills"), source | CODEX_ONLY)
         self.assertEqual(skill_names(PACKAGE / "source-skills"), source)
+
+    def test_project_context_is_codex_only_and_routes_packaged_lore(self) -> None:
+        skill = AUTHORING / "project-context"
+        packaged = PACKAGE / "skills" / "project-context"
+
+        self.assertTrue((skill / "scripts" / "detect_project_context.py").is_file())
+        self.assertTrue((packaged / "scripts" / "detect_project_context.py").is_file())
+        text = (skill / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("Codex-only", text)
+        self.assertIn("recommended_deep_dives", text)
+        self.assertNotIn("source-skills/project-context", text)
+        self.assertFalse((ROOT / "skills" / "project-context").exists())
+        self.assertNotIn(
+            "project-context",
+            (ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"),
+        )
 
     @staticmethod
     def _strip_code(md: str) -> str:
@@ -77,7 +94,7 @@ class AdapterContracts(unittest.TestCase):
             text = adapter.read_text(encoding="utf-8")
             with self.subTest(adapter=adapter):
                 self.assertNotIn("../../../skills/", text)
-                if adapter.parent.name != "statusline":
+                if adapter.parent.name not in {"project-context", "statusline"}:
                     self.assertIn("../../source-skills/", text)
 
 

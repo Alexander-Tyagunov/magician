@@ -314,7 +314,7 @@ def main():
         try:
             vv, vc = _voice(sid)
             if vv:
-                segs.append((6, _color("🗣 " + vv, vc)))
+                segs.append((6, _color("🗣️ " + vv, vc)))
         except Exception:
             pass   # a bad voice marker drops only this chip, never the whole bar
     if "meta" in comps:
