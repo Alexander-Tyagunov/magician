@@ -382,6 +382,39 @@ else
   LORE_NOTE="No stack markers found. Run /almanac to initialize workspace."
 fi
 
+# ── Voice — output-brevity level (default scribe) ─────────────────────────────
+# Fewer OUTPUT tokens = lower cost (output costs several× input) with NO quality loss: the
+# injected directive cuts filler (preambles, recaps, restating the request) but keeps ALL
+# substance and code/commands/errors verbatim — it never compresses prose into fragments/jargon.
+# Levels least→most wordy: warrior (minimal) · scribe (default, leaner) · bard (native, no inject).
+# Resolution (first match wins): env MAGICIAN_VOICE → per-project .magician/voice → cli-ui.json → scribe.
+VOICE_LEVEL="scribe"
+_vc=""
+case "$(printf '%s' "${MAGICIAN_VOICE:-}" | tr '[:upper:]' '[:lower:]')" in
+  warrior|scribe|bard) _vc="$(printf '%s' "$MAGICIAN_VOICE" | tr '[:upper:]' '[:lower:]')" ;;
+esac
+if [ -z "$_vc" ] && [ -f ".magician/voice" ]; then
+  _pv="$(tr '[:upper:]' '[:lower:]' < .magician/voice | tr -d '[:space:]' || true)"
+  case "$_pv" in warrior|scribe|bard) _vc="$_pv" ;; esac
+fi
+if [ -z "$_vc" ] && [ -f "$LORE_UICFG" ]; then   # portable extract (grep -oE works on BSD + GNU)
+  _cv="$(grep -oE '"voice"[[:space:]]*:[[:space:]]*"(warrior|scribe|bard)"' "$LORE_UICFG" 2>/dev/null | grep -oE 'warrior|scribe|bard' | head -1 || true)"
+  case "$_cv" in warrior|scribe|bard) _vc="$_cv" ;; esac
+fi
+[ -n "$_vc" ] && VOICE_LEVEL="$_vc"
+
+VOICE_CORE="[MAGICIAN VOICE — output brevity] Output tokens cost several times more than input, so keep responses lean; brevity is the cheapest quality-preserving win. Preserve ALL substance — every claim, step, and caveat — and keep code, commands, file paths, identifiers, numbers, and error text VERBATIM. Shorten by cutting filler, not facts: drop preambles ('Let me…', 'I'll now…', 'Great question'), postambles, restatements of the request, and recaps of what you just did; lead with the outcome. Do NOT compress into fragments, telegraphese, arrow-chains (A→B→fails), abbreviations, or invented jargon — readability matters more than raw length. This shapes prose only; never trim or abbreviate code, tests, diffs, or the actual work."
+case "$VOICE_LEVEL" in
+  warrior) VOICE_NOTE="
+
+${VOICE_CORE} Level warrior (minimal): give the shortest response that is fully correct and complete — omit optional commentary, unrequested examples, and closing summaries; use tight prose or short bullets. When the answer is a single fact or action, state just that." ;;
+  scribe)  VOICE_NOTE="
+
+${VOICE_CORE} Level scribe (default): keep necessary explanation and structure, trimmed to what changes the reader's next action." ;;
+  *)       VOICE_NOTE="" ;;   # bard → native verbosity, nothing injected
+esac
+VOICE_MARKER="$MAG_STATUS/${SID_SAFE}.voice.json"
+
 # ── Chronicle injection ──────────────────────────────────────────────────────
 CHRONICLE_NOTE=""
 LATEST=$(ls -t "$PLUGIN_DATA/chronicle/"*.json 2>/dev/null | head -1 || true)
@@ -552,14 +585,19 @@ CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the 
 ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
-${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${OBS_NOTE}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}"
-python3 - "$CONTEXT" "$LORE_MARKER" "$LORE_ENABLED" "$LORE_INJECTED" <<'PYEOF'
+${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${OBS_NOTE}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}${VOICE_NOTE}"
+python3 - "$CONTEXT" "$LORE_MARKER" "$LORE_ENABLED" "$LORE_INJECTED" "$VOICE_MARKER" "$VOICE_LEVEL" <<'PYEOF'
 import json, sys, time
 ctx, marker, enabled, injected = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+voice_marker, voice_level = sys.argv[5], sys.argv[6]
 try:                                           # write the lore status marker (for the CLI UI chip)
     cores = (injected or "").split()
     json.dump({"enabled": enabled == "1", "count": len(cores), "cores": cores, "ts": time.time()},
               open(marker, "w"))
+except Exception:
+    pass
+try:                                           # write the voice status marker (for the CLI UI chip)
+    json.dump({"level": voice_level, "ts": time.time()}, open(voice_marker, "w"))
 except Exception:
     pass
 print(json.dumps({"additionalContext": ctx}))  # the SessionStart additionalContext (unchanged)
