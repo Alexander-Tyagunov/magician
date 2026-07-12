@@ -1,6 +1,6 @@
 ---
 name: statusline
-description: Enable, configure, or disable the Magician CLI status line ("Magician Claude CLI UI") — a lightweight, always-on bar showing live context %, a context-rot warning, a token-flow sparkline, model · git · cost, the active skill/workflow/loop, and the current reasoning effort/mode. Use when the user says "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "what should the status line display", or "turn off / disable the status line".
+description: Enable, configure, or disable the Magician CLI status line ("Magician Claude CLI UI") — a lightweight, always-on bar showing live context %, a context-rot warning, a token-flow sparkline, model · git · cost, the active skill/workflow/loop, the reasoning effort/mode, the bundled-lore state, and the output-brevity "voice" level. Also sets the output-brevity voice (warrior/scribe/bard). Use when the user says "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "what should the status line display", "turn off / disable the status line", or "make output shorter/leaner / set the voice / reduce token cost".
 allowed-tools: Bash(magician-ui:*), AskUserQuestion, Read
 argument-hint: [enable · disable · status · set <components>]
 ---
@@ -19,6 +19,8 @@ A native Claude Code **status line** rendered by magician. It runs **locally, co
 | `meta` | model · git branch · session cost |
 | `skill` | the active magician skill / workflow / running-agent count / loop round |
 | `effort` | 🧠 the live reasoning **effort** (low/medium/high/xhigh/max) — the default shows on open and tracks `/effort` changes automatically (from Claude Code's `effort.level`) — or the magician **mode** you set, e.g. `ultracode` (which otherwise reports as `xhigh`); say "set mode to ultracode" / "exit ultracode" to change it |
+| `lore` | 📚 whether magician's bundled stack lore is shaping the session — `lore:N` (N cores injected) or `lore:off` |
+| `voice` | 🗣 the output-brevity **voice** — `voice:warrior` (leanest) · `voice:scribe` (default) · `voice:bard` (standard); set with `magician-ui voice <level>` |
 
 ## Actions
 
@@ -35,6 +37,7 @@ A native Claude Code **status line** rendered by magician. It runs **locally, co
 - **Disable** — `magician-ui disable` (removes only magician's `statusLine`; records the opt-out so it isn't suggested again; re-enable anytime on request).
 - **Auto mode (real autonomy)** — `magician-ui automode` turns on Claude Code's **auto** permission mode (`defaultMode: auto` + `CLAUDE_CODE_ENABLE_AUTO_MODE=1`, required on Vertex/Bedrock/Foundry). Its classifier auto-approves reads + request-aligned work and **gates** writes/deploys/force-push/destructive ops — the true "reads proceed, writes gate." A plugin can't switch the mode of a live session, so **restart** to enter it; `automode --off` reverts. Falls back to Manual if the account/model doesn't support auto.
 - **Read-only auto-approve (acceptEdits fallback)** — `magician-ui allow` merges a read-only allow-list (Read/Grep/Glob/LS + read-only git + kg/ctx + **jira/confluence reads** + test/lint/build runners + gh reads) into `settings.json` so non-auto sessions don't prompt per read; jira/confluence **writes**, commit/push/PR/delete still gate. Applied on install/upgrade; `magician-ui allow --off`. (Jira/Confluence use magician's MCP-free CLIs — magician nudges sessions off any ambient Atlassian MCP.) See [lore/autonomy.md](../../lore/autonomy.md).
+- **Voice — output brevity (lower token cost, no quality loss)** — `magician-ui voice warrior|scribe|bard` sets how wordy responses are. Output tokens cost several× input, so leaner output is the cheapest saving. Levels least→most wordy: **`warrior`** (minimal but complete), **`scribe`** (the default — leaner than usual), **`bard`** (standard/native). SessionStart injects a brevity directive for warrior/scribe that cuts filler (preambles, recaps, restating the request) while keeping **all** substance and code/commands/errors verbatim — it never compresses prose into fragments or jargon. `magician-ui voice status` shows the current level. Overrides (first match wins): env `MAGICIAN_VOICE` → per-project `.magician/voice` → this setting → default `scribe`. Takes effect next session start; the `🗣 voice:` chip shows it live.
 
 ## Rules
 

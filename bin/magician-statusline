@@ -16,7 +16,7 @@ import sys, os, json, subprocess, time, re
 HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
 CFG = os.path.join(HOME, "cli-ui.json")
 STATUS_DIR = os.path.join(HOME, "status")
-ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill", "effort", "lore"]
+ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill", "effort", "lore", "voice"]
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
 
@@ -237,6 +237,26 @@ def _lore(sid):
         return "", ""
 
 
+# warrior = leanest (most savings) → green; scribe = default → dim; bard = most output → yellow.
+_VOICE_COLOR = {"warrior": "green", "scribe": "dim", "bard": "yellow"}
+
+
+def _voice(sid):
+    """(label, color) for the voice chip from the per-session marker written by SessionStart.
+    Shows the output-brevity level shaping the session: `voice:warrior|scribe|bard`, or ('','')
+    when no marker exists."""
+    try:
+        p = os.path.join(STATUS_DIR, f"{sid}.voice.json")
+        if not os.path.exists(p):
+            return "", ""
+        lvl = (_load_json(p) or {}).get("level")
+        if not isinstance(lvl, str) or lvl not in _VOICE_COLOR:
+            return "", ""
+        return f"voice:{lvl}", _VOICE_COLOR[lvl]
+    except Exception:
+        return "", ""
+
+
 def _vlen(s):
     return len(_ANSI.sub("", s))
 
@@ -290,6 +310,13 @@ def main():
                 segs.append((5, _color("📚 " + ll, lc)))
         except Exception:
             pass   # a bad lore marker drops only this chip, never the whole bar
+    if "voice" in comps:
+        try:
+            vv, vc = _voice(sid)
+            if vv:
+                segs.append((6, _color("🗣 " + vv, vc)))
+        except Exception:
+            pass   # a bad voice marker drops only this chip, never the whole bar
     if "meta" in comps:
         m = []
         if model:

@@ -25,8 +25,14 @@ HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician
 CFG = os.path.join(HOME, "cli-ui.json")
 SETTINGS = os.environ.get("MAGICIAN_SETTINGS") or os.path.expanduser("~/.claude/settings.json")
 INSTALLED = os.path.join(HOME, "statusline.py")   # stable path, version-independent
-ALL = ["context", "rot", "spark", "meta", "skill", "effort", "lore"]
+ALL = ["context", "rot", "spark", "meta", "skill", "effort", "lore", "voice"]
 MARK = "magician"   # substring used to recognise our own statusLine entry
+
+# Output-brevity levels (least → most wordy). warrior = leanest but complete,
+# scribe = the default (leaner than usual), bard = standard/native verbosity.
+# SessionStart injects a brevity directive for warrior/scribe (none for bard).
+VOICE_LEVELS = ["warrior", "scribe", "bard"]
+VOICE_DEFAULT = "scribe"
 
 # Read-only surface magician auto-approves so autonomous runs don't prompt per file/search.
 # ONLY safe read-only tools + commands — NEVER writes/commit/push/PR/delete (those stay gated).
@@ -279,6 +285,7 @@ def cmd_status(_args):
     print(f"settings:    statusLine {'wired to magician' if wired else 'not wired to magician'}")
     print(f"read-only allow: {cfg.get('allow', 'not set')} (auto-approve reads/searches/read-only git + jira·confluence reads + tests)")
     print(f"auto mode:   {cfg.get('automode', 'not set')} (Claude Code classifier: reads/aligned actions auto, writes/deploys/force-push gate — `magician-ui automode`)")
+    print(f"voice:       {cfg.get('voice', VOICE_DEFAULT)} (output brevity: warrior<scribe<bard; default scribe — `magician-ui voice <level>`)")
 
 
 def cmd_enable(args):
@@ -504,14 +511,47 @@ def cmd_lore(args):
               "(deep-dives stay on-demand, and repo rules always win). Disable: `magician-ui lore off`.")
 
 
+def cmd_voice(args):
+    """Set magician's output-brevity 'voice' — how wordy responses are, to lower output-token
+    cost with no quality loss (output tokens cost several times more than input). Three levels,
+    least → most wordy: `warrior` (minimal but complete), `scribe` (the default — leaner than
+    usual), `bard` (standard/native verbosity, nothing injected). SessionStart injects a brevity
+    directive for warrior/scribe that cuts filler (preambles, recaps, restating the request) while
+    keeping ALL substance and code/commands/errors verbatim — it never compresses prose into
+    fragments or jargon. `magician-ui voice <level>` sets it; `voice status` prints the state.
+    Resolution (first match wins): env MAGICIAN_VOICE → per-project `.magician/voice` → this
+    setting → default scribe. The status bar's `voice` chip shows it live. Takes effect next session."""
+    cfg = load_cfg()
+    if not args or args[0] in ("status", "--status"):
+        lvl = cfg.get("voice", VOICE_DEFAULT)
+        shown = "voice" in (cfg.get("components") or ALL)
+        print(f"voice level:     {lvl} (default: {VOICE_DEFAULT}; least→most wordy: {' < '.join(VOICE_LEVELS)})")
+        print(f"status-bar chip: {'shown' if shown else 'hidden'}  (toggle via `magician-ui set ...,voice`)")
+        print("overrides:       env `MAGICIAN_VOICE` · per-project `.magician/voice`")
+        return
+    lvl = args[0].strip().lower()
+    if lvl not in VOICE_LEVELS:
+        die(f"unknown voice '{args[0]}'; choose from: {', '.join(VOICE_LEVELS)}")
+    cfg["voice"] = lvl
+    cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    save_cfg(cfg)
+    blurb = {
+        "warrior": "minimal but complete — the shortest fully-correct answer; no preamble, examples, or recaps.",
+        "scribe":  "leaner than usual (default) — necessary explanation only, filler and restatements trimmed.",
+        "bard":    "standard/native verbosity — no brevity directive injected.",
+    }[lvl]
+    print(f"Voice set to {lvl}: {blurb}")
+    print("Substance, code, commands, paths, and errors are always kept verbatim. Takes effect next session start.")
+
+
 CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
         "disable": cmd_disable, "reconcile": cmd_reconcile, "allow": cmd_allow,
-        "automode": cmd_automode, "lore": cmd_lore}
+        "automode": cmd_automode, "lore": cmd_lore, "voice": cmd_voice}
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
-        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]|automode [--off|--available]|lore [on|off|status]}")
+        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]|automode [--off|--available]|lore [on|off|status]|voice [warrior|scribe|bard|status]}")
         print(f"components: {', '.join(ALL)}")
         return
     cmd = sys.argv[1]

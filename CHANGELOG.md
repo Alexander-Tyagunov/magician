@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.0] — 2026-07-12
+
+**Tunable output brevity — lower token cost, no quality loss.** Output tokens cost several times more than input on every current model, so the cheapest saving on a coding-agent bill is simply emitting fewer of them. Magician now injects an output-brevity **voice** at session start — a style directive that trims filler while preserving every fact — with three levels and a leaner-than-default setting out of the box.
+
+### Added
+- **`voice` setting** — `magician-ui voice warrior|scribe|bard` (and `voice status`). Three levels, least → most wordy: **`warrior`** (minimal but complete — the shortest fully-correct answer, no preamble/examples/recaps), **`scribe`** (the default — leaner than usual; necessary explanation only), **`bard`** (standard/native verbosity, nothing injected). Resolution (first match wins): env `MAGICIAN_VOICE` → per-project `.magician/voice` → global `cli-ui.json` → default `scribe`.
+- **No-quality-loss directive** — for warrior/scribe, SessionStart injects a brevity directive that shortens by *cutting filler, not facts*: it drops preambles, postambles, restatements of the request, and recaps of work just done, and leads with the outcome — while keeping **all** substance and all code, commands, file paths, identifiers, numbers, and error text **verbatim**. It explicitly forbids compressing prose into fragments, telegraphese, arrow-chains, abbreviations, or jargon (readability over raw length), and never touches code, tests, diffs, or the actual work.
+- **`🗣 voice:` status-bar chip** — shows the active level live (warrior/scribe/bard), rendered locally at zero token cost; toggle its visibility with `magician-ui set …,voice`.
+
+### Notes
+- Auto-injection is a Claude Code SessionStart behavior (as with bundled lore); the `magician-ui voice` command and stored setting work everywhere. Takes effect at the next session start.
+- Default is `scribe` (leaner than standard), so sessions save output tokens from the first message. Set `bard` for the previous, fully-native verbosity.
+
 ## [4.8.1] — 2026-07-12
 
 **Hook performance — fewer Python cold-starts per turn, zero behavior change.** A profiling pass found the plugin's latency was dominated by Python process spawns (~26–52ms each): SessionStart spawned Python ~11 times, and every Bash tool call fired three separate hooks (two spawning Python). None of it was broken — just spawn-heavy. This release cuts the spawn count on the hot paths; every change is verified equivalent to the prior behavior.

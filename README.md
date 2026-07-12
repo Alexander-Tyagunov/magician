@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-4.8.1-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.9.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
 [![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
@@ -12,7 +12,7 @@
 
 <h3>From idea to merged PR — autonomously, grounded in your code, gated only where it matters.</h3>
 
-<sub>25 skills · deep live-verified stack lore (languages · frameworks · databases · observability) · a local code knowledge-graph · cross-session memory · parallel agent orchestration · an absolute destructive-command guard · zero required deps</sub>
+<sub>25 skills · deep live-verified stack lore (languages · frameworks · databases · observability) · a local code knowledge-graph · cross-session memory · parallel agent orchestration · tunable output brevity (lower token cost) · an absolute destructive-command guard · zero required deps</sub>
 
 </div>
 
@@ -240,6 +240,24 @@ Always-injected **cores** stay small and bounded; the rich per-topic **deep-dive
 
 <img src="assets/divider.svg" alt="" width="100%">
 
+## 🗣 Voice — leaner output, lower cost &nbsp;<sub><code>new in 4.9.0</code></sub>
+
+> Output tokens are the expensive side of the bill (~5× input on current models). Say the same thing in fewer of them.
+
+magician sets an output-brevity **voice** every session — a style directive that trims filler while keeping every fact. A leaner voice cuts token cost with **no quality loss**, and it ships lean by default so you save from message one.
+
+| voice | wordiness | what it does |
+|---|---|---|
+| `warrior` | leanest | the shortest fully-correct answer — no preamble, unrequested examples, or closing recaps |
+| `scribe` &nbsp;*(default)* | leaner than usual | necessary explanation only; filler, restatements, and "what I just did" recaps trimmed |
+| `bard` | standard | native Claude/Codex verbosity — nothing injected |
+
+**It cuts filler, not facts.** All substance stays, and code, commands, file paths, and error text are kept **verbatim** — it never compresses prose into fragments, arrow-chains, or jargon (readability beats raw length).
+
+<sub>🗣 Set it with <code>magician-ui voice warrior|scribe|bard</code> — or per-project <code>.magician/voice</code> / env <code>MAGICIAN_VOICE</code> (first match wins, then the default <code>scribe</code>). The status bar shows <code>🗣 voice:scribe</code> live. Auto-injected into Claude Code sessions; the setting is stored for Codex too.</sub>
+
+<img src="assets/divider.svg" alt="" width="100%">
+
 ## 🔒 Safety — an absolute destructive-command guard &nbsp;<sub><code>new in 4.6.0</code></sub>
 
 > Security is infrastructure, not advice.
@@ -440,7 +458,7 @@ MCP-free Atlassian REST clients — throttle-aware, bulk-safe, one command per c
 <tr>
 <td width="50%" valign="top">
 <h4><code>magician-ui</code></h4>
-Manage the CLI UI status line + <code>allow</code> (read-only auto-approve) + <code>automode</code> (auto mode) — safe, backed-up <code>settings.json</code> edits.
+Manage the CLI UI status line + <code>allow</code> (read-only auto-approve) + <code>automode</code> (auto mode) + <code>voice</code> (output brevity) — safe, backed-up <code>settings.json</code> edits.
 </td>
 <td width="50%" valign="top">
 <h4><code>magician-scan</code> · <code>ctx</code></h4>
