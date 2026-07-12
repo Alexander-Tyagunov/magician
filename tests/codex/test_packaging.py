@@ -34,6 +34,8 @@ class CodexPackagingTests(unittest.TestCase):
 
         for required in (
             "skills/almanac/SKILL.md",
+            "skills/project-context/SKILL.md",
+            "skills/project-context/scripts/detect_project_context.py",
             "source-skills/almanac/SKILL.md",
             "references/codex-adapter.md",
             "hooks/codex-hooks.json",
@@ -63,7 +65,7 @@ class CodexPackagingTests(unittest.TestCase):
                 )
 
         adapters = list((plugin_root / manifest["skills"]).glob("*/SKILL.md"))
-        self.assertEqual(len(adapters), 25)
+        self.assertEqual(len(adapters), 26)
         source_skills = list((plugin_root / "source-skills").glob("*/SKILL.md"))
         self.assertEqual(len(source_skills), 25)
 

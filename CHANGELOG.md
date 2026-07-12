@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Codex-only `$project-context` lore router** — a read-only, standard-library stack detector now selects concise language/database/observability cores and ranks at most eight task-matched deep dives from the packaged lore. It honors `MAGICIAN_LORE` and `.magician/lore.off`, emits no manifest or environment values, makes no network calls or state writes, and does not modify or emulate Claude Code's SessionStart hook.
+
+### Fixed
+- **Voice status-line glyph** — render the voice chip with the emoji presentation selector so the icon is displayed consistently.
+
 ## [4.9.0] — 2026-07-12
 
 **Tunable output brevity — lower token cost, no quality loss.** Output tokens cost several times more than input on every current model, so the cheapest saving on a coding-agent bill is simply emitting fewer of them. Magician now injects an output-brevity **voice** at session start — a style directive that trims filler while preserving every fact — with three levels and a leaner-than-default setting out of the box.

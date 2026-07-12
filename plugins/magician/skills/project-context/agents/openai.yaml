@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Context"
+  short_description: "Detect stack and load relevant Magician lore"
+  default_prompt: "Use $project-context to detect this project stack and load only the relevant Magician lore."
