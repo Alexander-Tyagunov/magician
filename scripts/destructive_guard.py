@@ -193,6 +193,37 @@ def check_powershell(cmd):
     return None
 
 
+# --- sentinel soft-block rules (folded in from the former scripts/sentinel-guard.sh) ------------
+# These are the SOFTER, permission-style checks that used to run as a SECOND PreToolUse(Bash) hook,
+# spawning a second python cold-start per Bash call. They are reproduced here VERBATIM (same regexes,
+# same reason strings) and run in THIS process after the catastrophic check passes — one spawn, not two.
+# Semantics are preserved: these emit a {"decision":"block"} permission block (not the exit-2 hard gate).
+_SENT_BLOCK_RULES = [
+    (r'curl\b.+\|\s*(bash|sh)\b',           "pipe-to-shell via curl"),
+    (r'wget\b.+\|\s*(bash|sh)\b',           "pipe-to-shell via wget"),
+    (r'\beval\s+["\$`]',                    "eval with dynamic content"),
+    (r'\brm\s+(-\w*r\w*f|-\w*f\w*r)\s+/',   "rm -rf on absolute path"),
+    (r'cat\s+[~]?/?\.?ssh/',                "reading SSH directory"),
+    (r'cat\s+[~]?/?\.?aws/credentials',     "reading AWS credentials"),
+    (r'\bcat\s+\.env\b',                    "reading .env file"),
+]
+
+
+def check_sentinel(command):
+    """Return the full block-reason string if a sentinel rule matches, else None. Verbatim from the
+    former sentinel-guard.sh (Bash-only). Matches the RAW command (no wrapper unwrapping), as before."""
+    for pattern, label in _SENT_BLOCK_RULES:
+        if re.search(pattern, command, re.IGNORECASE | re.DOTALL):
+            return f"Security guard blocked: {label}. Review the command and run manually if intended."
+    has_private = bool(re.search(r'(\.ssh|\.aws|\.env|password|secret|token)', command, re.I))
+    has_network = bool(re.search(r'\b(curl|wget|nc|ncat|ssh|scp|rsync)\b', command, re.I))
+    has_exec    = bool(re.search(r'\|\s*(bash|sh|python|ruby|node)\b', command, re.I))
+    if has_private and has_network and has_exec:
+        return ("Lethal trifecta detected: private data + network access + execution. "
+                "Requires manual review.")
+    return None
+
+
 def main():
     try:
         d = json.load(sys.stdin)
@@ -218,6 +249,17 @@ def main():
             "by permissions, allow-rules, or auto mode. Do NOT retry, rephrase, or wrap it. If this is "
             "genuinely intended, the human must run it themselves in a terminal outside the agent.\n")
         sys.exit(2)
+    # Sentinel soft-block stage (Bash only) — folds the former sentinel-guard.sh into this one process
+    # so a Bash call pays ONE python cold-start instead of two. Only reached after the catastrophic
+    # check passes; emits a permission-style {"decision":"block"} (NOT the exit-2 hard gate). Fails OPEN.
+    if tn == "Bash":
+        try:
+            sreason = check_sentinel(cmd)
+        except Exception:
+            sreason = None
+        if sreason:
+            print(json.dumps({"decision": "block", "reason": sreason}))
+            sys.exit(0)
     sys.exit(0)
 
 

@@ -12,30 +12,30 @@ mkdir -p "$PLUGIN_DATA"
 
 INPUT=$(cat)
 
-# Extract file_path from hook JSON
-FILE_PATH=$(python3 - "$INPUT" <<'PYEOF'
-import json, sys
-try:
-    d = json.loads(sys.argv[1])
-    inp = d.get("tool_input", d.get("input", d))
-    print(inp.get("file_path", inp.get("path", "")) if isinstance(inp, dict) else "")
-except Exception:
-    pass
-PYEOF
-)
-
-[ -z "$FILE_PATH" ] && exit 0
-
-# Skip non-project paths (tmp, home config, plugin data itself)
-case "$FILE_PATH" in
-  /tmp/*|/var/tmp/*|"$HOME/.claude"*|"$HOME/.local/share/magician"*) exit 0 ;;
-esac
-
-python3 - "$ACCESS_FILE" "$FILE_PATH" <<'PYEOF'
+# PERF: a SINGLE python pass — was two cold-starts (extract file_path, then update the log).
+# The program is read into a var (heredoc → PYCODE) and run via `python3 -c` with the hook JSON on
+# STDIN (so it isn't limited by argv size), matching the kg-nudge pattern.
+PYCODE=""
+IFS= read -r -d '' PYCODE <<'PYEOF' || true
 import json, os, sys
 from pathlib import Path
 
-access_file, file_path = sys.argv[1], sys.argv[2]
+access_file, home = sys.argv[1], sys.argv[2]
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+inp = d.get("tool_input", d.get("input", d))
+file_path = inp.get("file_path", inp.get("path", "")) if isinstance(inp, dict) else ""
+if not file_path:
+    sys.exit(0)
+
+# Skip non-project paths (tmp, home config, plugin data itself)
+_skip = ("/tmp/", "/var/tmp/", os.path.join(home, ".claude"),
+         os.path.join(home, ".local", "share", "magician"))
+if file_path.startswith(_skip):
+    sys.exit(0)
 
 # Load existing access log
 if os.path.exists(access_file):
@@ -102,3 +102,5 @@ data["large_suggested"] = large_sug[-500:]
 with open(access_file, "w") as f:
     json.dump(data, f, indent=2)
 PYEOF
+
+printf '%s' "$INPUT" | python3 -c "$PYCODE" "$ACCESS_FILE" "$HOME" 2>/dev/null || true

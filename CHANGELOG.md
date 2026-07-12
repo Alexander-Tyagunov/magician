@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.1] — 2026-07-12
+
+**Hook performance — fewer Python cold-starts per turn, zero behavior change.** A profiling pass found the plugin's latency was dominated by Python process spawns (~26–52ms each): SessionStart spawned Python ~11 times, and every Bash tool call fired three separate hooks (two spawning Python). None of it was broken — just spawn-heavy. This release cuts the spawn count on the hot paths; every change is verified equivalent to the prior behavior.
+
+### Performance
+- **SessionStart ~644ms → ~412ms (measured, this repo).** One Python pass now parses `source` + `session_id` **and** computes `md5(cwd)` (reused for both the observability and project hashes) — replacing four separate spawns. The two `bin/ctx` spawns (resume capsule, project learnings) are now gated on a cheap file-existence check, so a normal start with no capsule/learnings skips them entirely (ctx no-ops in that case anyway). The lore status-bar marker is written in the same Python call that emits the SessionStart context. Python spawn sites in `session-start.sh`: 11 → 7. The additionalContext output is **byte-identical** across startup / resume / a JS+DB repo.
+- **Every Bash call ~181ms → ~122ms (3 hooks → 2).** `sentinel-guard.sh` is folded into `destructive_guard.py`: the catastrophic check runs first (exits 2, the absolute hard gate — unchanged), and only if it passes does the sentinel soft-block stage run in the **same** process (Bash-only, preserving the exact `{"decision":"block"}` semantics). Verified **byte-identical decisions on a 46-case block/allow matrix** (26 hard-block / 7 soft-block / 13 allow). The separate `sentinel-guard.sh` hook is removed.
+- **Every whole-file Read ~115ms → ~72ms.** `access-tracker.sh` now uses a single Python pass (was two) and reads the hook JSON on **stdin** instead of `argv` (also removes a latent `E2BIG` failure on large payloads). The access-log schema and suggestion behavior are unchanged.
+
+### Fixed
+- The Codex adapter link-resolution test no longer false-positives on inline-code snippets (e.g. `fiber.Params[int](c,"id")` was misread as a `[text](target)` link); it now strips fenced + inline code before extracting links. No lore content changed.
+
+### Notes
+- No functional change to any hook's decisions or output — this is purely a spawn-count reduction. The destructive-command hard gate's guarantees (deterministic, pre-permission, no escape hatch) are untouched and re-verified. Restart Claude Code (hooks load at session start) to pick up the faster hooks.
+
 ## [4.8.0] — 2026-07-12
 
 **Knowledge lore overhaul + platform-aware logging.** Magician now ships deep, live-doc-verified guidance for the languages, databases, and observability platforms a project actually uses — injected concisely at session start (progressive disclosure: small always-injected cores, rich on-demand deep-dive trees), version-adaptive, and switchable off when it conflicts with your own conventions.

@@ -11,20 +11,20 @@ date -u +"%Y-%m-%dT%H:%M:%SZ" > "$PLUGIN_DATA/session-start-time.txt"
 
 # SessionStart input carries a `source` (startup | resume | compact | clear). On a post-compaction /
 # resume start the agent may have lost magician's conventions, so we re-surface core doctrine below.
-SS_SOURCE=""
-if [ ! -t 0 ]; then
-  SS_INPUT=$(cat 2>/dev/null || true)
-  SS_SOURCE=$(printf '%s' "${SS_INPUT:-}" | python3 -c "import json,sys
-try:
-    print((json.load(sys.stdin).get('source') or '').strip())
-except Exception:
-    print('')" 2>/dev/null || echo "")
-fi
-SS_SID=$(printf '%s' "${SS_INPUT:-}" | python3 -c "import json,sys
-try:
-    print((json.load(sys.stdin).get('session_id') or 'default'))
-except Exception:
-    print('default')" 2>/dev/null || echo "default")
+SS_INPUT=""
+[ ! -t 0 ] && SS_INPUT=$(cat 2>/dev/null || true)
+# PERF: ONE python pass parses `source` + `session_id` AND computes md5(cwd) — reused below for both
+# OBS_HASH and PROJECT_HASH. Collapses what were four separate python cold-starts (~26–52ms each) into one.
+SS_PARSE=$(printf '%s' "${SS_INPUT:-}" | python3 -c "import json,sys,hashlib,os
+try: d=json.load(sys.stdin)
+except Exception: d={}
+print((d.get('source') or '').strip())
+print(d.get('session_id') or 'default')
+print(hashlib.md5(os.getcwd().encode()).hexdigest()[:12])" 2>/dev/null || true)
+SS_SOURCE=""; SS_SID="default"; CWD_HASH="default"
+{ IFS= read -r SS_SOURCE || true; IFS= read -r SS_SID || true; IFS= read -r CWD_HASH || true; } <<< "$SS_PARSE"
+[ -z "$SS_SID" ] && SS_SID="default"
+[ -z "$CWD_HASH" ] && CWD_HASH="default"
 
 if [ -t 2 ] || [ "${FORCE_COLOR:-}" = "1" ]; then
   BLUE='\033[0;34m'; YELLOW='\033[0;33m'; GREEN='\033[0;32m'
@@ -270,7 +270,7 @@ fi
 # Logging is decided WHEN app code is written: know where the app is deployed (which log platform) so
 # logs are shaped for it and queries are proposed in its language. Precedence: a recorded per-project
 # choice > exactly one detected SDK > unknown (the agent asks + records — see the Observability note).
-OBS_HASH=$(python3 -c "import hashlib,os;print(hashlib.md5(os.getcwd().encode()).hexdigest()[:12])" 2>/dev/null || echo default)
+OBS_HASH="$CWD_HASH"   # PERF: reuse the md5(cwd) computed in the single stdin parse above
 OBS_FILE="$PLUGIN_DATA/projects/$OBS_HASH/observability.json"
 OBS_PLATFORM=""; OBS_SRC=""
 if [ -f "$OBS_FILE" ]; then
@@ -368,15 +368,7 @@ fi
 MAG_STATUS="${MAGICIAN_HOME:-$HOME/.claude/magician}/status"
 mkdir -p "$MAG_STATUS" 2>/dev/null || true
 SID_SAFE=$(printf '%s' "${SS_SID:-default}" | tr '/' '_' | cut -c1-64)
-python3 - "$MAG_STATUS/${SID_SAFE}.lore.json" "$LORE_ENABLED" "$LORE_INJECTED" <<'PYEOF' 2>/dev/null || true
-import json, sys, time
-try:
-    cores = (sys.argv[3] or "").split()
-    json.dump({"enabled": sys.argv[2] == "1", "count": len(cores), "cores": cores, "ts": time.time()},
-              open(sys.argv[1], "w"))
-except Exception:
-    pass
-PYEOF
+LORE_MARKER="$MAG_STATUS/${SID_SAFE}.lore.json"   # PERF: written together with the final JSON (one spawn)
 
 # ── LORE_NOTE ────────────────────────────────────────────────────────────────
 if [ -n "$TECHS" ]; then
@@ -443,7 +435,7 @@ fi
 
 # ── First-run detection ──────────────────────────────────────────────────────
 FIRST_RUN_NOTE=""
-PROJECT_HASH=$(python3 -c "import hashlib, os; print(hashlib.md5(os.getcwd().encode()).hexdigest()[:12])" 2>/dev/null || echo "default")
+PROJECT_HASH="$CWD_HASH"   # PERF: reuse the md5(cwd) computed in the single stdin parse above
 INIT_MARKER="$PLUGIN_DATA/projects/$PROJECT_HASH/initialized"
 
 if [ ! -f "$INIT_MARKER" ]; then
@@ -500,15 +492,24 @@ PYEOF
 
 # ── Resume capsule (re-inject after a prior compaction, on --resume/--continue) ──
 RESUME_NOTE=""
-CAPSULE=$("$PLUGIN_ROOT/bin/ctx" resume --on-start 2>/dev/null || true)
-[ -n "$CAPSULE" ] && RESUME_NOTE=" RESUME-AFTER-COMPACTION — restore your bearings from this capsule, then continue (read the referenced paths instead of re-exploring):
+# PERF: only spawn the (python) ctx CLI when there's actually a capsule to restore. `ctx resume
+# --on-start` no-ops without capsule.md (and self-checks freshness+cwd), so this gate is behavior-identical
+# while saving a ~116ms cold start on every normal start. Path matches ctx's proj_dir (md5(cwd)[:12]).
+if [ -f "$PLUGIN_DATA/projects/$CWD_HASH/capsule.md" ]; then
+  CAPSULE=$("$PLUGIN_ROOT/bin/ctx" resume --on-start 2>/dev/null || true)
+  [ -n "$CAPSULE" ] && RESUME_NOTE=" RESUME-AFTER-COMPACTION — restore your bearings from this capsule, then continue (read the referenced paths instead of re-exploring):
 ${CAPSULE}"
+fi
 
 # ── Project memory (recent learnings for THIS project, distinct from global refs) ──
 LEARN_NOTE=""
-LEARNINGS=$("$PLUGIN_ROOT/bin/ctx" learn --list --n 3 2>/dev/null || true)
-[ -n "$LEARNINGS" ] && LEARN_NOTE=" PROJECT MEMORY — recent learnings for this project (consult only when relevant):
+# PERF: only spawn ctx when a learnings store exists for this project (else `learn --list` returns
+# nothing anyway) — saves a ~83ms cold start on every start without one. Path matches ctx's proj_dir.
+if [ -f "$PLUGIN_DATA/projects/$CWD_HASH/learnings.jsonl" ]; then
+  LEARNINGS=$("$PLUGIN_ROOT/bin/ctx" learn --list --n 3 2>/dev/null || true)
+  [ -n "$LEARNINGS" ] && LEARN_NOTE=" PROJECT MEMORY — recent learnings for this project (consult only when relevant):
 ${LEARNINGS}"
+fi
 
 # ── Magician CLI UI (status line): OPT-OUT auto-enable on install/upgrade. PERF: a cheap
 #    bash fast-path so we only spawn the (python) reconcile when there's real work — first run,
@@ -552,4 +553,14 @@ ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
 ${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${OBS_NOTE}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}"
-python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"
+python3 - "$CONTEXT" "$LORE_MARKER" "$LORE_ENABLED" "$LORE_INJECTED" <<'PYEOF'
+import json, sys, time
+ctx, marker, enabled, injected = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:                                           # write the lore status marker (for the CLI UI chip)
+    cores = (injected or "").split()
+    json.dump({"enabled": enabled == "1", "count": len(cores), "cores": cores, "ts": time.time()},
+              open(marker, "w"))
+except Exception:
+    pass
+print(json.dumps({"additionalContext": ctx}))  # the SessionStart additionalContext (unchanged)
+PYEOF

@@ -25,13 +25,21 @@ class AdapterContracts(unittest.TestCase):
         self.assertEqual(skill_names(PACKAGE / "skills"), source)
         self.assertEqual(skill_names(PACKAGE / "source-skills"), source)
 
+    @staticmethod
+    def _strip_code(md: str) -> str:
+        """Remove fenced + inline code so code snippets aren't misread as markdown links.
+        e.g. `fiber.Params[int](c,"id")` or `fiber.Locals[T](c, key)` are code, not `[text](target)` links."""
+        md = re.sub(r"(?ms)^[ \t]*(```|~~~).*?\1", "", md)   # fenced blocks
+        md = re.sub(r"`[^`\n]*`", "", md)                     # inline code spans
+        return md
+
     def test_packaged_adapter_links_resolve_inside_package(self) -> None:
         link_pattern = re.compile(r"\[[^]]+\]\(([^)]+)\)")
         documents = []
         for subtree in ("skills", "source-skills", "references", "lore"):
             documents.extend((PACKAGE / subtree).rglob("*.md"))
         for document in documents:
-            for target in link_pattern.findall(document.read_text(encoding="utf-8")):
+            for target in link_pattern.findall(self._strip_code(document.read_text(encoding="utf-8"))):
                 if "://" in target or target.startswith("#"):
                     continue
                 path = target.split("#", 1)[0]

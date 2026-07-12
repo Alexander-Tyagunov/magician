@@ -31,15 +31,6 @@
         ]
       },
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sentinel-guard.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Read|Grep|Glob|Bash",
         "hooks": [
           {
