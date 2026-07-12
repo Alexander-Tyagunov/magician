@@ -5,13 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.9.1] — 2026-07-12
+
+**Codex progressive project-lore routing + voice-chip polish.** A patch release: Codex gains an on-demand stack-lore router mirroring the Claude SessionStart lore behavior, and the voice status-line chip renders its glyph correctly. No change to Claude Code's runtime, hooks, or skills.
 
 ### Added
 - **Codex-only `$project-context` lore router** — a read-only, standard-library stack detector now selects concise language/database/observability cores and ranks at most eight task-matched deep dives from the packaged lore. It honors `MAGICIAN_LORE` and `.magician/lore.off`, emits no manifest or environment values, makes no network calls or state writes, and does not modify or emulate Claude Code's SessionStart hook.
 
 ### Fixed
-- **Voice status-line glyph** — render the voice chip with the emoji presentation selector so the icon is displayed consistently.
+- **Voice status-line glyph** — the `🗣️ voice:` chip now renders with the emoji presentation selector (U+FE0F) so the icon shows at full width with its trailing space, matching the `📚 lore` / `🧠 effort` chips (previously `🗣` fell back to text presentation and collapsed against the label).
 
 ## [4.9.0] — 2026-07-12
 
