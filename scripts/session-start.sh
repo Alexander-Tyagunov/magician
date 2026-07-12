@@ -20,6 +20,11 @@ try:
 except Exception:
     print('')" 2>/dev/null || echo "")
 fi
+SS_SID=$(printf '%s' "${SS_INPUT:-}" | python3 -c "import json,sys
+try:
+    print((json.load(sys.stdin).get('session_id') or 'default'))
+except Exception:
+    print('default')" 2>/dev/null || echo "default")
 
 if [ -t 2 ] || [ "${FORCE_COLOR:-}" = "1" ]; then
   BLUE='\033[0;34m'; YELLOW='\033[0;33m'; GREEN='\033[0;32m'
@@ -60,6 +65,22 @@ detect_append() {
 [ -f "pom.xml" ]           && { detect_append "java";       ARCHETYPE="backend"; }
 [ -f "build.gradle" ]      && { detect_append "java";       ARCHETYPE="backend"; }
 [ -f "go.mod" ]            && { detect_append "go";         ARCHETYPE="backend"; }
+# ── Go ecosystem: web frameworks + DB/ORM + tooling (go.mod / go.sum) ─────────
+if [ -f "go.mod" ]; then
+  GO_DEPS=$(cat go.mod go.sum 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+  echo "$GO_DEPS" | grep -q "gin-gonic/gin"       && detect_append "gin"
+  echo "$GO_DEPS" | grep -q "labstack/echo"       && detect_append "echo"
+  echo "$GO_DEPS" | grep -q "go-chi/chi"          && detect_append "chi"
+  echo "$GO_DEPS" | grep -q "gofiber/fiber"       && detect_append "fiber"
+  echo "$GO_DEPS" | grep -qE "gorm\.io|jinzhu/gorm" && detect_append "gorm"
+  { [ -f "sqlc.yaml" ] || [ -f "sqlc.json" ] || echo "$GO_DEPS" | grep -q "sqlc-dev/sqlc"; } && detect_append "sqlc"
+  echo "$GO_DEPS" | grep -qE "jmoiron/sqlx|jackc/pgx" && detect_append "sqlx"
+  echo "$GO_DEPS" | grep -q "entgo\.io/ent"       && detect_append "ent"
+  echo "$GO_DEPS" | grep -qE "google\.golang\.org/grpc|google\.golang\.org/protobuf|connectrpc\.com" && detect_append "grpc"
+  echo "$GO_DEPS" | grep -q "spf13/cobra"         && detect_append "cobra"
+  echo "$GO_DEPS" | grep -q "spf13/viper"         && detect_append "viper"
+  echo "$GO_DEPS" | grep -qE "go\.uber\.org/zap|uber-go/zap|rs/zerolog" && detect_append "slog"
+fi
 [ -f "Cargo.toml" ]        && { detect_append "rust";       ARCHETYPE="backend"; }
 [ -f "pubspec.yaml" ]      && { detect_append "flutter";    ARCHETYPE="mobile"; }
 [ -f "project.godot" ]     && { detect_append "godot";      ARCHETYPE="gamedev"; }
@@ -77,35 +98,81 @@ try:
     d = json.load(open('package.json'))
     deps = {**d.get('dependencies',{}), **d.get('devDependencies',{})}
     checks = [
-        ('next',     'nextjs'),
-        ('react',    'react'),
-        ('vue',      'vue'),
-        ('nuxt',     'nuxt'),
-        ('express',  'express'),
-        ('graphql',  'graphql'),
+        ('next',        'nextjs'),
+        ('react',       'react'),
+        ('vue',         'vue'),
+        ('nuxt',        'nuxt'),
+        ('svelte',      'svelte'),
+        ('express',     'express'),
+        ('fastify',     'fastify'),
+        ('graphql',     'graphql'),
+        ('prisma',      'prisma'),
+        ('typeorm',     'typeorm'),
+        ('sequelize',   'sequelize'),
+        ('mongoose',    'mongoose'),
+        ('kysely',      'kysely'),
+        ('drizzle-orm', 'drizzle'),
+        ('tailwindcss', 'tailwind'),
+        ('sass',        'sass'),
+        ('node-sass',   'sass'),
+        ('less',        'less'),
+        ('bootstrap',   'bootstrap'),
+        ('antd',        'antd'),
+        ('styled-components', 'styled-components'),
     ]
     for pkg, tech in checks:
         if pkg in deps:
             print(f'detect_append {tech}')
-    if any(k.startswith('@prisma') for k in deps):
-        print('detect_append prisma')
+    # scoped-package prefixes (@scope/...)
+    prefixes = [
+        ('@prisma',       'prisma'),
+        ('@angular',      'angular'),
+        ('@nestjs',       'nestjs'),
+        ('@sveltejs/kit', 'sveltekit'),
+        ('@mui',          'mui'),
+        ('@chakra-ui',    'chakra'),
+        ('@mantine',      'mantine'),
+        ('@emotion',      'emotion'),
+        ('@radix-ui',     'radix'),
+        ('@vanilla-extract', 'vanilla-extract'),
+        ('@pandacss',     'vanilla-extract'),
+        ('@stylexjs',     'vanilla-extract'),
+    ]
+    for prefix, tech in prefixes:
+        if any(k == prefix or k.startswith(prefix) for k in deps):
+            print(f'detect_append {tech}')
 except: pass
 PYEOF
 )"
 fi
 
-# ── Deep Python framework detection ─────────────────────────────────────────
-if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
-  PY_DEPS=$(cat requirements.txt pyproject.toml 2>/dev/null | \
-    grep -oiE '(fastapi|django|flask|torch|tensorflow|pandas|sklearn|scikit-learn|jupyter|notebook)' | \
-    tr '[:upper:]' '[:lower:]' | sort -u || true)
+# ── Deep Python framework / data / ML detection ─────────────────────────────
+if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "setup.cfg" ] || [ -f "Pipfile" ] || [ -f "uv.lock" ]; then
+  PY_DEPS=$(cat requirements.txt requirements*.txt pyproject.toml setup.py setup.cfg Pipfile uv.lock poetry.lock 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+  # web / API
   echo "$PY_DEPS" | grep -q "fastapi"            && detect_append "fastapi"
   echo "$PY_DEPS" | grep -q "django"             && detect_append "django"
   echo "$PY_DEPS" | grep -q "flask"              && detect_append "flask"
-  echo "$PY_DEPS" | grep -q "torch\|tensorflow"  && { detect_append "pytorch"; ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -q "litestar"           && detect_append "litestar"
+  # data
   echo "$PY_DEPS" | grep -q "pandas"             && { detect_append "pandas";  ARCHETYPE="data"; }
-  echo "$PY_DEPS" | grep -q "sklearn\|scikit"    && { detect_append "sklearn";  ARCHETYPE="data"; }
-  echo "$PY_DEPS" | grep -q "jupyter\|notebook"  && { detect_append "jupyter";  ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -q "numpy"              && { detect_append "numpy";   ARCHETYPE="${ARCHETYPE:-data}"; }
+  echo "$PY_DEPS" | grep -q "polars"             && { detect_append "polars";  ARCHETYPE="data"; }
+  # ML / AI
+  echo "$PY_DEPS" | grep -q "torch"              && { detect_append "pytorch";      ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -qE "tensorflow|keras"  && { detect_append "tensorflow";   ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -qE "scikit-learn|sklearn" && { detect_append "sklearn";   ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -qE "jax|flax"          && { detect_append "jax";          ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -q "transformers"       && { detect_append "transformers"; ARCHETYPE="data"; }
+  echo "$PY_DEPS" | grep -qE "langchain|llama-index|llama_index|llamaindex" && detect_append "langchain"
+  echo "$PY_DEPS" | grep -qE "anthropic|openai"  && detect_append "llm-sdks"
+  echo "$PY_DEPS" | grep -qE "jupyter|notebook|ipykernel" && { detect_append "jupyter"; ARCHETYPE="${ARCHETYPE:-data}"; }
+  # ORM / DB
+  echo "$PY_DEPS" | grep -q "sqlalchemy"         && detect_append "sqlalchemy"
+  echo "$PY_DEPS" | grep -q "alembic"            && detect_append "alembic"
+  echo "$PY_DEPS" | grep -q "sqlmodel"           && detect_append "sqlmodel"
+  echo "$PY_DEPS" | grep -q "tortoise"           && detect_append "tortoise"
+  echo "$PY_DEPS" | grep -q "peewee"             && detect_append "peewee"
 fi
 
 # ── Infra / DevOps detection ─────────────────────────────────────────────────
@@ -119,42 +186,206 @@ fi
 
 # ── Additional framework detection ──────────────────────────────────────────
 [ -f "Package.swift" ]                           && { detect_append "swift"; ARCHETYPE="mobile"; }
-[ -f "build.gradle" ] && grep -q "kotlin" build.gradle 2>/dev/null && detect_append "kotlin"
-[ -f "pom.xml" ] && grep -qi "spring" pom.xml 2>/dev/null         && detect_append "spring"
+# ── Kotlin / Scala language detection (JVM) ──────────────────────────────────
+if [ -f "build.gradle.kts" ] || (ls *.kt 2>/dev/null | grep -q .) || { [ -f "build.gradle" ] && grep -q "kotlin" build.gradle 2>/dev/null; }; then
+  detect_append "kotlin"; ARCHETYPE="${ARCHETYPE:-backend}"
+fi
+if [ -f "build.sbt" ] || (ls *.scala 2>/dev/null | grep -q .) || (ls project/*.sbt 2>/dev/null | grep -q .); then
+  detect_append "scala"; ARCHETYPE="${ARCHETYPE:-backend}"
+fi
+
+# ── JVM ecosystem: frameworks + SHARED data layer ────────────────────────────
+# Frameworks and the data layer (JDBC / ORM / migrations) are library-keyed and
+# language-agnostic: the same Hibernate/Flyway/jOOQ knowledge applies whether the
+# project is Java, Kotlin, Scala, or Groovy. Detect from ANY JVM build (Maven/Gradle/sbt).
+if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ] || [ -f "build.sbt" ]; then
+  JVM_DEPS=$(cat pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle/libs.versions.toml build.sbt project/*.sbt project/Dependencies.scala 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+  echo "$JVM_DEPS" | grep -q "spring"    && detect_append "spring"
+  echo "$JVM_DEPS" | grep -q "micronaut" && detect_append "micronaut"
+  echo "$JVM_DEPS" | grep -q "quarkus"   && detect_append "quarkus"
+  echo "$JVM_DEPS" | grep -qE "hibernate|jakarta\.persistence|javax\.persistence|data-jpa|jooq|mybatis" && detect_append "orm"
+  echo "$JVM_DEPS" | grep -qE "flyway|liquibase" && detect_append "db-migrations"
+  echo "$JVM_DEPS" | grep -qE "postgresql|mysql-connector|mysql:mysql|mariadb|com\.h2database|ojdbc|mssql-jdbc|starter-jdbc|hikaricp|r2dbc" && detect_append "jdbc"
+fi
 [ -d ".git" ]                                    && detect_append "git"
+# shadcn/ui: copy-in components (not an npm dep) — detected by its components.json marker
+[ -f "components.json" ] && grep -qi "shadcn\|tailwind\|aliases" components.json 2>/dev/null && detect_append "radix"
 # node: already detected as javascript; inject node lore for server-side Node projects
 [ -f "package.json" ] && [ ! -f "tsconfig.json" ] && grep -qiE '"main"|"bin"' package.json 2>/dev/null && detect_append "node"
 
 ([ -d "tests" ] || [ -d "test" ] || [ -d "spec" ] || [ -f "jest.config.js" ] || [ -f "jest.config.ts" ] || [ -f "pytest.ini" ] || [ -f "vitest.config.ts" ]) && detect_append "tdd"
 
-([ -f ".env" ] && grep -qi "postgres\|postgresql" .env 2>/dev/null) || \
-  ([ -f "docker-compose.yml" ] && grep -qi "postgres" docker-compose.yml 2>/dev/null) || \
-  ([ -f "docker-compose.yaml" ] && grep -qi "postgres" docker-compose.yaml 2>/dev/null) && detect_append "postgres"
+# ── Database ENGINE detection (cross-ecosystem) ───────────────────────────────
+# Keyed on the engine actually in use — drivers/clients in ANY manifest, docker-compose
+# service images, or connection URIs — independent of language and ORM. When any engine is
+# found, the shared `databases` foundation is injected FIRST (universal DB discipline), then
+# the specific engine cores. Each engine's deep-dive tree (incl. performance.md) stays on-demand.
+DB_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile uv.lock poetry.lock setup.py setup.cfg go.mod go.sum pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle/libs.versions.toml build.sbt .env .env.* docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+if [ -n "$DB_HAY" ]; then
+  DBS=""
+  db_detect() { if echo "$DB_HAY" | grep -qE "$2"; then DBS="${DBS:+$DBS }$1"; fi; }
+  # relational / OLTP
+  db_detect postgres      'psycopg|asyncpg|jackc/pgx|lib/pq|postgresql|postgres|"pg"'
+  db_detect mysql         'mysql|mariadb|go-sql-driver'
+  db_detect sqlite        'sqlite'
+  db_detect oracle        'oracledb|cx_oracle|ojdbc|godror'
+  db_detect sqlserver     'mssql|sqlserver|go-mssqldb|tedious'
+  # analytics / OLAP
+  db_detect duckdb        'duckdb'
+  db_detect clickhouse    'clickhouse'
+  db_detect snowflake     'snowflake'
+  db_detect bigquery      'bigquery'
+  db_detect redshift      'redshift'
+  # document / nosql / kv / wide-column
+  db_detect mongodb       'mongodb|mongoose|pymongo|go\.mongodb'
+  db_detect dynamodb      'dynamodb'
+  db_detect cassandra     'cassandra|gocql|scylla'
+  db_detect couchbase     'couchbase'
+  db_detect firestore     'firestore|firebase-admin'
+  db_detect redis         'redis|ioredis'
+  db_detect memcached     'memcached|gomemcache'
+  # vector
+  db_detect pinecone      'pinecone'
+  db_detect weaviate      'weaviate'
+  db_detect qdrant        'qdrant'
+  db_detect milvus        'milvus'
+  db_detect chroma        'chromadb'
+  db_detect pgvector      'pgvector'
+  # graph
+  db_detect neo4j         'neo4j|py2neo'
+  db_detect arangodb      'arangodb|arangojs|python-arango'
+  db_detect neptune       'amazon-neptune|neptune\.amazonaws|neptune-cluster'
+  # search / time-series
+  db_detect elasticsearch 'elasticsearch|opensearch|@elastic'
+  db_detect influxdb      'influxdb'
+  db_detect timescaledb   'timescale'
+  db_detect prometheus    'prometheus'
+  if [ -n "$DBS" ]; then
+    detect_append "databases"                       # foundation first (universal discipline)
+    for d in $DBS; do detect_append "$d"; done      # then the specific engine cores
+  fi
+fi
+
+# ── Observability / log-platform detection + per-project memory ───────────────
+# Logging is decided WHEN app code is written: know where the app is deployed (which log platform) so
+# logs are shaped for it and queries are proposed in its language. Precedence: a recorded per-project
+# choice > exactly one detected SDK > unknown (the agent asks + records — see the Observability note).
+OBS_HASH=$(python3 -c "import hashlib,os;print(hashlib.md5(os.getcwd().encode()).hexdigest()[:12])" 2>/dev/null || echo default)
+OBS_FILE="$PLUGIN_DATA/projects/$OBS_HASH/observability.json"
+OBS_PLATFORM=""; OBS_SRC=""
+if [ -f "$OBS_FILE" ]; then
+  OBS_PLATFORM=$(python3 -c "import json;print((json.load(open('$OBS_FILE')).get('platform') or '').strip())" 2>/dev/null || echo "")
+  [ -n "$OBS_PLATFORM" ] && OBS_SRC="recorded"
+fi
+if [ -z "$OBS_PLATFORM" ]; then
+  OBS_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile go.mod go.sum pom.xml build.gradle build.gradle.kts build.sbt .env docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+  OBS_MATCHES=""
+  obs_try() { if echo "$OBS_HAY" | grep -qE "$2"; then OBS_MATCHES="${OBS_MATCHES:+$OBS_MATCHES }$1"; fi; }
+  obs_try dynatrace     'dynatrace|oneagent'
+  obs_try grafana       'grafana|\bloki\b|promtail|-loki'
+  obs_try splunk        'splunk'
+  obs_try gcp-logging   'google-cloud-logging|@google-cloud/logging|google\.cloud\.logging|stackdriver'
+  obs_try cloudwatch    'cloudwatch|aws-embedded-metrics|watchtower'
+  obs_try azure-monitor 'applicationinsights|azure-monitor|opencensus-ext-azure'
+  OBS_N=$(printf '%s' "$OBS_MATCHES" | wc -w | tr -d ' ')
+  [ "$OBS_N" = 1 ] && { OBS_PLATFORM="$OBS_MATCHES"; OBS_SRC="detected"; }   # exactly one → confident
+fi
+case "$ARCHETYPE" in backend|web|data|mobile|gamedev) OBS_APP=1 ;; *) OBS_APP=0 ;; esac
+if [ -n "$OBS_PLATFORM" ]; then
+  detect_append "logging"; detect_append "$OBS_PLATFORM"
+elif [ "$OBS_APP" = 1 ]; then
+  detect_append "logging"
+fi
 
 detect_append "security"
 
 # ── Lore loader ──────────────────────────────────────────────────────────────
 LORE_TEXT=""
 LORE_CHARS=0
-MAX_LORE=3000
+# Always-injected budget (chars). Raised from 3000 → 6000 → 8000 as the lore corpus grew (language +
+# database + observability layers) so a realistic stack co-injects its primary language + the shared
+# `databases` foundation + the primary engine + logging without starving the DB/observability tier
+# (~2k tokens, once per session at SessionStart; ZERO per-turn — deep-dive trees stay on-demand).
+MAX_LORE=8000
+LORE_INJECTED=""
 
-for TECH in $(echo "$TECHS" | tr ',' '\n'); do
-  LORE_FILE="$PLUGIN_ROOT/lore/${TECH}.md"
-  [ -f "$LORE_FILE" ] || continue
-  FRAGMENT=$(cat "$LORE_FILE")
-  FL=${#FRAGMENT}
-  if [ $((LORE_CHARS + FL)) -le $MAX_LORE ]; then
-    LORE_TEXT="${LORE_TEXT}[${TECH}] ${FRAGMENT}
+# ── Lore enable/disable flag (default ENABLED) ───────────────────────────────
+# Bundled lore is a baseline BELOW the repo's own rules; a user can turn it off when it conflicts with
+# local/project knowledge or gives wrong judgment. Resolution (first match wins): env MAGICIAN_LORE=
+# 0/off/false → per-project `.magician/lore.off` → global cli-ui.json "lore":"disabled" → default ENABLED.
+# When disabled, NO lore is injected (the rest of the SessionStart context is unaffected).
+LORE_ENABLED=1
+case "$(printf '%s' "${MAGICIAN_LORE:-}" | tr '[:upper:]' '[:lower:]')" in
+  0|off|false|no|disabled) LORE_ENABLED=0 ;;
+esac
+[ -f ".magician/lore.off" ] && LORE_ENABLED=0
+LORE_UICFG="${MAGICIAN_HOME:-$HOME/.claude/magician}/cli-ui.json"
+if [ "$LORE_ENABLED" = 1 ] && [ -f "$LORE_UICFG" ] && grep -q '"lore"[[:space:]]*:[[:space:]]*"disabled"' "$LORE_UICFG" 2>/dev/null; then
+  LORE_ENABLED=0
+fi
+
+# Injection priority: primary LANGUAGE first, then the DATABASE layer (foundation + engines) so DB
+# guidance is never starved by secondary framework lore, then everything else, then security last.
+# Only reorders when a DB is present; non-DB projects inject in their natural order.
+LANG_TIER="javascript typescript python go java rust kotlin scala swift flutter node ruby php csharp"
+DB_TIER="databases postgres mysql oracle sqlserver sqlite duckdb clickhouse snowflake bigquery redshift mongodb dynamodb cassandra couchbase firestore redis memcached pinecone weaviate qdrant milvus chroma pgvector neo4j neptune arangodb elasticsearch influxdb timescaledb prometheus logging dynatrace grafana splunk gcp-logging cloudwatch azure-monitor"
+ORDERED=""
+for t in $LANG_TIER; do case ",$TECHS," in *",$t,"*) ORDERED="$ORDERED $t" ;; esac; done
+for t in $DB_TIER;   do case ",$TECHS," in *",$t,"*) ORDERED="$ORDERED $t" ;; esac; done
+for t in $(echo "$TECHS" | tr ',' ' '); do
+  case " $LANG_TIER $DB_TIER security " in *" $t "*) ;; *) ORDERED="$ORDERED $t" ;; esac
+done
+case ",$TECHS," in *",security,"*) ORDERED="$ORDERED security" ;; esac
+
+if [ "$LORE_ENABLED" = 1 ]; then
+  # Reserve the always-on `security` core FIRST (small + universal) so it is never starved by the budget.
+  SEC_FILE="$PLUGIN_ROOT/lore/security.md"
+  if [ -f "$SEC_FILE" ]; then
+    SEC_FRAG=$(cat "$SEC_FILE")
+    LORE_TEXT="[security] ${SEC_FRAG}
 
 "
-    LORE_CHARS=$((LORE_CHARS + FL + ${#TECH} + 4))
+    LORE_CHARS=$(( ${#SEC_FRAG} + 12 ))
+    LORE_INJECTED="security"
   fi
-done
+  for TECH in $ORDERED; do
+    [ "$TECH" = "security" ] && continue     # reserved above — never budget-gated
+    LORE_FILE="$PLUGIN_ROOT/lore/${TECH}.md"
+    [ -f "$LORE_FILE" ] || continue
+    FRAGMENT=$(cat "$LORE_FILE")
+    FL=${#FRAGMENT}
+    if [ $((LORE_CHARS + FL)) -le $MAX_LORE ]; then
+      LORE_TEXT="${LORE_TEXT}[${TECH}] ${FRAGMENT}
+
+"
+      LORE_CHARS=$((LORE_CHARS + FL + ${#TECH} + 4))
+      LORE_INJECTED="${LORE_INJECTED:+$LORE_INJECTED }$TECH"
+    fi
+  done
+fi
+
+# ── Lore status marker (for the CLI UI 'lore' status-bar chip) ────────────────
+MAG_STATUS="${MAGICIAN_HOME:-$HOME/.claude/magician}/status"
+mkdir -p "$MAG_STATUS" 2>/dev/null || true
+SID_SAFE=$(printf '%s' "${SS_SID:-default}" | tr '/' '_' | cut -c1-64)
+python3 - "$MAG_STATUS/${SID_SAFE}.lore.json" "$LORE_ENABLED" "$LORE_INJECTED" <<'PYEOF' 2>/dev/null || true
+import json, sys, time
+try:
+    cores = (sys.argv[3] or "").split()
+    json.dump({"enabled": sys.argv[2] == "1", "count": len(cores), "cores": cores, "ts": time.time()},
+              open(sys.argv[1], "w"))
+except Exception:
+    pass
+PYEOF
 
 # ── LORE_NOTE ────────────────────────────────────────────────────────────────
 if [ -n "$TECHS" ]; then
   LORE_NOTE="Stack: ${TECHS}. Archetype: ${ARCHETYPE}."
-  [ -n "$LORE_TEXT" ] && LORE_NOTE="${LORE_NOTE} Lore: ${LORE_TEXT}"
+  if [ "$LORE_ENABLED" != 1 ]; then
+    LORE_NOTE="${LORE_NOTE} (Magician lore is disabled — relying only on your project/local knowledge; re-enable with \`magician-ui lore on\`.)"
+  elif [ -n "$LORE_TEXT" ]; then
+    LORE_NOTE="${LORE_NOTE} Lore: ${LORE_TEXT}"
+  fi
 else
   LORE_NOTE="No stack markers found. Run /almanac to initialize workspace."
 fi
@@ -182,6 +413,14 @@ if [ -f "$REF_FILE" ]; then
 ${REF_BODY}"
 fi
 REMEMBER_HINT=" If the user mentions a repository, project, or idea worth keeping for future sessions, offer to remember it — saved to the global reference store via /chronicle, only with their confirmation."
+
+# ── Observability note — platform-aware logging behavior (only when relevant) ─────────────────
+OBS_NOTE=""
+if [ -n "${OBS_PLATFORM:-}" ]; then
+  OBS_NOTE=" Observability: this project's logs go to ${OBS_PLATFORM} (${OBS_SRC}). When writing code, emit structured, level×environment-appropriate logs at the meaningful execution points (request entry/exit + outcome, external calls, state changes, errors with context) so flows are captured for aggregation and error search — shaped for ${OBS_PLATFORM} (lore/logging.md). When locating logs/errors, propose EXACT ${OBS_PLATFORM} queries — read lore/${OBS_PLATFORM}.md for its query language first. If the user says the log platform changed, update ${OBS_FILE}."
+elif [ "${OBS_APP:-0}" = 1 ]; then
+  OBS_NOTE=" Observability: no log platform recorded for this project. When you're about to write logging code, or the user asks about finding logs/errors, use AskUserQuestion to ask (1) where the app is deployed / which log tool they use — Dynatrace · Grafana(Loki) · Splunk · GCP Cloud Logging · CloudWatch · Azure Monitor · other — and (2) the environment→log-level policy; then record it as JSON at ${OBS_FILE} (e.g. {\"platform\":\"dynatrace\",\"envs\":[\"dev\",\"prod\"],\"note\":\"...\"}) so future sessions don't re-ask. Follow lore/logging.md meanwhile. Don't re-ask once recorded; update the file if the user says the system changed."
+fi
 
 # ── Workspace strategy check ─────────────────────────────────────────────────
 STRATEGY_NOTE=""
@@ -312,5 +551,5 @@ CONTEXT="[MAGICIAN SESSION] At the very start of your first response, greet the 
 ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
-${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}"
+${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${OBS_NOTE}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}"
 python3 -c "import json, sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$CONTEXT"

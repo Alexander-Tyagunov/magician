@@ -26,3 +26,16 @@ tmp=$(jq -c '. + {"jira":"disabled"}' "$PREFS" 2>/dev/null || echo '{"jira":"dis
 - **Proactive suggestions** (from `/magic`, `/divine`, or any dependent skill): if the key is `"disabled"`, do **not** suggest setting it up or using it. Stay silent and use other sources.
 - **Direct requests override.** If the user directly invokes the skill or asks to use the service ("check jira", `/magician:jira`, "set up confluence"), honor it — that *is* them asking again. Proceed with setup/use and **clear** the `"disabled"` flag (`jq 'del(.jira)'`), since they now want it.
 - Opt-out is per service, and reversible at any time by the user asking for it.
+
+## Bundled lore (separate toggle)
+
+The plugin's bundled language & database **lore** (the concise stack cores injected at SessionStart) is
+ENABLED by default and is a baseline **below** the repo's own rules. It has its own switch, distinct from
+this integration registry — if a user says the lore is interfering with their project/local knowledge or
+"turn off the lore / stop injecting that", disable it:
+- **Global:** `magician-ui lore off` (writes `cli-ui.json` `"lore":"disabled"`; `magician-ui lore on` to restore, `magician-ui lore status` to check).
+- **Per-project:** create `.magician/lore.off` in the repo (that repo only).
+- **Env:** `MAGICIAN_LORE=0`.
+
+When off, SessionStart injects no lore and the status bar shows `📚 lore:off`. Deep-dive trees remain
+readable on demand regardless. Re-enable the same way, inverted.

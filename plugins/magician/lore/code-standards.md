@@ -24,6 +24,24 @@ At the start of any implementation task in a repo, find and read (whichever exis
 Note the conventions that a formatter can't enforce (e.g. async/await over `.then`, no `console.log`,
 FR-CA vs FR, error-wrapping) and **apply them as you write** — not after a reviewer points them out.
 
+## 1b. Magician's bundled language lore — a baseline, below the repo's own rules
+
+Magician ships per-language guidance under the plugin's `lore/` directory. The SessionStart hook
+already injects the concise core `lore/<stack>.md` for each **detected** stack. Some stacks also
+have a **deep-dive directory** (`lore/<stack>/<topic>.md` — e.g. Rust: `ownership-and-errors`,
+`type-safety`, `performance`, `async`, `patterns-and-api`, `clippy-lints`). When you're about to
+write **non-trivial** code in such a stack, read the relevant topic file first — resolve it under
+the plugin root (`${CLAUDE_PLUGIN_ROOT}/lore/<stack>/…` in Claude Code, `$PLUGIN_ROOT/lore/<stack>/…`
+in Codex), or via the relative link a skill gives you.
+
+**Precedence:** the repo's own conventions and linter config (step 1) always win on any conflict.
+This bundled lore is the default you reach for when the repo is silent — not an override of it. The same
+`lore/<stack>/` model now also covers **databases**: per-engine cores + a `performance` playbook (e.g.
+`lore/postgres/…`, `lore/mongodb/…`, `lore/pinecone/…`) plus the shared `lore/databases/…` foundation,
+injected when an engine is detected. **Escape hatch:** if the bundled lore ever conflicts with the user's
+project/local knowledge, it's fully switchable off — `magician-ui lore off`, a per-project
+`.magician/lore.off`, or `MAGICIAN_LORE=0` (the status bar then shows `📚 lore:off`).
+
 ## 2. Style is a commit GATE, not a post-review fixup
 
 Before committing a unit, run the project's **formatter + linter** (the real ones the CI/reviewer
