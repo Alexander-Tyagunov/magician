@@ -35,3 +35,7 @@ Current Claude Code runs spawned subagents in the **background by default**: you
 ## Rule: verify the handoff
 
 If a subagent returns NEEDS_CONTEXT, treat it as a context-completeness bug in your spawn prompt — add the missing input and re-dispatch, don't guess on its behalf.
+
+## Note: Claude Code Artifacts (shareable live pages)
+
+Distinct from the `.workspace/` artifacts above: a Claude Code **Artifact** is a live page published to claude.ai that updates as work proceeds. Current capability — an Artifact can be **shared via a public link** (anyone with the URL can view it), **co-edited by a team** (multiplayer, Team/Enterprise plans), and created from Claude Tag. Skills that produce shareable output (`/conjure`, `/divine`, `/scrutinize`, `/autopsy`, `/magic`, `/accelerate`) **offer** it, never auto-create it, and treat **publishing to a public link as an outward, permission-changing action**: confirm explicitly, keep artifacts account-private by default, and never expose secrets or proprietary/internal content to a public link.

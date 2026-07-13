@@ -170,6 +170,8 @@ Write the findings in the format chosen in Phase 3. Include:
 - Clear headings and structure
 - A summary/conclusion section
 
+For findings the user wants to circulate, you can publish them as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose proprietary/internal data, secrets, or confidential source material to a public link.**
+
 ### Step 4.2 — Save to file (if requested)
 
 Write findings to the agreed filename using the Write tool.

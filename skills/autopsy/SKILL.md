@@ -111,6 +111,8 @@ git add .workspace/shared/postmortems/
 git commit -m "docs: add post-mortem for <incident>"
 ```
 
+For wide circulation, you can also publish the post-mortem as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose an internal incident's proprietary detail, secrets, or affected-system specifics to a public link.**
+
 ### Phase 7: Remember the Incident (optional)
 
 Offer to remember this incident in the global reference store via `/chronicle` — one line capturing **what + date + postmortem path**. Ask with the **AskUserQuestion** tool (not a bare sentence), then end your turn:

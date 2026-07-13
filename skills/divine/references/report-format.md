@@ -80,4 +80,4 @@ Show the user the exact body / comment set before sending. Default to a single `
 
 After posting, report the review URL.
 
-For a large review the user will want to circulate, you can also publish the severity-ranked report as a Claude Code **Artifact** — a live page on claude.ai that updates in place as findings are remediated. Offer it; don't create it unprompted.
+For a large review the user will want to circulate, you can also publish the severity-ranked report as a Claude Code **Artifact** — a live page on claude.ai that updates in place as findings are remediated and that the team can **co-edit together** (multiplayer, Team/Enterprise plans). Offer it; don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward, sharing action — **confirm it explicitly, keep the report account-private by default, and never expose a review that quotes proprietary/internal code, secrets, or unremediated vulnerability detail to a public link.**

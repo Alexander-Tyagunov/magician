@@ -84,6 +84,10 @@ Deferred: N (list with rationale)
 Declined: N (list with rationale)
 ```
 
+## Circulate the report (optional)
+
+For a review the team will circulate, you can publish the SCRUTINY REPORT as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose proprietary/internal code, secrets, or unremediated findings to a public link.**
+
 ## Completion Signal
 
 "Scrutinize complete. All critical/high findings resolved. Run /certify to verify clean state."

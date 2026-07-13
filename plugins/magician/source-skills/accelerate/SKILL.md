@@ -82,6 +82,10 @@ Run the same benchmark as Phase 2. Compare: baseline vs. optimized.
 
 This is a **bounded evaluator-optimizer loop**: if the target isn't met, return to Phase 3 and attack the next bottleneck — but stop after a few rounds, when a round's marginal gain is negligible, or when the `/effort`/token budget is exhausted, then report the best result with the target marked met/not-met. Never loop indefinitely. For long benchmarks or load tests, run them via the **Monitor tool** so results stream back as they finish instead of blocking the turn.
 
+## Circulate the result (optional)
+
+For a result worth circulating, you can publish the baseline→optimized report as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose proprietary/internal system detail or secrets to a public link.**
+
 ## Completion Signal
 
 "Accelerate complete. Baseline: <N>. Optimized: <N>. Improvement: <X>%. Target <met/not met>."

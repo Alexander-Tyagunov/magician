@@ -7,7 +7,7 @@ argument-hint: [feature or what you want to design]
 
 # /conjure — Design Dialogue
 
-Run a structured design dialogue before writing any code. Produce an approved spec and optional visual design artifacts. When a visual mock or the spec is worth sharing, you can publish it as a Claude Code **Artifact** (a live page on claude.ai) so stakeholders can view/comment as it evolves — offer it, don't create it unprompted.
+Run a structured design dialogue before writing any code. Produce an approved spec and optional visual design artifacts. When a visual mock or the spec is worth sharing, you can publish it as a Claude Code **Artifact** (a live page on claude.ai) that updates as the design evolves and that a team can **co-edit together** (multiplayer, Team/Enterprise plans) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward, sharing action: **confirm it explicitly, keep artifacts account-private by default, and never publish anything containing secrets, credentials, or proprietary/internal code or data to a public link.**
 
 <HARD-GATE>
 Do NOT write any code, scaffold any project, or take any implementation action until the user has approved the spec. This applies regardless of perceived simplicity.

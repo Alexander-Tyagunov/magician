@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.3] — 2026-07-13
+
+**Artifacts: shareable, multiplayer — and gated.** Claude Code Artifacts now support public link-sharing and team multiplayer co-editing (and can be created from Claude Tag). Magician already offered Artifacts in `/conjure` and `/divine`; this teaches the report-producing skills to use the new capability and — critically — adds a safety gate, since publishing a design, a code review, or a post-mortem to a public link can expose proprietary or sensitive detail. Docs only; no runtime/hook/CLI change.
+
+### Changed
+- **`/conjure` + `/divine` — updated Artifacts guidance + public-share gate.** Both now note the artifact can be **team co-edited** (multiplayer, Team/Enterprise), and both add a hard gate: publishing to a **public** link (anyone with the URL can view) is an outward, permission-changing action — confirm explicitly, keep artifacts account-private by default, and never expose secrets, proprietary/internal code, or (for `/divine`) unremediated vulnerability detail to a public link.
+- **Extended the shareable-Artifact pointer to the other report-producing skills** — `/scrutinize` (scrutiny report), `/autopsy` (post-mortem), `/magic` (research findings), `/accelerate` (perf report) — each with the same "offer, don't auto-create" rule and the same public-share gate.
+- **`lore/subagent-context.md` — Artifacts currency note.** Records the capability (public share + multiplayer + Claude-Tag creation), explicitly disambiguated from `.workspace/` artifacts, with the public-publish-is-outward gate that the skills above follow.
+
+### Notes
+- The plugin can only *wield* Artifacts (Claude Code owns the feature); this release makes its skills use them well and safely. Public publishing stays behind explicit confirmation and defaults to account-private. Source: @ClaudeDevs (2026-07-13). Restart Claude Code to pick up the refreshed guidance.
+
 ## [4.9.2] — 2026-07-13
 
 **Doctrine: rigor that doesn't drift with model or language.** A docs-only patch grounded in Anthropic's research on how Claude's expressed values vary across models & languages — the values a model shows (caution, rigor, candor, thoroughness) shift with the model version and the *language of the conversation* in ways not deliberately chosen. For a verification-first plugin that's a risk to guard, not ignore. No runtime, hook, or CLI changes.
