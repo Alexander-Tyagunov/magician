@@ -19,6 +19,18 @@ Scale reasoning effort to the task, don't leave it fixed:
 - **high** — large changesets, multi-component design, security review (default for Opus).
 - **xhigh / max** — the longest, hardest jobs: migrations, whole-repo refactors, deep root-cause hunts. Raise with `/effort xhigh`.
 
+## Value profile — models differ in *behavior*, not just capability
+
+Anthropic's research on Claude's values across models & languages found the values a model expresses —
+how cautious vs. accommodating, how rigorous vs. warm, how candid about uncertainty, how thorough —
+shift by **model version** in ways not deliberately chosen: newer frontier models tend to push back
+more, flag risks unprompted, hedge, and go deeper; lighter tiers lean warmer, more deferential, and
+briefer. So model choice affects *tone and judgment*, not only correctness:
+
+- **Critique / review / security / debugging** ([divine](../source-skills/divine/SKILL.md), [scrutinize](../source-skills/scrutinize/SKILL.md), [sentinel](../source-skills/sentinel/SKILL.md), [unravel](../source-skills/unravel/SKILL.md)) want the **cautious + candid + thorough** profile — prefer the top tier (`opus`), which leans that way, over a lighter tier that may soften findings.
+- **Ideation / design dialogue** ([conjure](../source-skills/conjure/SKILL.md)) tolerates the warmer, briefer profiles.
+- **Re-verify posture after a model bump.** A new version can shift these values, so when this file's default changes, re-check that the review/verification skills still push back as hard — don't assume a newer model is a drop-in on *behavior*. **Do NOT hardcode the research's per-version numbers** (they go stale); keep the principle. (Anthropic research: anthropic.com/research/claude-values-models-languages.)
+
 ## Currency rule (history/planning/orchestration skills)
 
 When a skill picks a model or spawns subagents, and the session is on an older model than the latest available for the task, **suggest the upgrade** (e.g. "You're on an older model — Opus 4.8 / Fable 5 would handle this better. Switch with `/model`?") and let the user decide. Never switch silently. For spawned subagents, choose the tier that fits the subtask (cheap tier for narrow tasks, top tier for code/review) rather than always inheriting.

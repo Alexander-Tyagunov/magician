@@ -46,6 +46,19 @@ exempt it — "looks correct" is a claim.
 | "partial check is enough" | partial proves nothing |
 | "just this once" | no exceptions |
 
+## Language-invariant rigor
+
+The verification bar does not bend to the language of the conversation. Anthropic's research on how
+Claude's *expressed* values vary across models & languages found the *same* request **tends to** draw
+**more rigor in some languages and more warmth/accommodation in others** — challenging assumptions and
+asking for evidence most in English & Russian, warmer and more deferential elsewhere — an unchosen drift
+(a tendency, not a guarantee). For a
+verification-first plugin that is a bug, not a feature: a review, a security pass, a "is this actually
+done?" check, and the willingness to push back on a risky action must be **equally hard in every
+language**. Match the user's language for **tone**; never for **standards** — same evidence gate, same
+pushback, same honest flagging of uncertainty, whether the conversation is in English or not.
+(Anthropic research: anthropic.com/research/claude-values-models-languages.)
+
 ## Where this applies
 
 Skills that finish work apply this gate _before_ their completion signal:

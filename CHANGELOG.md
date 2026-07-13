@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.2] — 2026-07-13
+
+**Doctrine: rigor that doesn't drift with model or language.** A docs-only patch grounded in Anthropic's research on how Claude's expressed values vary across models & languages — the values a model shows (caution, rigor, candor, thoroughness) shift with the model version and the *language of the conversation* in ways not deliberately chosen. For a verification-first plugin that's a risk to guard, not ignore. No runtime, hook, or CLI changes.
+
+### Changed
+- **`lore/verification.md` — language-invariant rigor.** Added a rule that the verification bar does not bend to the conversation's language: the research finds the same request draws more rigor in some languages (English, Russian) and more warmth/accommodation in others. So a review, a security pass, a "is it really done?" check, and the willingness to push back must be **equally hard in every language** — match the user's language for *tone*, never for *standards* (same evidence gate, same pushback, same honest flagging of uncertainty). This is re-injected post-compaction with the rest of the core doctrine.
+- **`lore/models.md` — choose models for behavior, not just capability.** Added a "value profile" note: model *version* shifts expressed values, not only correctness — newer frontier models tend to push back and flag risks more, lighter/older tiers lean warmer and briefer. So critique/review/security/debugging (`/divine`, `/scrutinize`, `/sentinel`, `/unravel`) prefer the more cautious+candid top tier, and skill posture should be **re-verified after a model bump**. Deliberately keeps the principle without hardcoding the research's per-version numbers (they go stale).
+
+### Notes
+- Grounded in `anthropic.com/research/claude-values-models-languages`. No individuals named; no per-version metrics baked in (only the durable principle). Docs only — restart Claude Code to pick up the refreshed doctrine at session start.
+
 ## [4.9.1] — 2026-07-12
 
 **Codex progressive project-lore routing + voice-chip polish.** A patch release: Codex gains an on-demand stack-lore router mirroring the Claude SessionStart lore behavior, and the voice status-line chip renders its glyph correctly. No change to Claude Code's runtime, hooks, or skills.
