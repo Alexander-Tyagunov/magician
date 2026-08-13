@@ -91,30 +91,37 @@ def _merge_readonly_allow(d):
 
 # ---------------- auto mode (Claude Code classifier-gated autonomy) ----------------
 # Auto mode is the real "reads/aligned actions proceed, writes/deploys/force-push/destructive gate"
-# mechanism (a classifier reviews each action; honors 'don't push'-style boundaries you state). On
-# Vertex/Bedrock/Foundry it is OFF until CLAUDE_CODE_ENABLE_AUTO_MODE=1 is in the settings `env` block.
+# mechanism (a classifier reviews each action; honors 'don't push'-style boundaries you state). It is
+# available by default on every provider, and became the default permission mode for Pro/Max/Team on
+# 2026-08-14 — so all that's left to configure is the STARTING mode.
 # A plugin CANNOT switch the permission mode itself — it can only set this up; the user restarts into it.
+#
+# `defaultMode: "auto"` is honored only from ~/.claude/settings.json (and managed settings): Claude Code
+# ignores `auto` from project/local settings so a repo cannot grant itself auto mode. _edit_settings
+# already targets the user-scope file.
+#
+# CLAUDE_CODE_ENABLE_AUTO_MODE was the Vertex/Bedrock/Foundry opt-in in Claude Code v2.1.158–2.1.206.
+# It has had NO effect since v2.1.207, so we no longer write it — but we still remove one a previous
+# magician version left behind.
 AUTOMODE_ENV_KEY = "CLAUDE_CODE_ENABLE_AUTO_MODE"
 
 
-def _set_automode_env(d):
+def _drop_stale_automode_env(d):
+    """Remove the obsolete opt-in env var if an older magician wrote it. No-op otherwise."""
     env = d.get("env")
-    if not isinstance(env, dict):
-        env = {}
-    env[AUTOMODE_ENV_KEY] = "1"
-    d["env"] = env
+    if isinstance(env, dict):
+        env.pop(AUTOMODE_ENV_KEY, None)
 
 
 def _set_default_auto(d):
+    _drop_stale_automode_env(d)
     perms = d.setdefault("permissions", {})
     if isinstance(perms, dict):
         perms["defaultMode"] = "auto"
 
 
 def _clear_automode(d):
-    env = d.get("env")
-    if isinstance(env, dict):
-        env.pop(AUTOMODE_ENV_KEY, None)
+    _drop_stale_automode_env(d)
     perms = d.get("permissions")
     if isinstance(perms, dict) and perms.get("defaultMode") == "auto":
         perms["defaultMode"] = "acceptEdits"
@@ -355,21 +362,23 @@ def cmd_reconcile(_args):
                       "per file — jira/confluence writes, commit/push, PRs, and deletes still ask. Off: `magician-ui allow --off`.")
         except Exception:
             pass
-        # Auto mode: make it AVAILABLE (set the enable env var — harmless if the account/provider doesn't
-        # support it). Do NOT flip defaultMode automatically — that's opt-in via `magician-ui automode`.
+        # Auto mode is available by default on every provider now, so there is nothing to enable — only a
+        # STARTING mode to choose. Do NOT flip defaultMode automatically; that stays opt-in via
+        # `magician-ui automode`. Re-assert an existing "on" choice, and clean up the obsolete env var.
         try:
             am = cfg.get("automode")
             if am != "off" and cfg.get("automodeVersion") != ver:
                 if am == "on":
-                    _edit_settings(lambda d: (_set_automode_env(d), _set_default_auto(d)))
+                    _edit_settings(_set_default_auto)
                 else:
-                    _edit_settings(_set_automode_env)
+                    _edit_settings(_drop_stale_automode_env)
                     cfg["automode"] = "available"
                 cfg["automodeVersion"] = ver
                 save_cfg(cfg)
                 print("[MAGICIAN] Claude Code AUTO mode is available (Shift+Tab to it): a classifier auto-approves "
                       "reads + request-aligned actions and gates writes/deploys/force-push/destructive ops — the real "
-                      "'reads proceed, writes gate' autonomy this plugin is built around. Make it the default with "
+                      "'reads proceed, writes gate' autonomy this plugin is built around. It is the default for new "
+                      "Pro/Max/Team sessions as of 2026-08-14; to make it your starting mode everywhere, run "
                       "`magician-ui automode`, then RESTART. Off: `magician-ui automode --off`.")
         except Exception:
             pass
@@ -452,11 +461,12 @@ def cmd_allow(args):
 
 
 def cmd_automode(args):
-    """Enable Claude Code AUTO mode — the real 'reads/aligned actions proceed, writes/deploys/force-push/
-    destructive gate' autonomy (a classifier reviews each action and honors 'don't push'-style boundaries
-    you state in chat). Sets CLAUDE_CODE_ENABLE_AUTO_MODE=1 (required on Vertex/Bedrock/Foundry) and
-    permissions.defaultMode=auto so NEW sessions start in auto mode. `--available` sets only the env var
-    (auto shows up in Shift+Tab but isn't the default). `--off` reverts (env var removed, defaultMode→acceptEdits).
+    """Make Claude Code AUTO mode your STARTING mode — the real 'reads/aligned actions proceed, writes/
+    deploys/force-push/destructive gate' autonomy (a classifier reviews each action and honors 'don't push'-
+    style boundaries you state in chat). Sets permissions.defaultMode=auto in your USER settings so NEW
+    sessions start in auto mode. Auto mode itself needs no enabling — it is available on every provider, and
+    is the default for new Pro/Max/Team sessions as of 2026-08-14. `--available` only clears magician's
+    obsolete opt-in leftovers and leaves your starting mode alone. `--off` reverts defaultMode→acceptEdits.
     NOTE: a plugin can't switch the mode of a running session — restart Claude Code for it to take effect."""
     off = any(a in ("--off", "off", "disable", "remove") for a in args)
     env_only = any(a in ("--available", "--env-only", "available") for a in args)
@@ -465,24 +475,27 @@ def cmd_automode(args):
         _edit_settings(_clear_automode)
         cfg["automode"] = "off"; cfg["automodeVersion"] = _plugin_version()
         save_cfg(cfg)
-        print("Auto mode disabled — removed CLAUDE_CODE_ENABLE_AUTO_MODE and reset defaultMode to acceptEdits. "
+        print("Auto mode is no longer magician's starting mode — defaultMode reset to acceptEdits. Auto is still "
+              "reachable with Shift+Tab, and Claude Code may still start new sessions there on Pro/Max/Team. "
               "Re-enable: `magician-ui automode`.")
         return
     if env_only:
-        _edit_settings(_set_automode_env)
+        _edit_settings(_drop_stale_automode_env)
         cfg["automode"] = "available"; cfg["automodeVersion"] = _plugin_version()
         save_cfg(cfg)
-        print("Auto mode is now AVAILABLE — Shift+Tab to it in a new session. Make it the default with "
-              "`magician-ui automode` (then restart).")
+        print("Left your starting mode as-is. Auto mode is available on every provider — Shift+Tab to it in any "
+              "session. Make it the default with `magician-ui automode` (then restart).")
         return
-    _edit_settings(lambda d: (_set_automode_env(d), _set_default_auto(d)))
+    _edit_settings(_set_default_auto)
     cfg["automode"] = "on"; cfg["automodeVersion"] = _plugin_version()
     save_cfg(cfg)
-    print("Auto mode ENABLED (defaultMode=auto + CLAUDE_CODE_ENABLE_AUTO_MODE=1). RESTART Claude Code to enter it. "
-          "Then reads/fetches/tests/skills run without prompts and the classifier gates writes/deploys/force-push/"
-          "destructive ops — say 'don't push' to add a boundary. Requires a supported model (Opus 4.7+ / Sonnet 5) "
-          "and, on Team/Enterprise, org-owner enablement. If the mode reads 'Manual' after restart, auto mode "
-          "isn't available for your account — run `magician-ui automode --off` to return to acceptEdits.")
+    print("Auto mode set as your starting mode (permissions.defaultMode=auto in your user settings). RESTART "
+          "Claude Code to enter it. Then reads/fetches/tests/skills run without prompts and the classifier gates "
+          "writes/deploys/force-push/destructive ops — say 'don't push' to add a boundary. Needs a supported model "
+          "(Opus 4.6+/Sonnet 4.6+/Fable 5; on Bedrock/Vertex/Foundry: Sonnet 5, Opus 4.7+, or Fable 5 — Haiku and "
+          "the 4.5 generation are unsupported everywhere). If the mode reads 'Manual' after restart, either your "
+          "model doesn't support it or an admin set permissions.disableAutoMode — run `magician-ui automode --off` "
+          "to return to acceptEdits.")
 
 
 def cmd_lore(args):

@@ -35,7 +35,7 @@ Offer the four depth levels (full matrix — lenses, effort, grounding, verifica
 - **Quick** — a simple logic change / fast sanity pass; correctness lens, `/effort` low–medium, no grounding or pointers needed.
 - **Standard** *(default)* — 3 lenses (correctness, security, simplification), `/effort` medium, light grounding from PR/specs.
 - **Deep** — 4 lenses (+ tests), `/effort` high, `/magic` grounding (PRDs/docs/external + internal data) on unfamiliar domain/libraries, **blast-radius analysis** (affected services & infrastructure), adversarial verification, CI/merge-gate + requirement traceability.
-- **Exhaustive** — Deep + loop-until-dry finders, multi-vote verification, full PRD/requirement traceability, deep blast-radius across affected services & infrastructure, supply-chain deep dive, and agent-teams / dynamic-workflows for very large PRs. `/effort` xhigh.
+- **Exhaustive** — Deep + loop-until-dry finders, multi-vote verification, full PRD/requirement traceability, deep blast-radius across affected services & infrastructure, supply-chain deep dive, and agent-teams / dynamic-workflows for very large PRs. `/effort` at your model's deepest level (`xhigh`, or `max` on models that lack it).
 
 **Grounding (Deep/Exhaustive, or any change in unfamiliar territory):** if the change relies on a framework, protocol, domain, or library you can't review from first principles — or there's a PRD/spec/story to check it against — invoke **`/magic`** first to gather that evidence (it saves to `.workspace/shared/research/` and hands the artifact back). The strongest reviews are checked against external truth, not vibes. See [references/depth-and-research.md](references/depth-and-research.md).
 
@@ -54,6 +54,8 @@ Dispatch the specialist agents **in parallel** (one message, multiple `Task` cal
 - `magician:verifier` — test quality, coverage, meaningful assertions (Deep/Exhaustive)
 
 **Context contract (no context loss):** each `Task` prompt MUST be self-contained — agents see none of this conversation. Include the goal, the changed files WITH diff/contents, the change intent + any grounding artifact path, project conventions, and the exact return format. Full per-lens prompts in [references/dispatch.md](references/dispatch.md) and the contract in [lore/subagent-context.md](../../lore/subagent-context.md). If an agent returns `NEEDS_CONTEXT`, add the missing input and re-dispatch.
+
+**Finders optimize for recall; Phase 3 optimizes for precision.** Never tell a lens agent to be conservative, skip nits, or report only high-severity issues — current models follow that literally and drop real bugs, which reads as a capability regression but is a prompt bug. Ask for full coverage with confidence and severity attached; the verification pass is what removes noise, and it can only remove what the finders surfaced.
 
 ## Phase 3 — Adversarial verification
 

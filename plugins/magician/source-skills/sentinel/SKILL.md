@@ -10,7 +10,17 @@ argument-hint: [path]
 
 Run a comprehensive security scan of the codebase. Available as CLI: `magician-scan` (plugin-provided; on PATH when the plugin is enabled).
 
-For very large repos, raise /effort so the analysis stays thorough across the codebase. See [lore/models.md](../../lore/models.md).
+For very large repos, raise /effort so the analysis stays thorough across the codebase (your model's deepest level — `xhigh`, or `max` where unsupported). See [lore/models.md](../../lore/models.md).
+
+## The scan can change models under you
+
+Opus 5 and Fable 5 run cybersecurity classifiers, and Claude Code responds to a flag by **re-running the request on a fallback model and continuing the session there** (Fable 5 → Opus 4.8; Opus 5 → Opus 4.8). A long sweep can therefore finish on a different tier than it started on, with only a transcript notice to say so. Three things follow:
+
+- **Frame the work defensively and concretely.** "Audit this code for injection surfaces and report them" reads as the defensive review it is. Asking for working exploits, attack tooling, or evasion techniques is what trips the classifier — and it is outside this skill's scope anyway: sentinel is read-only and reports findings with remediation.
+- **Notice the switch.** If a fallback notice appears mid-scan, say so in the report rather than presenting mixed-tier findings as one uniform pass, and offer `/model` to return.
+- **When it fires on nothing.** A flag on the *first* request usually comes from workspace context — `CLAUDE.md`, skills, directory names, git status — not from what was asked. `claude --safe-mode` runs without customizations and isolates that. To be asked instead of switched, set `switchModelsOnFlag: false`.
+
+See [lore/models.md](../../lore/models.md#safety-classifiers-change-which-model-you-end-up-on).
 
 ## Destructive-command hard gate (always on, not part of a scan)
 

@@ -11,7 +11,9 @@ Dispatch all chosen lenses **in parallel** — one message, multiple `Task` call
 
 ## Model & effort per lens
 
-Don't let lenses silently inherit the session model — set each `Task`'s tier and effort to fit the subtask (per [lore/subagent-context.md](../../../lore/subagent-context.md) item 6 and [lore/models.md](../../../lore/models.md)). Put the **correctness** and **security** lenses on the latest **coding-optimal** tier at the depth's effort (high/xhigh for Deep/Exhaustive); a narrow lens on a small diff (e.g. simplification) can take a cheaper tier. Suggest a model upgrade rather than switching silently if the session is on an older one.
+Don't let lenses silently inherit the session model — set each `Task`'s tier and effort to fit the subtask (per [lore/subagent-context.md](../../../lore/subagent-context.md) item 6 and [lore/models.md](../../../lore/models.md)). Put the **correctness** and **security** lenses on the latest **coding-optimal** tier at the depth's effort (high for Deep, the model's deepest level for Exhaustive — `xhigh`, or `max` where `xhigh` isn't supported); a narrow lens on a small diff (e.g. simplification) can take a cheaper tier. Suggest a model upgrade rather than switching silently if the session is on an older one.
+
+**The security lens can change tier on its own.** Opus 5 and Fable 5 run cybersecurity classifiers, and a flagged request re-runs on a fallback model (both fall back to Opus 4.8) with the session continuing there. Keep the lens prompt defensive and concrete — "find and report vulnerabilities in this diff, with remediation" — rather than asking for exploit code, which is what trips it. If a fallback notice appears, note in the report that the security lens ran on a different tier. See [lore/models.md](../../../lore/models.md#safety-classifiers-change-which-model-you-end-up-on).
 
 ## The context contract (mandatory)
 

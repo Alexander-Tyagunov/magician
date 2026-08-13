@@ -9,7 +9,7 @@ argument-hint: <bug or error description>
 
 Debug systematically. No random changes in the hope something helps.
 
-Scale `/effort` to bug complexity — use xhigh for deep, multi-layer root-cause hunts. See [lore/models.md](../../lore/models.md).
+Scale `/effort` to bug complexity — for deep, multi-layer root-cause hunts use your model's deepest level (`xhigh`, or `max` on models that lack it). See [lore/models.md](../../lore/models.md).
 
 <HARD-GATE>
 State your hypothesis and evidence BEFORE reading any code or making any change. This prevents the most common AI debugging failure: making changes without understanding the cause.

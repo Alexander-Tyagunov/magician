@@ -9,7 +9,7 @@ argument-hint: [what is slow] [target, e.g. p99<500ms]
 
 Profile and optimize performance systematically. No optimization without measurement.
 
-Scale [/effort](../../lore/models.md) to the optimization scope: low for a single hot path, high for cross-cutting work.
+Scale [/effort](../../lore/models.md) to the optimization scope: low for a single hot path, high for cross-cutting work. (Haiku and the 4.5 generation have no effort axis at all — don't suggest a level there.)
 
 Scope the work with the knowledge graph when the repo is indexed: `kg query "<slow area>"` to locate the hot code and `kg blast`/`kg neighbors` to see what it touches — so you profile and change the right thing, in fewer tokens than grepping.
 

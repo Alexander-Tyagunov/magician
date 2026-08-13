@@ -25,13 +25,23 @@ Steps 1–4 are a *posture*, not enforcement. What actually stops the prompts is
 writes, deploys, force-push, mass-deletion, and other escalations — honoring boundaries you state in chat
 ("don't push until I review"). That is exactly "reads proceed, writes gate."
 
-A plugin **cannot** switch the permission mode of a running session — mode is user-set (Shift+Tab),
-`--permission-mode`, or `defaultMode` in settings. So magician *configures* auto mode and you **restart** into it:
+Auto mode needs no enabling — it is available on every provider, and since **2026-08-14** it is the default
+permission mode for new Pro/Max/Team sessions. What is left to configure is only the *starting* mode, and a
+plugin **cannot** switch the mode of a running session — that is user-set (Shift+Tab), `--permission-mode`,
+or `defaultMode` in settings. So magician sets the default and you **restart** into it:
 
-- `magician-ui automode` sets `permissions.defaultMode: "auto"` **and** (required on Vertex/Bedrock/Foundry)
-  `env.CLAUDE_CODE_ENABLE_AUTO_MODE=1` in `~/.claude/settings.json`. Restart → sessions start in auto mode.
-- Requires a supported model (Opus 4.7+/Sonnet 5) and, on Team/Enterprise, org-owner enablement. If the
-  status bar still shows **Manual** after restart, auto mode isn't available for the account → `automode --off`.
+- `magician-ui automode` writes `permissions.defaultMode: "auto"` to `~/.claude/settings.json`. It must be
+  the **user** file: Claude Code ignores `auto` from `.claude/settings.json` and `.claude/settings.local.json`
+  so a repository can't grant itself auto mode. Restart → sessions start in auto mode.
+- **Model support** is the usual reason it isn't there: Opus 4.6+, Sonnet 4.6+, or Fable 5 on the Anthropic API
+  and Claude Platform on AWS; on Bedrock, Google Cloud, and Foundry only Sonnet 5, Opus 4.7+, or Fable 5.
+  Haiku and the 4.5 generation are unsupported everywhere. An admin can also switch it off org-wide with
+  `permissions.disableAutoMode: "disable"` in managed settings. If the bar still reads **Manual** after a
+  restart, it's one of those two — not a transient failure → `magician-ui automode --off`.
+- `CLAUDE_CODE_ENABLE_AUTO_MODE` was the Bedrock/Vertex/Foundry opt-in in Claude Code v2.1.158–2.1.206 and
+  has had **no effect since v2.1.207**. Magician no longer writes it and removes a stale one on upgrade.
+- The classifier also reviews every message Claude sends another session with `SendMessage` before it is
+  delivered — see [cross-session.md](cross-session.md).
 - `acceptEdits` mode only auto-approves file edits + `mkdir/mv/cp/sed`; **every other Bash, MCP, and skill
   call still prompts.** A run stuck in acceptEdits *feels* un-autonomous because it is not auto mode.
 
