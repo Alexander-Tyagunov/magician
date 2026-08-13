@@ -6,13 +6,14 @@
 
 [![Version](https://img.shields.io/badge/version-4.10.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
+[![Claude 5](https://img.shields.io/badge/Claude_5-Opus_·_Sonnet_·_Fable-f59e0b?style=for-the-badge&labelColor=0b0b14)](lore/models.md)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
 [![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584?style=for-the-badge&labelColor=0b0b14)](https://github.com/sponsors/Alexander-Tyagunov)
 
 <h3>From idea to merged PR — autonomously, grounded in your code, gated only where it matters.</h3>
 
-<sub>25 skills · deep live-verified stack lore (languages · frameworks · databases · observability) · a local code knowledge-graph · cross-session memory · parallel agent orchestration · tunable output brevity (lower token cost) · an absolute destructive-command guard · zero required deps</sub>
+<sub>25 skills · tuned for <b>Opus 5 · Sonnet 5 · Fable 5</b> and still correct on 4.6/4.8 · deep live-verified stack lore (languages · frameworks · databases · observability) · a local code knowledge-graph · cross-session memory · parallel agent orchestration · tunable output brevity (lower token cost) · an absolute destructive-command guard · zero required deps</sub>
 
 </div>
 
@@ -265,6 +266,27 @@ magician sets an output-brevity **voice** every session — a style directive th
 **It cuts filler, not facts.** All substance stays, and code, commands, file paths, and error text are kept **verbatim** — it never compresses prose into fragments, arrow-chains, or jargon (readability beats raw length).
 
 <sub>🗣 Set it with <code>magician-ui voice warrior|scribe|bard</code> — or per-project <code>.magician/voice</code> / env <code>MAGICIAN_VOICE</code> (first match wins, then the default <code>scribe</code>). The status bar shows <code>🗣 voice:scribe</code> live. Auto-injected into Claude Code sessions; the setting is stored for Codex too.</sub>
+
+<img src="assets/divider.svg" alt="" width="100%">
+
+## 🎚 Model support — Claude 5 native, 4.6-safe &nbsp;<sub><code>new in 4.10.0</code></sub>
+
+> A plugin that hardcodes a model or an effort level is wrong the moment the next one ships. magician resolves both from the model your session is actually on.
+
+**Tuned for the Claude 5 family.** Effort guidance, review prompts, delegation limits, and context accounting all follow Anthropic's per-model guidance for **Opus 5**, **Sonnet 5**, and **Fable 5** — including the parts that changed direction. Verification reminders and severity pre-filters, which used to improve results, now cost quality on these models; magician removed them while keeping every evidence gate.
+
+**Nothing here requires a Claude 5 model.** Every new capability is feature-detected and degrades to exactly the previous behavior.
+
+| | resolves to | on an older model |
+|---|---|---|
+| **Effort** | your model's deepest supported level | `xhigh` doesn't exist on Opus 4.6 / Sonnet 4.6 — magician asks for `max` instead of letting Claude Code clamp silently |
+| **Context window** | read from the session's real model id | Haiku and the 4.5 generation stay at 200K; an unknown model falls back to the previous heuristic |
+| **Auto mode** | your starting permission mode | reports plainly when the model or an org policy doesn't support it, instead of failing quietly |
+| **Cross-session messaging** | sessions hand findings to each other | a silent no-op where it isn't available (Windows, Bedrock, Google Cloud, Foundry) |
+
+**It knows the sharp edges, too.** Opus 5 and Fable 5 run cybersecurity classifiers that can move a session to a fallback model mid-run — so `/sentinel` and `/divine`'s security lens frame their work defensively and tell you when the tier changed under them, rather than presenting mixed-tier findings as one pass.
+
+<sub>🎚 Model facts are point-in-time and say so — <code>lore/models.md</code> carries the tier, effort, and pricing matrix with an explicit "verify, don't trust blindly" rule, and <code>lore/model-behavior.md</code> carries the prompting guidance. Both are read on demand, so neither costs you session tokens.</sub>
 
 <img src="assets/divider.svg" alt="" width="100%">
 
