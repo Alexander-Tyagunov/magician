@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -20,6 +21,61 @@ def _marketplace_plugin_root() -> Path:
 
 
 class CodexPackagingTests(unittest.TestCase):
+    def test_release_versions_are_synchronized(self) -> None:
+        codex_manifest = json.loads(
+            (REPOSITORY_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        claude_manifest = json.loads(
+            (REPOSITORY_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        claude_marketplace = json.loads(
+            (REPOSITORY_ROOT / ".claude-plugin" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        packaged_manifest = json.loads(
+            (_marketplace_plugin_root() / ".codex-plugin" / "plugin.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        version = codex_manifest["version"]
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        self.assertEqual(claude_manifest["version"], version)
+        self.assertEqual(claude_marketplace["plugins"][0]["version"], version)
+        self.assertEqual(packaged_manifest["version"], version)
+
+        changelog = (REPOSITORY_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        changelog_version = re.search(r"(?m)^## \[([^]]+)\]", changelog)
+        self.assertIsNotNone(changelog_version)
+        self.assertEqual(changelog_version.group(1), version)
+
+        readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        readme_version = re.search(r"shields\.io/badge/version-([\d.]+)-", readme)
+        self.assertIsNotNone(readme_version)
+        self.assertEqual(readme_version.group(1), version)
+
+    def test_codex_package_uses_codex_specific_model_lore(self) -> None:
+        authoring_lore = REPOSITORY_ROOT / ".codex-plugin" / "lore"
+        plugin_lore = _marketplace_plugin_root() / "lore"
+
+        for name in ("models.md", "model-behavior.md"):
+            with self.subTest(name=name):
+                codex_source = (authoring_lore / name).read_text(encoding="utf-8")
+                packaged = (plugin_lore / name).read_text(encoding="utf-8")
+                claude_source = (REPOSITORY_ROOT / "lore" / name).read_text(encoding="utf-8")
+
+                self.assertEqual(packaged, codex_source)
+                self.assertNotEqual(codex_source, claude_source)
+
+        models = (plugin_lore / "models.md").read_text(encoding="utf-8").lower()
+        for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+            with self.subTest(model=model):
+                self.assertIn(model, models)
+        for claude_only_term in ("claude-", "opus 5", "fable 5", "ultracode"):
+            with self.subTest(claude_only_term=claude_only_term):
+                self.assertNotIn(claude_only_term, models)
+
     def test_marketplace_points_to_a_dedicated_package(self) -> None:
         plugin_root = _marketplace_plugin_root()
 

@@ -63,6 +63,26 @@ The twenty-sixth skill is Codex-only: `$project-context` detects root-level stac
 progressively loads relevant packaged lore cores and task-matched deep dives. It does not install or
 emulate Claude's `SessionStart` hook.
 
+## Model setup
+
+Magician does not force a model or overwrite your Codex configuration. Current Codex defaults use
+GPT-5.6 Sol with medium reasoning. A user-level default can be explicit:
+
+```toml
+model = "gpt-5.6"
+model_reasoning_effort = "medium"
+```
+
+`gpt-5.6` aliases to `gpt-5.6-sol`. Use Sol for complex and high-value work, Terra for everyday
+implementation, and Luna for clear repeatable tasks. Start with the lowest reasoning level that
+meets the quality bar; raise it only when representative work shows a gain. The current Codex config
+reference lists reasoning through `xhigh`; Max can be exposed separately in the app and should not be
+written into `config.toml` unless the installed Codex version documents support for it. Ultra is
+multi-agent execution, not another reasoning level.
+
+The packaged Codex model guide lives at `lore/models.md`. It is overlaid only in the generated Codex
+package, so Claude Code continues to use its existing model guide unchanged.
+
 ## Safety — trust the destructive-command hard gate
 
 Magician ships a Codex `PreToolUse` hook that **denies catastrophic shell commands** (`rm -rf /` · `~` · `$HOME`, disk/device wipes, block-device/critical-file overwrites, fork bombs, recursive `chmod`/`chown` on system roots, download-piped-to-shell, `git clean -x`) before they run.

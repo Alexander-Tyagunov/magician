@@ -13,6 +13,22 @@ Magician's source skills are Claude Code-first. In the authoring repository, Cod
 - If you were spawned as a subagent for a bounded task, do not start broad Magician lifecycle flows such as `$manifest`, `$almanac`, `$conjure`, `$blueprint`, `$orchestrate`, or `$seal` unless the dispatch prompt explicitly asks for them.
 - Claude agent types/profiles (for example `magician:reviewer`, `Explore`, or `general-purpose`) are roles, not Codex identifiers. Dispatch an available Codex agent with a self-contained prompt containing Goal, Scope, Inputs, Constraints, expected evidence, and Return format. Never assume a named profile exists.
 
+## Codex model and reasoning guidance
+
+- The generated Codex package overlays the shared provider-specific model files with Codex-owned
+  `lore/models.md` and `lore/model-behavior.md`. In repository authoring mode, read
+  `.codex-plugin/lore/models.md` and `.codex-plugin/lore/model-behavior.md` instead of the root
+  versions.
+- Treat inline source-skill model names, tier examples, `/model` or `/effort` commands, safety
+  fallback claims, and model-behavior claims as provider-specific examples. Preserve their intent,
+  then translate it through the Codex lore. In particular, never apply Claude model aliases,
+  settings, or fallback behavior to Codex.
+- Use only models and reasoning levels exposed by the active Codex host. Suggest a session model
+  change instead of switching it silently. Override a spawned agent's model or effort only when the
+  source workflow explicitly requires task-specific routing and the host offers that choice.
+- Keep Max reasoning distinct from Ultra multi-agent execution. Do not turn a source request for the
+  deepest reasoning level into automatic delegation.
+
 ## Safety — destructive-command hard gate
 
 Magician ships a Codex `PreToolUse` hook (`hooks/codex-hooks.json`, referenced by `.codex-plugin/plugin.json`'s `hooks` field → runs `"$PLUGIN_ROOT/scripts/codex-destructive-guard.sh"` using Codex's own `$PLUGIN_ROOT`, no Claude required) that **denies catastrophic shell commands** (`rm -rf /` · `~` · `$HOME` · `--no-preserve-root` · system roots; `dd`/`mkfs`/`wipefs`/`blkdiscard`/`shred` on devices; redirection onto a block device or over `/etc/passwd|shadow|sudoers|fstab`; fork bombs; recursive `chmod`/`chown` on roots; download-piped-to-shell / `base64 -d | sh` / `eval "$(…)"`; `git clean -x`). It returns a deny via **exit code 2**, which Codex honors as a `PreToolUse` block before the command runs.

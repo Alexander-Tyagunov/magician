@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.11.0] — 2026-08-12
+
+**Codex-only GPT-5.6 model alignment; Claude runtime behavior is unchanged.**
+
+### Fixed
+- The generated Codex package no longer inherits Claude 5 model aliases, effort semantics, safety
+  fallbacks, or prompting claims from the shared lore. Codex now receives package-only model and
+  behavior overlays for `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`.
+- Codex adapters now translate inline provider-specific model examples through the Codex guide,
+  distinguish Max reasoning from Ultra multi-agent execution, and avoid undocumented
+  `model_reasoning_effort` values.
+- Codex model guidance now documents the `gpt-5.6` → Sol alias, medium-effort baseline,
+  tier-aware routing, and the current deprecation path for saved older Codex models.
+
+### Isolation
+- The builder overlays Codex lore only inside `plugins/magician`; root `lore/`, `.claude/`,
+  `.claude-plugin/` runtime configuration, Claude hooks, settings, and source skills remain
+  untouched. Only shared release-version metadata advances to `4.11.0`.
+
 ## [4.10.0] — 2026-08-12
 
 **Claude 5 compatibility — native on Opus 5 / Sonnet 5 / Fable 5, unchanged on 4.6 and 4.8.** The plugin's model guidance was written for the 4.x generation. Since then Anthropic shipped the Claude 5 family and Claude Code made auto mode a default and added cross-session messaging, leaving magician with stale facts, one real bug, and — most consequentially — guidance that these models now respond to *badly*. Everything here adapts to whatever model the session is actually on: no hard dependency on a Claude 5 feature, and no behavior change for a user on Opus 4.8, Opus 4.6, or Sonnet 4.6.

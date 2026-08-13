@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-4.10.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.11.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
 [![Claude 5](https://img.shields.io/badge/Claude_5-Opus_·_Sonnet_·_Fable-f59e0b?style=for-the-badge&labelColor=0b0b14)](lore/models.md)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)

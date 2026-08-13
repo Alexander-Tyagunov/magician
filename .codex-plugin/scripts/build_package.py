@@ -113,6 +113,20 @@ def _rewrite_lore_links(lore_root: Path) -> None:
         document.write_text(text)
 
 
+def _overlay_codex_lore(lore_root: Path) -> None:
+    """Replace provider-specific lore with Codex-owned guidance in the Codex package."""
+    source_root = REPO / ".codex-plugin" / "lore"
+    for source in source_root.rglob("*"):
+        if source.is_symlink():
+            raise RuntimeError(f"refusing to follow symlink in Codex lore overlay: {source}")
+        destination = lore_root / source.relative_to(source_root)
+        if source.is_dir():
+            destination.mkdir(parents=True, exist_ok=True)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+
 def build(destination: Path) -> None:
     destination.mkdir(parents=True)
     _write_manifest(destination / ".codex-plugin" / "plugin.json")
@@ -121,6 +135,7 @@ def build(destination: Path) -> None:
     _copy_tree(REPO / ".codex-plugin" / "references", destination / "references")
     _copy_tree(REPO / "skills", destination / "source-skills")
     _copy_tree(REPO / "lore", destination / "lore")
+    _overlay_codex_lore(destination / "lore")
     _rewrite_lore_links(destination / "lore")
     _copy_tree(REPO / "bin", destination / "bin")
     for name in ("jira", "confluence"):

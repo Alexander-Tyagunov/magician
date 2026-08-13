@@ -89,6 +89,13 @@ class AdapterContracts(unittest.TestCase):
         chronicle = (AUTHORING / "chronicle" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("manual in Codex", chronicle)
 
+        adapter = (ROOT / ".codex-plugin" / "references" / "codex-adapter.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Codex model and reasoning guidance", adapter)
+        self.assertIn(".codex-plugin/lore/models.md", adapter)
+        self.assertIn("never apply Claude model aliases", adapter)
+
     def test_claude_first_sources_remain_outside_generated_adapter_tree(self) -> None:
         for adapter in (PACKAGE / "skills").glob("*/SKILL.md"):
             text = adapter.read_text(encoding="utf-8")
