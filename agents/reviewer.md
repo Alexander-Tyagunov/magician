@@ -23,11 +23,16 @@ You do not see the prior conversation. Your spawn prompt must contain the change
 - [ ] No hardcoded values that should be configurable
 - [ ] API contracts respected (correct status codes, payload shapes)
 
+## Report coverage, not a shortlist
+
+Your job at this stage is **recall**. Report every issue you find, including ones you are uncertain about and ones you judge low-severity. Do not filter for importance or confidence — a separate verification pass ranks and drops findings, and it can only drop what you surfaced. A real bug you silently withheld because it felt minor is a miss; a finding that later gets filtered out costs nothing.
+
 ## Output Format
 
 For each finding:
 ```
 SEVERITY: Critical | High | Medium | Low
+CONFIDENCE: High | Medium | Low
 FILE: path/to/file.ts:line
 ISSUE: <what is wrong>
 FIX: <what should be done>

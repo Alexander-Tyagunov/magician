@@ -56,7 +56,7 @@ Do NOT ask for anything already clear from the message.
 
 Batch both up-front decisions into a **single** AskUserQuestion call so the user approves scope once — don't drip them as two separate prompts ([lore/autonomy.md](../../lore/autonomy.md): clarify up front, batched). Read [references/questions.md](references/questions.md) → "Phase 0 — Source selection" (pick the variant matching the Step 0.1 classification) **and** "Phase 0 — Research depth", then pass **both** question blocks in the `questions` array of one AskUserQuestion call. Wait for the response before proceeding.
 
-> **Model & effort:** the depth choice maps onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (`xhigh` for exhaustive sweeps). If the session is on an older model than ideal, suggest an upgrade rather than switching silently. See [lore/models.md](../../lore/models.md).
+> **Model & effort:** the depth choice maps onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (for exhaustive sweeps, your model's deepest level — `xhigh`, or `max` on models that lack it). If the session is on an older model than ideal, suggest an upgrade rather than switching silently. See [lore/models.md](../../lore/models.md).
 
 ---
 

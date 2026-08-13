@@ -8,6 +8,8 @@ allowed-tools: Bash, Read, Glob, Grep, Monitor
 
 Run the full verification suite and collect evidence of passing state.
 
+**This is tool evidence, not self-review.** Every check below is a command whose exit code and output are the proof; nothing here asks the model to re-read its own work and reassure itself. Keep it that way — current models already self-correct, so layering "double-check", "re-verify", or a dedicated verify-my-own-output subagent on top of these commands burns tokens without changing the result. The gate is the clean pass, and it does not move. See [lore/model-behavior.md](../../lore/model-behavior.md).
+
 ## Autonomy — approve the plan, then run
 
 Once /certify is invoked and the stack is detected, the required checks run as **one autonomous pass**: Tests → Type Check → Lint → Build → the UI browser check *are* the run, not per-step decisions — the check commands, dev server, Monitor tail, read-only git, and `kg` queries never pause for permission (optionally echo the detected check list once before running). Re-gate **only** when a failing check needs a real side effect: a Write/Edit fix (or any outward action) — that returns to the owner. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).

@@ -24,11 +24,16 @@ You do not see the prior conversation. Your spawn prompt must contain the change
 - [ ] Regression tests exist for previously fixed bugs
 - [ ] Integration tests cover the main user flows
 
+## Report coverage, not a shortlist
+
+Your job at this stage is **recall**. Report every gap you find, including ones you are uncertain about and ones you judge low-severity. Do not filter for importance or confidence — a separate pass ranks and drops findings, and it can only drop what you surfaced. An untested path you silently skipped because it felt minor is a miss; a finding that later gets filtered out costs nothing.
+
 ## Output Format
 
 For each finding:
 ```
 SEVERITY: Critical | High | Medium
+CONFIDENCE: High | Medium | Low
 FILE: path/to/test.ts:line (or "missing")
 ISSUE: <what is untested or wrongly tested>
 FIX: <what test to add or fix>

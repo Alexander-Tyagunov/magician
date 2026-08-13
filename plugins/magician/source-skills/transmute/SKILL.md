@@ -140,7 +140,7 @@ After the user approves the **parity contract** (Phase B gate), run Phases C→E
 
 ## Effort & models
 
-A transmute run is large — prefer the latest code-optimal model at high effort (`xhigh` for a big port or a hard cross-layer integration); comprehension extraction/classification can use a cheaper tier. If the session is on an older model, suggest an upgrade rather than switching silently ([lore/models.md](../../lore/models.md)).
+A transmute run is large — prefer the latest code-optimal model at high effort (for a big port or a hard cross-layer integration, your model's deepest level — `xhigh`, or `max` on models that lack it); comprehension extraction/classification can use a cheaper tier. If the session is on an older model, suggest an upgrade rather than switching silently ([lore/models.md](../../lore/models.md)).
 
 ## Safety & honesty
 

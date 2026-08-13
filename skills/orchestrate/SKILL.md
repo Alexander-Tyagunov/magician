@@ -20,7 +20,9 @@ Choose by scale and whether workers must communicate; otherwise proceed with wav
 
 ## Effort & model
 
-Scale `/effort` to plan size (high/xhigh for large plans). For dispatched implementation agents, pick the coding-optimal tier and suggest upgrading the session model if it's older than the latest. See [lore/models.md](../../lore/models.md).
+Scale `/effort` to plan size — high for most plans, your model's deepest level for large ones (`xhigh`, or `max` on models that lack it). For dispatched implementation agents, pick the coding-optimal tier and suggest upgrading the session model if it's older than the latest. See [lore/models.md](../../lore/models.md).
+
+**Cap the fan-out.** Current models delegate readily, and on small work that multiplies cost and wall-clock without improving the result. The blueprint's parallelism map is the ceiling, not a floor: dispatch a subagent for a task that is genuinely independent and substantial enough to be worth its own context, and do inline anything you'd finish in a handful of tool calls. One agent that can complete a wave beats three that split it. Never spawn an agent purely to re-check work an agent just did — the per-task quality loop below is the check. See [lore/model-behavior.md](../../lore/model-behavior.md).
 
 ## Process
 
@@ -30,6 +32,8 @@ Scale `/effort` to plan size (high/xhigh for large plans). For dispatched implem
 4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session capsule so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).
 5. **After all waves** — run /certify. If it fails, fix and re-certify (bounded evaluator-optimizer loop) before reporting complete — never report done on a red certify.
 6. **Report** — completed tasks and any blockers.
+
+**Independent sessions aren't in the graph.** Waves coordinate the agents *this* skill spawned; another Claude Code session working the same repo in its own worktree sees none of it. When a wave lands something that invalidates what a sibling session is building on, and cross-session messaging is available, send that session one self-contained sentence rather than letting it find out. Feature-detect and skip silently when it isn't there — a wave never waits on a peer. See [lore/cross-session.md](../../lore/cross-session.md).
 
 ## Autonomy — approve the plan, then run
 

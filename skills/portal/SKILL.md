@@ -31,6 +31,12 @@ Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git op
 2. Note: no git isolation — be careful about conflicts with other in-progress work
 3. Say: "Working in .features/<name>/ (disableGit mode — no worktree created)."
 
+## Keep sibling worktrees in the loop
+
+Worktrees isolate the files, not the consequences: a rename, a signature change, or a shared-dependency bump made here breaks whatever a sibling session is building on. When Claude Code's cross-session messaging is available, tell the affected session yourself instead of letting it discover the breakage — `ListAgents` finds the sessions working the other worktrees, `SendMessage` delivers one self-contained sentence about what landed.
+
+Feature-detect it: no `ListAgents`, or no peer listed, means carry on exactly as before and note the change in your own summary. It is unavailable on Windows and on Bedrock/Google Cloud/Foundry, and a session inside a container can't see one on the host. See [lore/cross-session.md](../../lore/cross-session.md).
+
 ## Cleanup After Merge
 
 After /seal completes and the PR merges:

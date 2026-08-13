@@ -23,11 +23,16 @@ You do not see the prior conversation. Your spawn prompt must contain the change
 - [ ] No error handling for scenarios that cannot happen
 - [ ] Dependencies are actually needed
 
+## Report coverage, not a shortlist
+
+Your job at this stage is **recall**. Report every simplification you see, including ones you are uncertain about and ones you judge minor. Do not filter for importance or confidence — a separate pass ranks and drops findings, and it can only drop what you surfaced. Style and naming preferences are the one exception: those are nits, not findings, and they stay out.
+
 ## Output Format
 
 For each finding:
 ```
 SEVERITY: Important | Suggestion
+CONFIDENCE: High | Medium | Low
 FILE: path/to/file.ts:line
 ISSUE: <what is over-engineered>
 SIMPLIFICATION: <what to remove or replace>

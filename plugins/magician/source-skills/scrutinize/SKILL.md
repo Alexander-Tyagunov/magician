@@ -11,7 +11,7 @@ Review a code change with three specialist agents in parallel, consolidate findi
 
 ## Effort
 
-Scale review depth to the change size: a tiny diff needs little; a large changeset or security-sensitive change warrants `/effort high` (or `xhigh` for sprawling diffs). See [lore/models.md](../../lore/models.md).
+Scale review depth to the change size: a tiny diff needs little; a large changeset or security-sensitive change warrants `/effort high` (for sprawling diffs, your model's deepest level — `xhigh`, or `max` on models that lack it). See [lore/models.md](../../lore/models.md).
 
 ## Autonomy — approve the plan, then run
 
@@ -39,8 +39,10 @@ Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches 
    ISSUE / VULNERABILITY: <what>
    FIX: <remediation>
    ```
+   **Finders optimize for recall; consolidation optimizes for precision.** Never tell a lens agent to be conservative, skip nits, or report only high-severity issues — current models follow that literally and withhold real bugs, which looks like a capability regression but is a prompt bug. Ask for full coverage with confidence and severity attached, then filter in steps 4–5.
+
 3. **Collect all findings.**
-4. **Deduplicate** — collapse the same issue flagged by multiple agents into one (note all sources).
+4. **Deduplicate** — collapse the same issue flagged by multiple agents into one (note all sources), and drop findings the code refutes.
 5. **Prioritize** — Critical → High → Medium → Low.
 6. **Present consolidated report:**
    ```

@@ -11,7 +11,9 @@ Honest limits (a plugin cannot beat these — see skills/chronicle/references/co
 
 Used by the hooks (pre-compact, pattern-detect, chronicle-stop, session-start) and the
 `/chronicle` skill. One clean subcommand per call so a single `Bash(ctx:*)` allow covers it.
-Env: MAGICIAN_HOME, CLAUDE_PLUGIN_DATA, CTX_MAX (default 200000).
+Env: MAGICIAN_HOME, CLAUDE_PLUGIN_DATA, CTX_MAX (hard override of the context window),
+CLAUDE_CODE_DISABLE_1M_CONTEXT (holds native-1M models to 200K, matching Claude Code).
+Without an override the window comes from the transcript's model id — see _effective_max.
 """
 import os, sys, json, time, hashlib, subprocess, re
 
@@ -120,6 +122,23 @@ def last_tokens(path):
             if t:
                 return t, False  # exact
     return max(1, size // 4), True   # ~approx fallback by bytes
+
+
+def last_model(path):
+    """Model id of the latest assistant turn, e.g. 'claude-opus-5'. None when unknown.
+
+    Same tail scan as last_tokens (bounded, no extra I/O beyond one read)."""
+    try:
+        text, _ = _tail(path)
+    except Exception:
+        return None
+    for o in _iter_rev(text):
+        if not isinstance(o, dict):
+            continue
+        m = _msg(o).get("model") or o.get("model")
+        if isinstance(m, str) and m:
+            return m
+    return None
 
 
 def _text_of(o):
@@ -390,13 +409,45 @@ def c_hook(a):
         print("\n\n".join(out))
 
 
-def _effective_max(toks):
-    """Context window. Can't read it from a hook, so: honor CTX_MAX if set, else infer
-    the 1M extended window when observed tokens exceed the 200K standard (a 200K session
-    would have compacted before exceeding it)."""
+# Models whose native context window is 1M. Matched as a substring of the transcript's model id, so
+# provider-prefixed ids (anthropic.claude-opus-5, claude-opus-5@2026…) resolve too. Everything else —
+# Haiku, the 4.5 generation, unknown ids — falls through to the 200K default.
+_WIN_1M = ("fable-5", "mythos-5", "mythos-preview", "opus-5", "sonnet-5",
+           "opus-4-8", "opus-4-7", "opus-4-6", "sonnet-4-6")
+
+
+def _window_for_model(model):
+    """Native context window for a model id, or None when the id is unknown/absent."""
+    if not model:
+        return None
+    m = model.lower()
+    if any(tag in m for tag in _WIN_1M):
+        return 1_000_000
+    # Known-200K families. Anything else stays None so the caller keeps its heuristic.
+    if "haiku" in m or "sonnet-4-5" in m or "opus-4-5" in m or "opus-4-1" in m:
+        return 200_000
+    return None
+
+
+def _effective_max(toks, model=None):
+    """Context window, most explicit signal first:
+
+      1. CTX_MAX — an operator override always wins.
+      2. CLAUDE_CODE_DISABLE_1M_CONTEXT — Claude Code holds every native-1M model to 200K via
+         auto-compaction, so the effective window really is 200K regardless of the model.
+      3. The transcript's model id — every current Claude 5 model is natively 1M, so guessing 200K
+         and waiting to be proven wrong misreports occupancy for most of a session.
+      4. Unknown model → the original heuristic: a 200K session would have compacted before
+         exceeding 200K, so observed tokens above that imply the extended window.
+    """
     env = os.environ.get("CTX_MAX")
     if env and env.isdigit():
         return int(env)
+    if (os.environ.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") or "").strip().lower() in ("1", "true", "yes", "on"):
+        return 200_000
+    win = _window_for_model(model)
+    if win:
+        return win
     return 1_000_000 if (toks and toks > 200_000) else 200_000
 
 
@@ -404,7 +455,7 @@ def _band_warning(session, tpath):
     toks, approx = last_tokens(tpath)
     if not toks:
         return None
-    mx = _effective_max(toks)
+    mx = _effective_max(toks, last_model(tpath))
     pct = 100.0 * toks / mx
     statef = os.path.join(ctx_dir(), session + ".json")
     warned = set()
@@ -467,9 +518,12 @@ def c_pct(a):
     toks, approx = last_tokens(tpath)
     if not toks:
         die("could not read transcript usage")
-    mx = _effective_max(toks)
+    model = last_model(tpath)
+    mx = _effective_max(toks, model)
     pct = round(100.0 * toks / mx)
-    print(f"context: {'~' if approx else ''}{pct}% ({toks:,} / {mx:,} tokens){' [approx]' if approx else ''}")
+    tag = f" [{model}]" if model else ""
+    print(f"context: {'~' if approx else ''}{pct}% ({toks:,} / {mx:,} tokens){tag}"
+          f"{' [approx]' if approx else ''}")
 
 
 def c_learn(a):

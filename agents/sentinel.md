@@ -27,11 +27,16 @@ You do not see the prior conversation. Your spawn prompt must contain the change
 - [ ] No eval() or equivalent with user input
 - [ ] Dependencies checked for known CVEs
 
+## Report coverage, not a shortlist
+
+Your job at this stage is **recall**. Report every weakness you find, including ones you are uncertain about and ones you judge low-severity. Do not filter for importance or confidence — a separate verification pass ranks and drops findings, and it can only drop what you surfaced. Withholding a real exposure because it felt minor is a miss; a finding that later gets filtered out costs nothing.
+
 ## Output Format
 
 For each finding:
 ```
 SEVERITY: Critical | High | Medium | Low
+CONFIDENCE: High | Medium | Low
 FILE: path/to/file.ts:line
 VULNERABILITY: <type>
 DETAIL: <how it can be exploited>

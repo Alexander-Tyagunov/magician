@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-4.9.3-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.10.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
 [![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
@@ -130,7 +130,7 @@ flowchart TD
 <tr>
 <td width="50%" valign="top">
 <h4>🤖 Real autonomy, not a prompt</h4>
-Turns on Claude Code <b>auto mode</b> (<code>magician-ui automode</code>) — its classifier auto-approves reads and request-aligned work and <b>gates writes, deploys, force-push, and destructive ops</b>, honoring boundaries you state in chat. Approve the plan, then step back.
+Makes Claude Code <b>auto mode</b> your starting mode (<code>magician-ui automode</code>) — its classifier auto-approves reads and request-aligned work and <b>gates writes, deploys, force-push, and destructive ops</b>, honoring boundaries you state in chat. Approve the plan, then step back.
 </td>
 <td width="50%" valign="top">
 <h4>🗺 Grounded in your code</h4>
@@ -155,6 +155,16 @@ Per-project <code>.workspace/</code> (team-shared via git) plus a machine-global
 <td width="50%" valign="top">
 <h4>🔌 MCP-free integrations</h4>
 Jira &amp; Confluence over their REST APIs via bundled CLIs — throttle-aware, bulk-safe, one command per call. No MCP server to run, no per-call prompts.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h4>🎚 Tuned to the model you're on &nbsp;<sub><code>new in 4.10.0</code></sub></h4>
+Effort guidance resolves to what your model actually supports (<code>xhigh</code> doesn't exist on Opus 4.6 or Sonnet 4.6 — Claude Code clamps it silently). Review lenses report for coverage, because current models take "be conservative" literally and drop real bugs. Fan-out is capped. Nothing here requires a Claude 5 model.
+</td>
+<td width="50%" valign="top">
+<h4>📡 Sessions that talk to each other &nbsp;<sub><code>new in 4.10.0</code></sub></h4>
+Worktrees isolate files, not consequences. When a change breaks what a sibling session is building on, Claude hands it across instead of leaving you as the message bus. Feature-detected — a silent no-op where cross-session messaging isn't available.
 </td>
 </tr>
 </table>

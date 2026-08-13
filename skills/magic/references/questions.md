@@ -239,7 +239,7 @@ If the user selects "Visual design via /conjure" in either config: invoke `/conj
 }
 ```
 
-> **Model & effort:** map the chosen depth onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (raise to `xhigh` for exhaustive, whole-landscape sweeps). If the session is on an older model than ideal for the depth picked, suggest an upgrade rather than switching silently. See [../../../lore/models.md](../../../lore/models.md).
+> **Model & effort:** map the chosen depth onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (for exhaustive, whole-landscape sweeps, raise to your model's deepest level — `xhigh`, or `max` on models that lack it). If the session is on an older model than ideal for the depth picked, suggest an upgrade rather than switching silently. See [../../../lore/models.md](../../../lore/models.md).
 
 ---
 

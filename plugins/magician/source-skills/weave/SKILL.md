@@ -48,9 +48,13 @@ Adapt the template into a `Workflow({script})` call. Keep the script's `meta` a 
 
 For very large or open-ended scope, run `/weave` in successive Workflows (one phase each) rather than one giant script, so you review between phases. For a long **unattended** delivery, pair with **`/goal`** so Claude keeps driving across turns until every unit is delivered + certified. Workflow stages run as background subagents (and may nest ~5 deep), so fan out and collect results as they land rather than blocking.
 
+An unattended delivery is exactly when a sibling session finds out too late that a shared contract moved. When a unit lands something that breaks what another Claude Code session is building on, and cross-session messaging is available, send that session one self-contained sentence — it is plain text, so pass artifact **paths**, never dumps. Feature-detect and skip silently when it isn't available; the pipeline never waits on a peer. See [lore/cross-session.md](../../lore/cross-session.md).
+
 ## Effort & models
 
-Implement/verify stages on the latest code-optimal tier at high/xhigh effort; narrow lenses on small diffs can take a cheaper tier. Suggest a model upgrade rather than switching silently if the session is on an older one ([lore/models.md](../../lore/models.md)).
+Implement/verify stages on the latest code-optimal tier at high effort, or your model's deepest level for the hardest units (`xhigh`, or `max` on models that lack it); narrow lenses on small diffs can take a cheaper tier. Hold one effort level for the whole run — changing it mid-conversation invalidates the prompt cache. Suggest a model upgrade rather than switching silently if the session is on an older one ([lore/models.md](../../lore/models.md)).
+
+**Size the fan-out to the units, not the appetite.** Current models spawn subagents readily; on small units that costs more than it returns. One stage agent per unit is the default — split a unit across agents only when its tracks are genuinely independent, and keep spawn counts low. The review lenses and the adversarial verify are the checks; don't add agents on top of them to re-check the same work. See [lore/model-behavior.md](../../lore/model-behavior.md).
 
 ## Completion Signal
 

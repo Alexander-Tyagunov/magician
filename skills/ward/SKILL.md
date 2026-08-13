@@ -15,7 +15,9 @@ Before implementing, discover and read the repo's own standards — `CLAUDE.md`,
 
 ## Effort
 
-Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task. See [lore/models.md](../../lore/models.md).
+Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task (your model's deepest level — `xhigh`, or `max` where unsupported — only for a genuinely hard multi-layer one). See [lore/models.md](../../lore/models.md).
+
+The failing test *is* the verification. Don't add a self-review step after green — re-reading your own diff to confirm it is redundant on current models. Let RED → GREEN → REFACTOR and [/certify](../certify/SKILL.md) carry the proof. See [lore/model-behavior.md](../../lore/model-behavior.md).
 
 ## Autonomy — approve the plan, then run
 

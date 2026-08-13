@@ -9,7 +9,7 @@ Present these as the options. Phrase the question to reflect the change you foun
 | **Quick** | correctness only | low–med | none | criticals only | tiny diffs, a quick sanity pass |
 | **Standard** *(default)* | correctness, security, simplification | medium | light (PR desc + in-repo specs) | each Critical/High once | everyday PRs |
 | **Deep** | + tests/verifier | high | yes — external docs/domain when unfamiliar | refute every Critical/High | important PRs, security-sensitive, epic MRs |
-| **Exhaustive** | all 4, loop-until-dry | xhigh | yes — full PRD/spec/story traceability | multi-vote (≥2 independent) per High+ | epics, migrations, contract changes, releases |
+| **Exhaustive** | all 4, loop-until-dry | deepest (`xhigh`, else `max`) | yes — full PRD/spec/story traceability | multi-vote (≥2 independent) per High+ | epics, migrations, contract changes, releases |
 
 Map the choice onto reasoning effort with `/effort`, and prefer the latest code-optimal model; if the session is on an older model than the depth warrants, **suggest** the upgrade rather than switching silently. See [lore/models.md](../../../lore/models.md).
 
