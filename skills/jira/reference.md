@@ -10,7 +10,7 @@ The REST paths below are exactly what **`jira raw <METHOD> <path> [json-body]`**
 
 ## Reads & JQL
 
-- **Single issue**: `GET issue/{key}?fields=*all&maxResults=50` (comments come back in the `comment` field).
+- **Single issue**: `jira get <KEY>` returns metadata **plus the full description** (ADF or wiki, rendered to readable text; cap with `JIRA_DESC_MAX`). **Comments**: `jira comments <KEY>` paginates the dedicated `issue/{key}/comment` endpoint so it returns **all** comments with full bodies (cap each with `JIRA_COMMENT_MAX`) — better than the embedded `comment` field, which can omit older comments on long threads. Raw form: `GET issue/{key}?fields=*all`.
 - **Search (JQL)**: `GET search?jql=<urlencoded>&maxResults=50&fields=summary,status,assignee,updated`. Always pass `maxResults` and an `ORDER BY`. URL-encode the JQL (`--data-urlencode` with `-G`).
   - My open work — `assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`
   - Recent in a project — `project = <KEY> AND updated >= -7d ORDER BY updated DESC`

@@ -5,7 +5,7 @@ Config via env: CONFLUENCE_BASE_URL (Cloud includes /wiki), a token
 (CONFLUENCE_API_TOKEN | CONFLUENCE_PAT | CONFLUENCE_PROD_PAT), and CONFLUENCE_EMAIL for Cloud (Basic).
 Server/Data-Center uses Bearer. One clean command per call → one `Bash(confluence:*)` allow rule.
 """
-import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil
+import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil, html
 
 BASE = (os.environ.get("CONFLUENCE_BASE_URL") or "").rstrip("/")
 TOKEN = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("CONFLUENCE_PAT") or os.environ.get("CONFLUENCE_PROD_PAT") or ""
@@ -131,10 +131,35 @@ def _weburl(d):
     return base + links.get("webui", "")
 
 
-def _text(html, limit=600):
-    t = re.sub(r"<[^>]+>", " ", html or "")
-    t = re.sub(r"\s+", " ", t).strip()
-    return (t[:limit] + "…") if len(t) > limit else t
+# Block-level tags whose close should become a line break, so structure (headings,
+# paragraphs, list items, table rows) survives the tag strip instead of collapsing
+# into one blurred line. `limit=0` means NO truncation — return the whole body.
+_BLOCK_CLOSE = re.compile(r"</(p|div|h[1-6]|li|tr|table|thead|tbody|ul|ol|blockquote|pre|section)\s*>", re.I)
+_CELL_CLOSE = re.compile(r"</(td|th)\s*>", re.I)
+_LI_OPEN = re.compile(r"<li\b[^>]*>", re.I)
+_BR = re.compile(r"<br\s*/?>", re.I)
+
+
+def _text(body, limit=0):
+    """Confluence storage/rendered XHTML → readable text.
+
+    Block-aware (keeps line structure) and, by default, complete: the previous
+    600/4000-char cap silently dropped the back half of long pages. Pass limit>0
+    (e.g. CONFLUENCE_BODY_MAX) only to deliberately cap output.
+    """
+    s = body or ""
+    s = _BR.sub("\n", s)
+    s = _LI_OPEN.sub("\n- ", s)
+    s = _CELL_CLOSE.sub(" | ", s)
+    s = _BLOCK_CLOSE.sub("\n", s)
+    s = re.sub(r"<[^>]+>", "", s)             # drop remaining tags
+    s = html.unescape(s)                       # &amp; &lt; &#160; → real chars
+    s = re.sub(r"[ \t\xa0]+", " ", s)
+    s = "\n".join(line.strip() for line in s.split("\n"))
+    s = re.sub(r"\n{3,}", "\n\n", s).strip()
+    if limit and len(s) > limit:
+        return s[:limit] + f"\n… [truncated at {limit} chars — raise CONFLUENCE_BODY_MAX or use `confluence get <id> storage`]"
+    return s
 
 
 def c_whoami(a):
@@ -144,13 +169,19 @@ def c_whoami(a):
 
 def c_get(a):
     if not a:
-        die("usage: confluence get <id> [body]")
+        die("usage: confluence get <id> [body|storage]")
     d = api("GET", f"content/{a[0]}?expand=space,version,body.storage")
     print(f'{d.get("title")} | space: {(d.get("space") or {}).get("key")} | v{(d.get("version") or {}).get("number")}')
     print(f'  {_weburl(d)}')
-    if len(a) > 1 and a[1] == "body":
+    mode = a[1] if len(a) > 1 else ""
+    if mode in ("body", "storage", "raw"):
+        storage = ((d.get("body") or {}).get("storage") or {}).get("value", "")
         print()
-        print(_text(((d.get("body") or {}).get("storage") or {}).get("value", ""), 4000))
+        if mode == "body":
+            # Full readable text by default — no silent cap. CONFLUENCE_BODY_MAX>0 caps it.
+            print(_text(storage, int(os.environ.get("CONFLUENCE_BODY_MAX", "0") or "0")))
+        else:  # storage / raw → exact XHTML storage markup (for editing / macro inspection)
+            print(storage)
 
 
 def c_search(a):
@@ -168,7 +199,11 @@ def c_raw(a):
     if len(a) < 2:
         die("usage: confluence raw <METHOD> <path> [json-body]  (path is after rest/api/)")
     body = json.loads(a[2]) if len(a) > 2 and a[2] else None
-    print(json.dumps(api(a[0].upper(), a[1], body), indent=2)[:6000])
+    out = json.dumps(api(a[0].upper(), a[1], body), indent=2)
+    # No silent truncation — a raw fetch returns the whole resource. Set CONFLUENCE_RAW_MAX=<N>
+    # only to deliberately cap output; unset/0 means full output.
+    cap = int(os.environ.get("CONFLUENCE_RAW_MAX", "0") or "0")
+    print(out[:cap] if cap > 0 else out)
 
 
 def c_children(a):
@@ -180,15 +215,40 @@ def c_children(a):
         print(f'  {x.get("id")}  {x.get("title","")}')
 
 
+def c_comments(a):
+    # All comments on a page, full bodies (block-aware text), paginated — no silent cut.
+    if not a:
+        die("usage: confluence comments <id>")
+    cap = int(os.environ.get("CONFLUENCE_BODY_MAX", "0") or "0")
+    got, start, page_size = [], 0, 100
+    while True:
+        d = api("GET", f"content/{a[0]}/child/comment?expand=body.storage,version"
+                        f"&limit={page_size}&start={start}")
+        res = d.get("results", [])
+        got.extend(res)
+        start += len(res)
+        # _links.next is present while more pages remain (Cloud); fall back to size math.
+        if not res or not (d.get("_links") or {}).get("next"):
+            break
+    print(f"comments: {len(got)}")
+    for x in got:
+        who = ((x.get("version") or {}).get("by") or {}).get("displayName", "")
+        when = ((x.get("version") or {}).get("when") or "")[:16].replace("T", " ")
+        body = _text(((x.get("body") or {}).get("storage") or {}).get("value", ""), cap)
+        print(f'\n[{when}] {who}:')
+        print(body)
+
+
 CMDS = {"whoami": c_whoami, "get": c_get, "search": c_search, "cql": c_search,
-        "children": c_children, "raw": c_raw}
+        "children": c_children, "comments": c_comments, "raw": c_raw}
 
 
 def main():
     av = sys.argv[1:]
     if not av or av[0] in ("help", "-h", "--help"):
         print(__doc__)
-        print("commands: whoami | get <id> [body] | search <CQL> | children <id> | raw <METHOD> <path> [json-body]", file=sys.stderr)
+        print("commands: whoami | get <id> [body|storage] | search <CQL> | children <id> | "
+              "comments <id> | raw <METHOD> <path> [json-body]", file=sys.stderr)
         return
     fn = CMDS.get(av[0])
     if not fn:

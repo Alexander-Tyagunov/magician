@@ -140,6 +140,57 @@ def _name(o):
     return (o or {}).get("name") or (o or {}).get("displayName") or ""
 
 
+# Block-level ADF nodes whose text should end with a newline so structure survives.
+_ADF_BLOCKS = {"paragraph", "heading", "blockquote", "codeBlock", "panel",
+               "tableRow", "mediaSingle", "bulletList", "orderedList"}
+
+
+def _adf(node):
+    """Flatten an Atlassian Document Format node (Jira Cloud rich text) to readable text."""
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, list):
+        return "".join(_adf(n) for n in node)
+    if not isinstance(node, dict):
+        return str(node)
+    t = node.get("type")
+    if t == "text":
+        return node.get("text", "")
+    if t == "hardBreak":
+        return "\n"
+    if t == "rule":
+        return "\n---\n"
+    attrs = node.get("attrs") or {}
+    if t == "mention":
+        return "@" + str(attrs.get("text") or attrs.get("displayName") or "").lstrip("@")
+    if t == "emoji":
+        return attrs.get("text") or attrs.get("shortName") or ""
+    if t == "inlineCard":
+        return attrs.get("url", "")
+    inner = _adf(node.get("content"))
+    if t == "listItem":
+        return "- " + inner.strip() + "\n"
+    if t in _ADF_BLOCKS:
+        return inner.rstrip() + "\n"
+    return inner
+
+
+def _rich(v, limit=0):
+    """Jira rich field (description / comment body) → readable text.
+
+    Handles ADF documents (Cloud, API v3 → dict/list) and wiki-markup strings
+    (Server/DC, API v2). limit=0 (default) means the WHOLE field — no silent cut.
+    """
+    s = _adf(v) if isinstance(v, (dict, list)) else (v or "")
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s).strip()
+    if limit and len(s) > limit:
+        return s[:limit] + f"\n… [truncated at {limit} chars — raise the cap or use `jira raw`]"
+    return s
+
+
 def c_myself(a):
     d = api("GET", f"rest/api/{V}/myself")
     print(f'{d.get("displayName")} <{d.get("emailAddress","")}>')
@@ -149,7 +200,7 @@ def c_get(a):
     if not a:
         die("usage: jira get <KEY>")
     d = api("GET", f"rest/api/{V}/issue/{a[0]}"
-            "?fields=summary,status,issuetype,assignee,reporter,priority,resolution,updated,parent")
+            "?fields=summary,status,issuetype,assignee,reporter,priority,resolution,updated,parent,description")
     f = d.get("fields", {})
     print(f'{d.get("key")} — {f.get("summary","")}')
     print(f'  status: {_name(f.get("status"))} | resolution: {_name(f.get("resolution")) or "Unresolved"}')
@@ -160,6 +211,11 @@ def c_get(a):
     if p:
         print(f'  parent: {p.get("key")} - {(p.get("fields") or {}).get("summary","")}')
     print(f'  {BASE}/browse/{d.get("key")}')
+    # The description IS the ticket — print it in full (ADF or wiki). JIRA_DESC_MAX>0 caps it.
+    desc = _rich(f.get("description"), int(os.environ.get("JIRA_DESC_MAX", "0") or "0"))
+    if desc:
+        print("\ndescription:")
+        print(desc)
 
 
 def c_search(a):
@@ -237,15 +293,27 @@ def c_sprint(a):
 
 
 def c_comments(a):
+    # All comments, full bodies (ADF or wiki), paginated — the dedicated /comment endpoint
+    # returns the whole thread; the old ?fields=comment path could omit older comments and
+    # capped each body to 140 chars / the last 10 comments. JIRA_COMMENT_MAX>0 caps each body.
     if not a:
         die("usage: jira comments <KEY>")
-    cs = ((api("GET", f"rest/api/{V}/issue/{a[0]}?fields=comment").get("fields") or {}).get("comment") or {}).get("comments", [])
-    print(f"comments: {len(cs)}")
-    for c in cs[-10:]:
+    cap = int(os.environ.get("JIRA_COMMENT_MAX", "0") or "0")
+    got, start = [], 0
+    while True:
+        page = api("GET", f"rest/api/{V}/issue/{a[0]}/comment?startAt={start}&maxResults=100")
+        batch = page.get("comments", [])
+        got.extend(batch)
+        start += len(batch)
+        total = page.get("total", len(got))
+        if not batch or start >= total:
+            break
+    print(f"comments: {len(got)}")
+    for c in got:
         au = (c.get("author") or {}).get("displayName", "")
-        body = c.get("body", "")
-        body = re.sub(r"\s+", " ", body).strip()[:140] if isinstance(body, str) else "[rich text — use jira get]"
-        print(f'  [{(c.get("created") or "")[:10]}] {au}: {body}')
+        when = (c.get("created") or "")[:16].replace("T", " ")
+        print(f'\n[{when}] {au}:')
+        print(_rich(c.get("body"), cap))
 
 
 def c_create(a):

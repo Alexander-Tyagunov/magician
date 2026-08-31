@@ -15,10 +15,10 @@ The REST paths below are what **`confluence raw <METHOD> <path> [json-body]`** e
 
 ## Reads & CQL
 
-- **Whole page**: `GET content/{id}?expand=body.storage,version,space,ancestors`. `body.storage.value` is the XHTML storage; add `,body.view` for rendered HTML. Convert/summarize from there.
-- **Large page**: fetch `body.storage` and extract the heading you need rather than re-emitting the whole body. (Server/DC may also offer section endpoints via the view; otherwise parse the storage XHTML by heading.)
+- **Whole page**: `confluence get <id> body` returns the **entire** page as block-aware readable text (headings, list items, and table cells preserved; entities decoded) — no cap. `confluence get <id> storage` returns the exact `body.storage` XHTML for editing or macro inspection. Under the hood this is `GET content/{id}?expand=space,version,body.storage` (add `,body.view` for rendered HTML).
+- **Large page**: you no longer have to work around a size cap — `body` is complete. To trim output deliberately, set `CONFLUENCE_BODY_MAX=<chars>` (0/unset = full) or extract the heading you need from `storage`. (`CONFLUENCE_RAW_MAX` similarly caps `confluence raw`; default full.)
 - **Children / tree**: `GET content/{id}/child/page?limit=50`.
-- **Comments**: `GET content/{id}/child/comment?expand=body.storage`. **Labels**: `GET content/{id}/label`.
+- **Comments**: `confluence comments <id>` lists every comment with full block-aware bodies (paginated). Raw form: `GET content/{id}/child/comment?expand=body.storage,version`. **Labels**: `GET content/{id}/label`.
 - **Search (CQL)**: `GET content/search?cql=<urlencoded>&limit=25&expand=space` (URL-encode with `-G --data-urlencode`). Always pass a `limit` (≤50). Examples:
   - In a space — `space = <KEY> AND text ~ "<term>" ORDER BY lastmodified DESC`
   - By title — `title ~ "<name>"`

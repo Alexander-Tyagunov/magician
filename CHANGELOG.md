@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.12.0] — 2026-08-31
+
+**Jira & Confluence reads now fetch the whole record — no more silently truncated tickets and pages.** Both bundled CLIs capped content client-side (a ~4 KB page-body limit, a 6 KB raw limit) and `jira get` never fetched the description at all, so long pages came back as their first half and tickets came back with no body — the reader then summarized or acted on incomplete information. The fixes are Claude/Codex identical and touch read paths only; auth, throttling/backoff, caching, and pacing are unchanged.
+
+### Fixed
+- **`confluence get <id> body` returns the entire page.** It was hard-capped at 4000 characters and flattened all XHTML to one blurred line, so long pages lost their back half and their heading/list/table structure. The body is now returned in full as block-aware readable text — headings, list items, and table cells preserved, HTML entities decoded — with an opt-in `CONFLUENCE_BODY_MAX` cap for callers that want one.
+- **`jira get <KEY>` now includes the ticket description.** It printed only metadata (status, type, assignee…) and never requested `description`, so the actual content of the ticket was missing from the read. Cloud ADF documents and Server/DC wiki-markup bodies are both rendered to readable text, in full (opt-in `JIRA_DESC_MAX`).
+- **`jira comments <KEY>` returns every comment, in full.** It capped each comment to 140 characters, showed only the last 10, and rendered Cloud rich-text comments as a `[rich text]` placeholder that pointed back at a `get` which itself showed no body. It now paginates the dedicated comment endpoint (all comments, oldest→newest), flattens ADF/wiki bodies, and prints author + timestamp (opt-in `JIRA_COMMENT_MAX`).
+- **`confluence raw` is no longer truncated at 6000 characters.** It now mirrors `jira raw`: full output by default, with an opt-in `CONFLUENCE_RAW_MAX` cap.
+
+### Added
+- **`confluence get <id> storage`** returns the exact XHTML storage markup — for editing a page or inspecting macros the readable view hides. The raw-REST workaround people reached for when the body was capped is now a first-class command.
+- **`confluence comments <id>`** lists every comment on a page with full, block-aware bodies (paginated), matching `jira comments`.
+
+### Isolation
+- Read-only fetch behavior; no change to any write path, auth mode, retry/backoff, GET cache, or bulk pacing. The Codex package advances to `4.12.0` through the shared release metadata and re-applies its existing secret-handling and state-path overlays unchanged.
+
 ## [4.11.0] — 2026-08-12
 
 **Codex-only GPT-5.6 model alignment; Claude runtime behavior is unchanged.**
