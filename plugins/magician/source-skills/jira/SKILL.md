@@ -31,8 +31,8 @@ Prefer the **one-shot** commands below — they need no JQL and collapse multi-s
 | Verify / who am I | `jira myself` |
 | My open work | `jira mine` |
 | My pending in the active sprint | `jira sprint <boardId>` *(active sprint + my not-done, in one call)* |
-| Read a ticket | `jira get <KEY>` |
-| A ticket's comments | `jira comments <KEY>` |
+| Read a ticket (incl. **full** description) | `jira get <KEY>` |
+| A ticket's comments (**all**, full bodies) | `jira comments <KEY>` |
 | Find a board id by name | `jira board <name>` |
 | Search (JQL) | `jira search "<JQL>"` — cap with `JIRA_MAX=N`; add `ORDER BY` |
 | Available transitions | `jira transitions <KEY>` |
@@ -42,6 +42,8 @@ Prefer the **one-shot** commands below — they need no JQL and collapse multi-s
 | Anything else (other writes, custom GETs) | `jira raw <METHOD> <rest/path> [json-body]` |
 
 Resolve the user's board id from memory (e.g. "my board") and pass it to `jira sprint`. Examples for `jira raw`: sprint issues → `jira raw GET "rest/agile/1.0/sprint/<id>/issue?maxResults=50"`. Field ids, link-type ids, and request bodies are in [reference.md](reference.md).
+
+**Reads fetch the whole record — no silent truncation.** `jira get` now includes the ticket's **full description** (ADF on Cloud / wiki markup on Server-DC, rendered to readable text), `jira comments` paginates **every** comment with full bodies, and `jira raw` is uncapped by default. So the ticket body and long threads come back complete, not as their first slice. Set `JIRA_DESC_MAX` / `JIRA_COMMENT_MAX` / `JIRA_RAW_MAX` to a char count only to deliberately shrink output.
 
 ## Resilience — let the CLI handle Jira, never hand-roll
 
