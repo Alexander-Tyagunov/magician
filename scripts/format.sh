@@ -5,16 +5,16 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-FILE_PATH=$(python3 - "$INPUT" <<'PYEOF'
-import json, sys
+# Pass the tool payload on STDIN (not as a python argv): a large Edit payload
+# (old_string/new_string) can trip a python argv limit and abort the hook under
+# `set -e`, surfacing as "PostToolUse:Edit hook error — non-blocking status code".
+FILE_PATH=$(printf '%s' "$INPUT" | python3 -c 'import json, sys
 try:
-    d = json.loads(sys.argv[1])
+    d = json.loads(sys.stdin.read())
     inp = d.get("tool_input", d.get("input", d))
     print(inp.get("file_path", inp.get("path", "")) if isinstance(inp, dict) else "")
-except:
-    pass
-PYEOF
-)
+except Exception:
+    pass') || FILE_PATH=""
 
 [ -z "$FILE_PATH" ] && exit 0
 [ -f "$FILE_PATH" ] || exit 0

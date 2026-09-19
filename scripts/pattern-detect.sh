@@ -13,12 +13,14 @@ mkdir -p "$PLUGIN_DATA"
 
 INPUT=$(cat)
 
-python3 - "$PATTERNS_FILE" "$INPUT" "$PLUGIN_ROOT" <<'PYEOF'
+# Payload ($INPUT = the user prompt) on STDIN (not python argv): a large prompt can
+# trip an argv limit and abort the hook under `set -e`. Small paths stay as argv.
+PYCODE=""; IFS= read -r -d '' PYCODE <<'PYEOF' || true
 import json, re, sys, os, subprocess
 
-patterns_file = sys.argv[1]
-raw_input = sys.argv[2] if len(sys.argv) > 2 else ""
-plugin_root = sys.argv[3] if len(sys.argv) > 3 else ""
+patterns_file = sys.argv[1] if len(sys.argv) > 1 else ""
+raw_input = sys.stdin.read()
+plugin_root = sys.argv[2] if len(sys.argv) > 2 else ""
 
 try:
     hook_data = json.loads(raw_input)
@@ -316,3 +318,4 @@ except Exception:
 
 flush(inscribe_msg)
 PYEOF
+printf '%s' "$INPUT" | python3 -c "$PYCODE" "$PATTERNS_FILE" "$PLUGIN_ROOT" || true

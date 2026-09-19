@@ -39,7 +39,9 @@ else
   SUMMARY="Session in $WORKING_DIR on branch $BRANCH"
 fi
 
-python3 - "$ENTRY_FILE" "$TIMESTAMP" "$SESSION_START" "$WORKING_DIR" "$BRANCH" "$COMMIT_COUNT" "$SUMMARY" <<'PYEOF'
+# Program via `-c` (not `python3 -`, whose program-on-stdin form can be killed with a
+# larger argv on some python builds). Fields stay as argv — same sys.argv[1:] indices.
+PYCODE=""; IFS= read -r -d '' PYCODE <<'PYEOF' || true
 import json, sys
 
 entry_file, timestamp, session_start, working_dir, branch, commits, summary = sys.argv[1:8]
@@ -58,6 +60,7 @@ with open(entry_file, "w") as f:
 
 print(f"Chronicle written: {entry_file}", file=sys.stderr)
 PYEOF
+python3 -c "$PYCODE" "$ENTRY_FILE" "$TIMESTAMP" "$SESSION_START" "$WORKING_DIR" "$BRANCH" "$COMMIT_COUNT" "$SUMMARY" || true
 
 # Extract commit-derived learnings into the per-project store (before we drop the
 # session-start marker, which bin/ctx uses to scope `git log --since`). Best-effort.

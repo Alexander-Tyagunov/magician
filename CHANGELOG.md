@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.2] — 2026-09-19
+
+### Fixed
+- **Hooks no longer fail on large payloads.** Every hook script that parsed its input
+  by passing the payload as a Python `argv` (`python3 - "$INPUT"`) now streams it on
+  **stdin** (`printf '%s' "$INPUT" | python3 -c …`), with the program passed via `-c`
+  instead of the `python3 -` (program-on-stdin) form. A large `Edit`/`Write` payload,
+  user prompt, or session-context block could exceed a Python argv limit and abort the
+  hook under `set -euo pipefail`, surfacing as
+  `PostToolUse:Edit hook error — Failed with non-blocking status code: No stderr output`.
+  Fixed across `format.sh`, `pattern-detect.sh`, `agent-lifecycle.sh`, `worktree-init.sh`,
+  `chronicle-stop.sh`, and `session-start.sh`; `bin/magician-scan` was hardened the same
+  way. The safe stdin form now matches `access-tracker.sh` and `kg-nudge.sh`.
+
 ## [4.13.1] — 2026-09-19
 
 ### Fixed

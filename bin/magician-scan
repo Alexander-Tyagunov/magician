@@ -10,7 +10,8 @@ TARGET="${1:-.}"
 echo "magician-scan — security scan of: $TARGET"
 echo ""
 
-python3 - "$TARGET" <<'PYEOF'
+# Program via `-c` (not the `python3 -` program-on-stdin form). $TARGET is a path, kept as argv.
+PYCODE=""; IFS= read -r -d '' PYCODE <<'PYEOF' || true
 import os, re, sys
 
 target = sys.argv[1]
@@ -69,3 +70,5 @@ else:
     print("No security issues found.")
     sys.exit(0)
 PYEOF
+# Exit code is meaningful (0 = clean, 1 = issues) — do NOT swallow it.
+python3 -c "$PYCODE" "$TARGET"
