@@ -42,7 +42,11 @@ class CodexPackagingTests(unittest.TestCase):
         version = codex_manifest["version"]
         self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertEqual(claude_manifest["version"], version)
-        self.assertEqual(claude_marketplace["plugins"][0]["version"], version)
+        self.assertNotIn(
+            "version",
+            claude_marketplace["plugins"][0],
+            "Claude marketplace entry must stay version-free; plugin.json is authoritative",
+        )
         self.assertEqual(packaged_manifest["version"], version)
 
         changelog = (REPOSITORY_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")

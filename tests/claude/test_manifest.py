@@ -1,9 +1,10 @@
 """Manifest-integrity contract for the Claude-side plugin.
 
-A plugin that fails to load is invisible: a malformed `.claude-plugin/plugin.json`, a version that
-disagrees with the marketplace entry, or a manifest that names a component directory that does not
-exist all fail silently at install time. This gate makes the manifest itself testable, and keeps the
-version stamped in every place a release must bump it in lock-step.
+A plugin that fails to load is invisible: a malformed `.claude-plugin/plugin.json`, a marketplace
+entry that redeclares `version` (which the manifest silently overrides), or a manifest that names a
+component directory that does not exist all fail silently at install time. This gate makes the
+manifest itself testable, and keeps the version stamped in every place a release must bump it in
+lock-step.
 
 Reads declarative config + the filesystem only; runs nothing.
 """
@@ -45,10 +46,12 @@ class ManifestIntegrityTests(unittest.TestCase):
         self.assertTrue(plugins and isinstance(plugins, list), "no plugins listed")
         self.assertEqual(plugins[0]["name"], "magician")
 
-    def test_marketplace_version_matches_plugin(self) -> None:
-        """The marketplace entry and the plugin manifest are bumped together; a drift here ships a
-        version to users that does not match what the plugin reports about itself."""
-        self.assertEqual(self.marketplace["plugins"][0]["version"], self.plugin["version"])
+    def test_marketplace_entry_omits_version(self) -> None:
+        """Single source of truth: the version lives only in plugin.json. Claude Code always uses the
+        manifest value and silently ignores a marketplace `version`, so carrying it in both risks a
+        stale marketplace value masking a real bump (see code.claude.com/docs version management)."""
+        self.assertNotIn("version", self.marketplace["plugins"][0],
+                         "marketplace entry must not carry version; plugin.json is authoritative")
 
     def test_version_is_synchronized_across_release_surfaces(self) -> None:
         """Every place a release stamps its version must agree, so `4.x` never means two things.

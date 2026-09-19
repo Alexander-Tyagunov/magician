@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.1] — 2026-09-19
+
+### Fixed
+- **Docs:** the README Install block now shows how Codex users pull a new release —
+  `codex plugin marketplace upgrade` — because Codex has no background auto-update.
+  (Claude Code auto-updates installed plugins by default.)
+
+### Changed
+- **Single-source the version.** Removed the duplicate `version` from
+  `.claude-plugin/marketplace.json`; the plugin version now lives only in
+  `.claude-plugin/plugin.json`. Claude Code always uses the manifest value and
+  silently ignores a marketplace `version`, so carrying it in both risked a stale
+  marketplace value masking a real bump. Gate tests now assert the marketplace
+  entry stays version-free.
+
 ## [4.13.0] — 2026-09-19
 
 **An AI-SDLC passing gate now backs the plugin, and the agents and skills were audited against it.** Everything the plugin promised about quality — least-privilege agents, real approval gates, no stale prose, reviewer≠author — is now enforced by a dependency-free test gate and a multi-lens review team, not just asserted in prose. The security-review agents were tightened to match the plugin's own doctrine, and a security fix removes auth tokens from the Jira/Confluence CLI argv.
