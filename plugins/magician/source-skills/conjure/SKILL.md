@@ -191,3 +191,13 @@ When a UI was designed, the spec's Design Artifacts section binds implementation
 Stop the visual companion, commit the spec, then say:
 
 > "Spec approved and committed. Designs saved to `.workspace/shared/designs/`. Run `/magician:blueprint` to create the implementation plan."
+
+## Obstacles
+
+This is an interactive, human-in-the-loop design dialogue — every gate needs the user — so it reports to the human directly, not upward to an orchestrator, and emits no upward Obstacles block: surface any blocker (the visual companion or Playwright not starting, unreadable brand assets, a missing input) in prose to the user and stop.
+
+See [lore/obstacles.md](../../lore/obstacles.md).
+
+## Completion Signal
+
+"Conjure complete. Spec for <feature> approved and committed to .workspace/shared/specs/ (or, in Design-Only mode, mockups saved to .workspace/shared/mockups/). Run /magician:blueprint to create the implementation plan."

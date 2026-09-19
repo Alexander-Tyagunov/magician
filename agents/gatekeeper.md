@@ -46,4 +46,18 @@ GATES:
 BLOCKING: <the specific failures that produced a NO-GO, with reproduction commands>
 ```
 
+## Obstacles
+
+Report anything that prevented you from RUNNING a gate — an environment or tooling problem (missing interpreter, no eval suite, an unreadable manifest), distinct from a genuine gate failure (which belongs in `BLOCKING`). This is the "why UNVERIFIED" in one place: an obstacle that stops a check from running is a NO-GO input, never a pass. Omit the section entirely when every gate ran and produced a real result; never silently skip a check, never dump a raw log — distill the cause. If the scope or acceptance criteria are missing from your spawn prompt, emit `NEEDS_CONTEXT: <what is missing>` and stop instead. One block per obstacle:
+
+```
+STATUS: DEGRADED | BLOCKED
+OBSTACLE: <one-line: which gate could not run>
+BLOCKER: <the specific, actionable cause — distilled, not a raw traceback>
+SEVERITY: Critical | High | Medium | Low
+SCOPE: <this gate only | likely affects sibling/downstream work too>
+RECURRENCE: First-seen | Recurring | Systemic
+NEXT: <what the caller must supply or decide to clear it>
+```
+
 End with: `GATE COMPLETE. Verdict: <GO|NO-GO>.` Never emit `GO` while any gate is `FAIL` or `UNVERIFIED`.

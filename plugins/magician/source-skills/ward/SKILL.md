@@ -26,7 +26,7 @@ Once the spec is settled — the failing test you can write, or the plan task in
 ## Two modes
 
 - **Freeform** (`/ward <behavior>`): drive TDD for whatever you're implementing now.
-- **Task mode** (`/ward task <N>`): execute task N from the current blueprint plan in `.workspace/shared/plans/`. Read the task text from the plan file first; if the plan isn't clear from context, ask which plan file. **End your turn and wait** if you must ask.
+- **Task mode** (`/ward task <N>`): execute task N from the current blueprint plan in `.workspace/shared/plans/`. Read the task text from the plan file first; if the plan isn't clear from context, ask which plan file. **End your turn and wait** if you must ask. (dispatched with no human present: return NEEDS_CONTEXT instead of waiting).
 
 ## The Law
 
@@ -52,7 +52,7 @@ One function doing one thing · one API endpoint with one response case · one U
 
 ## If you cannot write the test first
 
-The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [behavior] should do. Clarify the expected input and output?" **End your turn. Wait for clarification before writing code.**
+The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [behavior] should do. Clarify the expected input and output?" **End your turn. Wait for clarification before writing code.** But if you are running as a dispatched subagent with no human present to answer, do not wait — return a BLOCKED or NEEDS_CONTEXT Obstacles block (see below) naming the exact spec gap, and stop.
 
 ## Per task (task mode only)
 
@@ -61,6 +61,23 @@ After the behavior(s) for the task are green and refactored:
 2. Run the full test suite — no regressions.
 3. Commit with a conventional commit message.
 4. Mark the task complete in the plan file (`- [ ]` → `- [x]`).
+
+## Obstacles
+
+If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
+
+```
+STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
+OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
+BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
+SEVERITY: Critical | High | Medium | Low
+WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
+RECURRENCE: First-seen | Recurring | Systemic
+SCOPE: <this task only | likely hits sibling/downstream work too>
+NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
+```
+
+When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
 
 ## Completion Signal
 

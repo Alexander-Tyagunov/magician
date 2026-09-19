@@ -49,6 +49,10 @@ name: <name>
 2. <step>
 ...
 
+## Obstacles
+
+State how this skill surfaces obstacles. If it does dispatchable work, include the producer block. If it dispatches/consumes workers, include roll-up + detect-pattern + memorize (`ctx learn`) wiring. If it is terminal/utility, a one-line note that it reports to the human in prose. See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 "<name> complete. <what was accomplished>."
@@ -75,9 +79,14 @@ git commit -m "feat: add /<name> skill"
 - [ ] Frontmatter uses only valid fields (description, name, allowed-tools, disable-model-invocation, argument-hint, context) and has a specific description
 - [ ] SKILL.md stays lean (<~250 lines); heavy reference material lives in references/ and is linked
 - [ ] Has a clear completion signal
+- [ ] Has an `## Obstacles` section — a producer block if it does dispatchable work, roll-up/detect/memorize wiring if it consumes workers, or a one-line terminal note otherwise (see lore/obstacles.md)
 - [ ] Process steps are concrete and actionable (not vague)
 - [ ] Does not duplicate an existing skill
 - [ ] Name is memorable and matches the behavior
+
+## Obstacles
+
+/inscribe is an interactive, user-facing scaffolder — it reports to the human, not upward — so it emits no upward Obstacles block: surface any blocker in prose to the user and stop. See [lore/obstacles.md](../../lore/obstacles.md).
 
 ## Completion Signal
 

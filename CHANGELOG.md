@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.14.0] — 2026-09-19
+
+### Added
+- **Obstacles reporting across every skill and agent.** A dispatched subagent or skill
+  that cannot finish clean now returns a machine-parseable **Obstacles** block
+  (`STATUS / OBSTACLE / BLOCKER / SEVERITY / WORKAROUND / RECURRENCE / SCOPE / NEXT`) to
+  its caller instead of silently degrading or stalling for a human — so a BLOCKED,
+  DEGRADED, or NEEDS_CONTEXT state is never mistaken for done. The canonical spec is the
+  new [`lore/obstacles.md`](lore/obstacles.md); it is right-sized per role (producer,
+  consumer, both, terminal, persistence, or meta) rather than pasted verbatim everywhere.
+- **Pattern → memory roll-up.** Consumer skills (`/orchestrate`, `/weave`, `/scrutinize`,
+  `/divine`, `/transmute`, `/manifest`) roll every worker's obstacles into one report kept
+  distinct from the deliverables, detect a recurring pattern by a normalized
+  BLOCKER + SCOPE signature, and memorize a confirmed pattern via `ctx learn` so a future
+  run pre-empts it. `/chronicle` is the confirm-before-global persistence gate.
+- **Completion Signal on every skill.** Standardized the terminal completion signal across
+  all 25 skills, giving callers (and the autonomous `/manifest` spine) one unambiguous
+  "this stage is done" anchor to key on.
+
+### Security
+- **Obstacle text is treated as untrusted data.** Consumers route only on their own
+  normalized classification, quote rather than execute obstacle fields, author any
+  memorized note from their own signature (never verbatim worker prose), and redact
+  secrets/credentials/PII before persisting — so a poisoned or sensitive obstacle cannot
+  ride into memory that a later run would act on.
+
 ## [4.13.2] — 2026-09-19
 
 ### Fixed
