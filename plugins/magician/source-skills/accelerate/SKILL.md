@@ -86,6 +86,23 @@ This is a **bounded evaluator-optimizer loop**: if the target isn't met, return 
 
 For a result worth circulating, you can publish the baseline→optimized report as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose proprietary/internal system detail or secrets to a public link.**
 
+## Obstacles
+
+If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
+
+```
+STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
+OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
+BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
+SEVERITY: Critical | High | Medium | Low
+WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
+RECURRENCE: First-seen | Recurring | Systemic
+SCOPE: <this task only | likely hits sibling/downstream work too>
+NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
+```
+
+When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 "Accelerate complete. Baseline: <N>. Optimized: <N>. Improvement: <X>%. Target <met/not met>."

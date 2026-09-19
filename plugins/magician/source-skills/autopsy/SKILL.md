@@ -121,6 +121,12 @@ Offer to remember this incident in the global reference store via `/chronicle` �
 
 Only write via `/chronicle` on **Remember it** (or a free-form "yes"). On **Skip**, stop here.
 
+## Obstacles
+
+This is a terminal, user-facing skill — it reports to the human directly, not upward to an orchestrator — so it emits no upward Obstacles block: surface any blocker in prose to the user and stop.
+
+See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 "Autopsy complete. Post-mortem written to `.workspace/shared/postmortems/<filename>.md`. N action items identified."

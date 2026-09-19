@@ -45,6 +45,12 @@ git worktree remove ../<repo-name>-<name>
 git branch -d feature/<name>
 ```
 
+## Obstacles
+
+This is a thin git-worktree utility. If a worktree cannot be created (branch already exists, dirty tree), report it in prose to the caller and stop; it emits no structured upward Obstacles block.
+
+See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 "Portal open. Worktree at `<path>`, branch `<branch>`. Start implementation or run /orchestrate."

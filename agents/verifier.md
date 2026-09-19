@@ -39,4 +39,18 @@ ISSUE: <what is untested or wrongly tested>
 FIX: <what test to add or fix>
 ```
 
+## Obstacles
+
+Report anything that blocked or degraded THIS VERIFICATION — distinct from the coverage gaps above, and separate from the per-finding block (obstacles are per-run, not per-finding). This is how the caller learns your assessment was limited (the test suite couldn't be run to confirm assertions, the test files weren't in the provided scope, the framework was unknown) instead of reading a partial assessment as a clean one. Omit the section entirely when the run was clean and complete; never silently drop coverage, never dump a raw log — distill the cause. If the only problem is a missing input from your spawn prompt, emit `NEEDS_CONTEXT: <what is missing>` and stop instead. One block per obstacle:
+
+```
+STATUS: DEGRADED | BLOCKED
+OBSTACLE: <one-line: what you could not do>
+BLOCKER: <the specific, actionable cause — distilled, not a raw traceback>
+SEVERITY: Critical | High | Medium | Low
+SCOPE: <this review only | likely affects sibling/downstream work too>
+RECURRENCE: First-seen | Recurring | Systemic
+NEXT: <what the caller must supply or decide to clear it>
+```
+
 End with: `VERIFIER COMPLETE. Coverage assessment: <summary>.`

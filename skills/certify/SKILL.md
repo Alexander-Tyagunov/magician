@@ -73,6 +73,23 @@ If the project has a UI:
 
 Use the **Monitor tool** to tail the dev-server output and browser console in the background so a runtime error surfaces as an event mid-check instead of being missed on a one-shot glance.
 
+## Obstacles
+
+If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
+
+```
+STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
+OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
+BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
+SEVERITY: Critical | High | Medium | Low
+WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
+RECURRENCE: First-seen | Recurring | Systemic
+SCOPE: <this task only | likely hits sibling/downstream work too>
+NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
+```
+
+When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 Before emitting this signal, apply the verification gate ([lore/verification.md](../../lore/verification.md)): no "passing / clean / done" claim without the actual command output read **this run** — a remembered result or "should pass" doesn't count. /certify **is** the runnable suite; that discipline is the reason it exists. The evidence summary must reflect output you read from this pass, not extrapolation.

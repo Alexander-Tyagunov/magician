@@ -99,6 +99,23 @@ For CI pipeline use: `magician-scan` exits 0 (clean) or 1 (issues).
   run: magician-scan .
 ```
 
+## Obstacles
+
+If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
+
+```
+STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
+OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
+BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
+SEVERITY: Critical | High | Medium | Low
+WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
+RECURRENCE: First-seen | Recurring | Systemic
+SCOPE: <this task only | likely hits sibling/downstream work too>
+NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
+```
+
+When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 "Sentinel complete. <N total findings>. Review report above and run /scrutinize for systematic remediation."

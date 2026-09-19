@@ -43,4 +43,18 @@ EXPOSURE: <the concrete attack: who supplies the input, what it reaches>
 CONTROL: <the specific control that closes it — bound the action, not the instruction>
 ```
 
+## Obstacles
+
+Report anything that blocked or degraded THIS AUDIT — distinct from the exposures above, and separate from the per-finding block (obstacles are per-run, not per-finding). This is how the caller learns your coverage was limited (a referenced file you couldn't inspect, an untrusted-input surface the spawn prompt didn't disclose, an incomplete diff) instead of reading a partial audit as a clean one. Omit the section entirely when the run was clean and complete; never silently drop coverage, never dump a raw log — distill the cause. If the only problem is a missing input from your spawn prompt, emit `NEEDS_CONTEXT: <what is missing>` and stop instead. One block per obstacle:
+
+```
+STATUS: DEGRADED | BLOCKED
+OBSTACLE: <one-line: what you could not do>
+BLOCKER: <the specific, actionable cause — distilled, not a raw traceback>
+SEVERITY: Critical | High | Medium | Low
+SCOPE: <this audit only | likely affects sibling/downstream work too>
+RECURRENCE: First-seen | Recurring | Systemic
+NEXT: <what the caller must supply or decide to clear it>
+```
+
 End with: `GUARDIAN COMPLETE. Findings: <N critical, N high, N medium, N low>.`

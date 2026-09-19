@@ -43,4 +43,18 @@ DETAIL: <how it can be exploited>
 FIX: <remediation>
 ```
 
+## Obstacles
+
+Report anything that blocked or degraded THIS SECURITY REVIEW — distinct from the vulnerabilities above, and separate from the per-finding block (obstacles are per-run, not per-finding). This is how the caller learns your coverage was limited (a dependency manifest missing so the CVE check was impossible, an endpoint not in the diff, an unreadable file) instead of reading a partial scan as a clean bill of health. Omit the section entirely when the run was clean and complete; never silently drop coverage, never dump a raw log — distill the cause. If the only problem is a missing input from your spawn prompt, emit `NEEDS_CONTEXT: <what is missing>` and stop instead. One block per obstacle:
+
+```
+STATUS: DEGRADED | BLOCKED
+OBSTACLE: <one-line: what you could not do>
+BLOCKER: <the specific, actionable cause — distilled, not a raw traceback>
+SEVERITY: Critical | High | Medium | Low
+SCOPE: <this review only | likely affects sibling/downstream work too>
+RECURRENCE: First-seen | Recurring | Systemic
+NEXT: <what the caller must supply or decide to clear it>
+```
+
 End with: `SENTINEL COMPLETE. Security posture: <summary>.`

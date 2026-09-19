@@ -135,6 +135,12 @@ git add .workspace/shared/ CLAUDE.md .gitignore
 git commit -m "chore: initialize magician workspace"
 ```
 
+## Obstacles
+
+This is a terminal, user-facing skill — it reports to the human directly, not upward to an orchestrator — so it emits no upward Obstacles block: surface any blocker in prose to the user and stop.
+
+See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 "Almanac complete. Workspace initialized in <mode> mode. Run /conjure to start designing, or /manifest for the full flow."

@@ -46,6 +46,12 @@ A native Claude Code **status line** rendered by magician. It runs **locally, co
 - Keep it lightweight: recommend a smaller component set if the user wants a minimal bar (e.g. `context,rot`).
 - Never hand-edit `settings.json` for this — always go through `magician-ui`, which backs up + validates.
 
+## Obstacles
+
+This is a configuration utility that reports to the human directly, not upward to an orchestrator — so it emits no upward Obstacles block: surface any blocker in prose to the user and stop.
+
+See [lore/obstacles.md](../../lore/obstacles.md).
+
 ## Completion Signal
 
 > "Magician CLI UI <enabled (components: …) | updated | disabled>. It runs locally (no tokens) and hot-reloads."

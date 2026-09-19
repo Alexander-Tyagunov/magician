@@ -86,3 +86,24 @@ A task is PARALLEL-safe if:
 Say: "Blueprint ready. Run /orchestrate to dispatch parallel agents, or /ward task <N> to execute tasks one by one."
 
 > Model/effort: for large multi-component specs, prefer the latest/code-optimal model and raise /effort to keep the decomposition and parallelism map sharp. See [lore/models.md](../../lore/models.md).
+
+## Obstacles
+
+If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
+
+```
+STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
+OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
+BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
+SEVERITY: Critical | High | Medium | Low
+WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
+RECURRENCE: First-seen | Recurring | Systemic
+SCOPE: <this task only | likely hits sibling/downstream work too>
+NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
+```
+
+When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+
+## Completion Signal
+
+"Blueprint complete. <N> tasks planned (<P> parallel, <S> sequential), saved to .workspace/shared/plans/. Run /orchestrate to dispatch, or /ward task <N> to execute one by one."
