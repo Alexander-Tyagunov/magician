@@ -479,7 +479,7 @@ fi
 CAT_ART=$'         *        \n        /|\\\n       / | \\\n      /  *  \\\n    /_________\\   \n   /\\  o   o  /\\   ---- * . * . * .\n  /   ~~~~~~~   \\   . * . * . * .\n  /  ( ~~~~~ )  \\  * . * . * . *\n  \\_____________/\n    |   | |   |  '
 
 # ── Knowledge-graph suggestion (throttled, opt-out-aware, never auto-builds) ──
-KG_NOTE=$(python3 - "$PLUGIN_DATA" <<'PYEOF' 2>/dev/null || true
+KG_PYCODE=""; IFS= read -r -d '' KG_PYCODE <<'PYEOF' || true
 import os, sys, json, hashlib, subprocess, time
 plugin_data = sys.argv[1]
 mag_home = os.environ.get("MAGICIAN_HOME") or os.path.join(os.path.expanduser("~"), ".claude", "magician")
@@ -521,7 +521,8 @@ print(f"No knowledge-graph index for this repo ({n} files). If this session will
       f"search-heavy work, building one with /magician:knowledge-graph (kg init) makes "
       f"retrieval cheaper and faster — offer it once, and respect a no.")
 PYEOF
-)
+# Program via `-c` (not the `python3 -` program-on-stdin form). $PLUGIN_DATA is a short path.
+KG_NOTE=$(python3 -c "$KG_PYCODE" "$PLUGIN_DATA" 2>/dev/null || true)
 
 # ── Resume capsule (re-inject after a prior compaction, on --resume/--continue) ──
 RESUME_NOTE=""
@@ -586,10 +587,13 @@ ${CAT_ART}
 ✦ magician${TECHS:+ · ${TECHS}}${ARCHETYPE:+ · ${ARCHETYPE}}
 
 ${LORE_NOTE}${CHRONICLE_NOTE}${RESUME_NOTE}${REFERENCES_NOTE}${LEARN_NOTE}${STRATEGY_NOTE}${FIRST_RUN_NOTE}${KG_NOTE:+ ${KG_NOTE}}${OBS_NOTE}${UI_NOTE:+ ${UI_NOTE}}${REMEMBER_HINT}${DOCTRINE_NOTE}${VOICE_NOTE}"
-python3 - "$CONTEXT" "$LORE_MARKER" "$LORE_ENABLED" "$LORE_INJECTED" "$VOICE_MARKER" "$VOICE_LEVEL" <<'PYEOF'
+# $CONTEXT (the full greeting/context block) on STDIN — it's large and would trip an
+# argv limit; the short markers/levels stay as argv.
+CTX_PYCODE=""; IFS= read -r -d '' CTX_PYCODE <<'PYEOF' || true
 import json, sys, time
-ctx, marker, enabled, injected = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-voice_marker, voice_level = sys.argv[5], sys.argv[6]
+ctx = sys.stdin.read()
+marker, enabled, injected = sys.argv[1], sys.argv[2], sys.argv[3]
+voice_marker, voice_level = sys.argv[4], sys.argv[5]
 try:                                           # write the lore status marker (for the CLI UI chip)
     cores = (injected or "").split()
     json.dump({"enabled": enabled == "1", "count": len(cores), "cores": cores, "ts": time.time()},
@@ -602,3 +606,4 @@ except Exception:
     pass
 print(json.dumps({"additionalContext": ctx}))  # the SessionStart additionalContext (unchanged)
 PYEOF
+printf '%s' "$CONTEXT" | python3 -c "$CTX_PYCODE" "$LORE_MARKER" "$LORE_ENABLED" "$LORE_INJECTED" "$VOICE_MARKER" "$VOICE_LEVEL" || true

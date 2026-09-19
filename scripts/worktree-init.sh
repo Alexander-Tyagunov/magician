@@ -5,15 +5,14 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-WORKTREE_PATH=$(python3 - "$INPUT" <<'PYEOF'
-import json, sys
+# Payload on STDIN (not python argv) — a large hook payload can trip an argv limit
+# and abort the hook under `set -e`.
+WORKTREE_PATH=$(printf '%s' "$INPUT" | python3 -c 'import json, sys
 try:
-    d = json.loads(sys.argv[1])
+    d = json.loads(sys.stdin.read())
     print(d.get("worktree_path", d.get("path", "")))
-except:
-    pass
-PYEOF
-)
+except Exception:
+    pass') || WORKTREE_PATH=""
 
 [ -z "$WORKTREE_PATH" ] && exit 0
 [ -d "$WORKTREE_PATH" ] || exit 0

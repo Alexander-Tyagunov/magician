@@ -13,10 +13,13 @@ mkdir -p "$WORKSPACE_LOCAL"
 INPUT=$(cat)
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-python3 - "$LOG_FILE" "$EVENT" "$TIMESTAMP" "$INPUT" <<'PYEOF'
+# Payload ($INPUT) on STDIN (not python argv): a large subagent payload can trip an
+# argv limit and abort the hook under `set -e`. Small args stay as argv.
+PYCODE=""; IFS= read -r -d '' PYCODE <<'PYEOF' || true
 import json, os, sys
 
-log_file, event, timestamp, raw_input = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+log_file, event, timestamp = sys.argv[1], sys.argv[2], sys.argv[3]
+raw_input = sys.stdin.read()
 
 try:
     inp = json.loads(raw_input)
@@ -45,3 +48,4 @@ existing = existing[-100:]
 with open(log_file, "w") as f:
     json.dump(existing, f, indent=2)
 PYEOF
+printf '%s' "$INPUT" | python3 -c "$PYCODE" "$LOG_FILE" "$EVENT" "$TIMESTAMP" || true
