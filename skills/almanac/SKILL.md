@@ -113,10 +113,10 @@ Based on detected archetype, suggest relevant MCPs:
 Ask: "Want me to set up any of these MCPs? If so, which ones?" **End your turn. Wait for their reply before proceeding to step 8.**
 
 ### 8. Save Strategy
-Record the workspace mode chosen in step 1. Set `WS_MODE` to the user's actual selection (`shared` or `private`) — do not hardcode it:
+Record the workspace mode chosen in step 1. Set `WS_MODE` to that choice (`shared` or `private`) by replacing the placeholder below before running — don't leave the example value:
 ```bash
 # WS_MODE is "shared" or "private" from the step 1 answer.
-WS_MODE=shared   # ← replace with the user's actual choice
+WS_MODE=shared   # ← REPLACE with the step-1 choice: shared or private
 python3 -c "
 import json, os, sys
 mode = sys.argv[1]

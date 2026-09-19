@@ -60,7 +60,7 @@ GATE 4: PR title and final go-ahead (before /seal)
 
 ### Phase 7: Ship [GATE 4]
 16. Run /certify again — clean state after review fixes
-17. Ask user for PR title. **Wait for approval.**
+17. Present the proposed PR title, then gate with **AskUserQuestion** — options: **Approve & create PR** (proceed to /seal with this title), **Revise title** (edit it first), **Cancel** (stop before shipping). **End your turn at the call; wait for the choice.** Treat a free-form "approved / ship it" as Approve; proceed to /seal only on Approve.
 18. Run /seal — simplify, commit, PR, monitor CI, merge
 
 ## Autonomous Continuation

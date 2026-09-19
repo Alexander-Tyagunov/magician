@@ -25,10 +25,11 @@ Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches 
    DIFF=".workspace/shared/diffs/review.patch"; [ -d .workspace ] || DIFF="$(git rev-parse --git-dir)/magician-review.patch"
    mkdir -p "$(dirname "$DIFF")"; git diff main...HEAD > "$DIFF"; echo "$DIFF"
    ```
-2. **Dispatch 3 specialist agents simultaneously** — in ONE message, make three `Task` calls using these subagent types (do NOT read agent files by path; the plugin registers them):
+2. **Dispatch the specialist agents simultaneously** — in ONE message, make the `Task` calls using these subagent types (do NOT read agent files by path; the plugin registers them):
    - `magician:reviewer` — correctness and edge cases
-   - `magician:sentinel` — security vulnerabilities
+   - `magician:sentinel` — security vulnerabilities (OWASP, secrets, injection into app code)
    - `magician:simplifier` — over-engineering
+   - `magician:guardian` — **add this lens when the diff touches the agentic surface** (agents, hooks, tools, skills, prompts, or anything reading untrusted input): the AI-SDLC security beat classic review misses — lethal trifecta, prompt-injection, tool/permission least-privilege, untested guardrails.
 
    **Context contract (no context loss, no re-dump):** each `Task` prompt MUST be self-contained — the agents see none of this conversation. Pass the **patch artifact PATH** from step 1 (each agent `Read`s it) plus the changed-file list, the goal ("review this change for <lens>"), the conventions/lore in play, and the output format below. Do **not** paste the full diff into each prompt — that copies a large payload into the parent's context N times and bloats every agent prompt; pass the path once. See [lore/subagent-context.md](../../lore/subagent-context.md). If an agent returns `NEEDS_CONTEXT`, add the missing input and re-dispatch.
 
@@ -63,6 +64,8 @@ Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches 
 
 Triage order: **Critical** (fix immediately), **High** (fix before PR), **Medium** (fix if straightforward, else document), **Low** (note in PR description).
 
+For a batch of independent Critical/High fixes you can parallelize, dispatch `magician:fixer` (bounded auto-fix — edits **source only**, never tests/evals/gates, and escalates on ambiguity) with a self-contained prompt per fix. Then re-review each patch with the relevant lens — **reviewer ≠ author**: never let a fixer's own patch ship unreviewed.
+
 Per finding (Critical and High first):
 1. Understand the root cause, not just the symptom.
 2. Fix it (direct edit, or `/ward task <N>` if it maps to a plan task — write a failing test first for behavioral fixes).
@@ -76,6 +79,10 @@ Per finding (Critical and High first):
 - **Fix it anyway** — remediate as normal.
 
 **End your turn at the tool call. Wait for explicit confirmation** before declining any Critical/High.
+
+## Final gate (gatekeeper)
+
+Before declaring the change shippable, dispatch `magician:gatekeeper` to grade the **end state**: GO / NO-GO / UNVERIFIED. It runs the repo's gates and grades them against the change's goal — a check it could not run is **UNVERIFIED**, never GO. Resolve any NO-GO before handing off to `/certify` or `/seal`.
 
 ## Summary
 

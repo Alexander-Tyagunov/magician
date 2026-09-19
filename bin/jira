@@ -101,16 +101,18 @@ def api(method, path, body=None, timeout=None):
         shutil.rmtree(CACHE_DIR, ignore_errors=True)  # a write invalidates cached reads
     # Shell out to curl so the system/corporate CA trust (keychain) is used — Python's
     # urllib doesn't trust corporate roots that curl does (do NOT hand-roll urllib).
+    headers = "Authorization: " + _auth() + "\nAccept: application/json\n"
     cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
-           "-X", method, "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
+           "-X", method, "-H", "@-"]
     if body is not None:
-        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+        headers += "Content-Type: application/json\n"
+        cmd += ["--data-binary", json.dumps(body)]
     cmd += ["-w", "\n%{http_code}", f"{BASE}/{path}"]
     attempt = 0
     while True:
         _pace()
         try:
-            p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+            p = subprocess.run(cmd, input=headers, capture_output=True, text=True, timeout=timeout + 5)
         except subprocess.TimeoutExpired:
             die(f"request timed out after {timeout}s — check VPN / base URL (raise JIRA_TIMEOUT if needed).")
         if p.returncode != 0:

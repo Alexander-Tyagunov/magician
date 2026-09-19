@@ -38,17 +38,26 @@ CRIT = r"/etc/(?:passwd|shadow|sudoers|fstab|hosts|group|master\.passwd)"
 _WRAP = re.compile(
     r"^(?:sudo|doas|command|builtin|exec|nohup|setsid|time|"
     r"env(?:\s+[A-Za-z_][A-Za-z0-9_]*=\S*)*|"
-    r"timeout(?:\s+-?\S+)*|nice(?:\s+-n?\s*-?\d+)?|ionice(?:\s+-\S+)*|"
-    r"stdbuf(?:\s+-\S+)*|xargs(?:\s+-\S+)*|chrt(?:\s+-\S+)*|taskset(?:\s+\S+)*)\s+", re.I)
+    r"timeout(?:\s+-\S+(?:\s+\S+)?)*(?:\s+\d+(?:\.\d+)?[smhd]?)?|"
+    r"nice(?:\s+-n?\s*-?\d+)?|ionice(?:\s+-\S+)*|"
+    r"stdbuf(?:\s+-\S+)*|xargs(?:\s+-\S+)*|chrt(?:\s+-\S+)*|"
+    r"taskset(?:\s+-\S+)*(?:\s+[0-9a-fx,]+)?)\s+", re.I)
+
+# A leading absolute/relative directory path on the command binary: `/bin/rm`, `/usr/bin/rm`,
+# `./tools/rm`. Peeled so `/usr/bin/rm -rf /` matches the same rules as a bare `rm -rf /`. Anchored
+# at the string start and requires a following command word, so it never touches a path ARGUMENT
+# (e.g. the `/usr/local` in `rm -rf /usr/local`, which must stay visible to the target check).
+_BIN_PATH = re.compile(r"^/?(?:[\w.@+-]+/)+(?=[\w.@+-])")
 
 
 def _strip_wrappers(s):
-    """Peel leading process/exec wrappers so `sudo rm -rf /` matches like `rm -rf /`."""
+    """Peel leading process/exec wrappers so `sudo rm -rf /` matches like `rm -rf /`, then strip a
+    leading binary path so `/usr/bin/rm -rf /` matches like `rm -rf /`."""
     prev = None
     while prev != s:
         prev = s
         s = _WRAP.sub("", s, count=1)
-    return s
+    return _BIN_PATH.sub("", s, count=1)
 
 
 def _shorts(seg):
@@ -157,8 +166,11 @@ def check_bash(cmd, _depth=0):
                     return "recursive chmod/chown on a system/home root: `%s`" % seg[:100]
 
     # ---- G. opaque download-and-execute ----
+    # Blank out the benign `| python[3] -m json.tool` pretty-printer pipe first so it isn't read as
+    # piping a download into an interpreter (matches the Codex guard's explicit json.tool exemption).
+    whole_pts = re.sub(r"\|\s*(?:sudo\s+)?python3?\s+-m\s+json\.tool\b", " ", whole_nq)
     if re.search(r"\b(?:curl|wget|fetch)\b[^|]*\|\s*(?:sudo\s+|doas\s+)?"
-                 r"(?:sh|bash|zsh|ksh|dash|fish|python3?|perl|ruby|node)\b", whole_nq):
+                 r"(?:sh|bash|zsh|ksh|dash|fish|python3?|perl|ruby|node)\b", whole_pts):
         return "piping a network download straight into a shell/interpreter (curl|bash)"
     if re.search(r"\bbase64\b[^|]*(?:-d|--decode)\b[^|]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b", whole_nq) or \
             re.search(r"\|\s*base64\s+(?:-d|--decode)\s*\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b", whole_nq):
