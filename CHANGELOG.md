@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.0] — 2026-09-19
+
+**An AI-SDLC passing gate now backs the plugin, and the agents and skills were audited against it.** Everything the plugin promised about quality — least-privilege agents, real approval gates, no stale prose, reviewer≠author — is now enforced by a dependency-free test gate and a multi-lens review team, not just asserted in prose. The security-review agents were tightened to match the plugin's own doctrine, and a security fix removes auth tokens from the Jira/Confluence CLI argv.
+
+### Added
+- **A single-entrypoint passing gate — `scripts/gate.sh`.** Runs the offline tiers always (Claude self-tests + Codex packaging + `claude plugin validate`) and an opt-in behavioral eval tier (`--evals`). Wired into CI as `.github/workflows/gate.yml`.
+- **`tests/claude/` — a dependency-free self-test suite** (stdlib `unittest`, no third-party deps) covering agent/skill/hook shape, the destructive-command guard, the compaction resume capsule, and guardrail invariants. Includes `test_skill_quality.py`: skill bodies ≤500 lines, descriptions ≤1536 chars, no time-sensitive prose, agents never request a subagent-blocked tool, valid agent name/flags.
+- **`evals/` — a behavioral eval suite** (`claude plugin eval`) asserting security-scan, code-review, and destructive-command behavior end to end.
+- **Three AI-SDLC gate agents.** `gatekeeper` (grades the end state GO / NO-GO / UNVERIFIED, never passing an unrun check), `guardian` (the agentic-security lens: lethal trifecta, prompt-injection, tool/permission least-privilege, untested guardrails), and `fixer` (bounded auto-fix that edits source only — never tests, evals, or gates — and escalates on ambiguity).
+- **`/scrutinize` now dispatches the full gate team** — `guardian` as a security lens when a change touches the agentic surface, `fixer` for bounded remediation (re-reviewed, never author-approved), and `gatekeeper` as the final GO/NO-GO gate before handoff.
+
+### Fixed
+- **Skill authoring-standard pass across eight skills.** Removed time-sensitive prose (`statusline`, `sentinel`, `confluence`), upgraded prose "wait for approval" steps to real `AskUserQuestion` gates (`manifest`, `chronicle`), dropped an unused tool grant (`statusline`), trimmed an autonomy claim to match the actual toolset (`blueprint`), and resolved a self-contradictory instruction (`almanac`).
+
+### Security
+- **The Jira and Confluence CLIs no longer pass the auth token on the command line.** `bin/jira` and `bin/confluence` sent `Authorization: <token>` in the `curl` argv (CWE-214 — visible to any local `ps`); they now feed headers over stdin. The Codex build produced the safe form already; the build script keeps a regression guard that fails if argv-auth ever returns.
+- **Least-privilege tightening.** The `reviewer` and `guardian` agents are pure read/grep/glob analysis lenses and no longer hold `Bash` (matching `simplifier`); the plugin's own guardian doctrine flags a review agent that can run a shell freely. `verifier`, `sentinel`, and `gatekeeper` keep `Bash` — they must run arbitrary test/audit/gate commands — backed by the `destructive_guard` hook.
+- **`destructive_guard.py` hardening.** `/bin/rm` now matches bare `rm`, the `timeout` wrapper is parsed correctly, and a `json.tool` pipe is exempted.
+
+### Isolation
+- The Codex package advances to `4.13.0` through the shared release metadata; skill edits are mirrored into `source-skills/` by the build and verified in sync. Agents, tests, and evals are Claude-side and not part of the Codex package.
+
 ## [4.12.0] — 2026-08-31
 
 **Jira & Confluence reads now fetch the whole record — no more silently truncated tickets and pages.** Both bundled CLIs capped content client-side (a ~4 KB page-body limit, a 6 KB raw limit) and `jira get` never fetched the description at all, so long pages came back as their first half and tickets came back with no body — the reader then summarized or acted on incomplete information. The fixes are Claude/Codex identical and touch read paths only; auth, throttling/backoff, caching, and pacing are unchanged.

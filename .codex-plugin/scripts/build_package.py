@@ -36,35 +36,25 @@ def _copy_tree(source: Path, destination: Path) -> None:
 
 
 def _rewrite_codex_cli(path: Path) -> None:
-    """Apply Codex-only state and secret-handling defaults to a copied CLI."""
+    """Apply Codex-only state defaults to a copied CLI.
+
+    Secret handling is no longer rewritten here: the Claude source CLIs already pass credentials to
+    curl via stdin (`-H @-` + `input=headers`), never in argv, so the copied Codex CLI inherits that
+    posture unchanged. This function now only redirects the state directory to the Codex home. The
+    stdin-secret invariant is enforced for both packages by the guardrail gates."""
     text = path.read_text()
-    text = text.replace(
+    updated = text.replace(
         'PLUGIN_DATA = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(os.path.expanduser("~"), ".local", "share", "magician")',
         'PLUGIN_DATA = (os.environ.get("MAGICIAN_HOME") or '
         '(os.path.join(os.environ["CODEX_HOME"], "magician") if os.environ.get("CODEX_HOME") '
         'else os.path.join(os.path.expanduser("~"), ".codex", "magician")))',
     )
-    old = '''cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
-           "-X", method, "-H", "Authorization: " + _auth(), "-H", "Accept: application/json"]
-    if body is not None:
-        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]'''
-    new = '''headers = "Authorization: " + _auth() + "\\nAccept: application/json\\n"
-    cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
-           "-X", method, "-H", "@-"]
-    if body is not None:
-        headers += "Content-Type: application/json\\n"
-        cmd += ["--data-binary", json.dumps(body)]'''
-    if old not in text:
-        raise RuntimeError(f"expected curl command template not found in {path}")
-    text = text.replace(old, new)
-    old_run = "subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)"
-    if old_run not in text:
-        raise RuntimeError(f"expected subprocess call not found in {path}")
-    text = text.replace(
-        old_run,
-        "subprocess.run(cmd, input=headers, capture_output=True, text=True, timeout=timeout + 5)",
-    )
-    path.write_text(text)
+    if updated == text:
+        raise RuntimeError(f"expected PLUGIN_DATA state template not found in {path}")
+    # Guard against a regression that reintroduces argv-borne secrets into a copied CLI.
+    if '"-H", "Authorization: " + _auth()' in updated:
+        raise RuntimeError(f"{path} passes the auth token in curl argv — must use stdin (-H @-)")
+    path.write_text(updated)
 
 
 def _rewrite_codex_state_defaults(path: Path) -> None:

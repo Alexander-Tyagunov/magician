@@ -37,7 +37,7 @@ Run **`confluence whoami`**. If it prints your name → connected. If config is 
 
 The page id comes from the URL (`…/pages/<id>/…` or `viewpage.action?pageId=<id>`). Request bodies for create/update and CQL examples are in [reference.md](reference.md).
 
-**Reads fetch the whole record — no silent truncation.** `get … body`, `comments`, and `raw` return the full page/thread/resource (a legacy ~4 KB body / 6 KB raw cap is gone), so you never work off half an article. `body` is block-aware readable text (headings, list items, table cells, decoded entities preserved); use `storage` when you need the exact XHTML to edit or to inspect macros. Set `CONFLUENCE_BODY_MAX` / `CONFLUENCE_RAW_MAX` to a char count only if you deliberately want to shrink output.
+**Reads fetch the whole record — no silent truncation.** `get … body`, `comments`, and `raw` return the full page/thread/resource, so you never work off half an article. `body` is block-aware readable text (headings, list items, table cells, decoded entities preserved); use `storage` when you need the exact XHTML to edit or to inspect macros. Set `CONFLUENCE_BODY_MAX` / `CONFLUENCE_RAW_MAX` to a char count only if you deliberately want to shrink output.
 
 ## Writes — confirm every one
 

@@ -1,7 +1,7 @@
 ---
 name: chronicle
 description: Memory & context steward — view session-learning history, manage the global reference store (repos, projects, ideas), AND manage live context (size status, post-compaction resume capsule, project learnings, promotion). Use to review past sessions, remember/recall/forget a reference, check context size, resume after compaction, or capture/consolidate learnings.
-allowed-tools: Bash(ls:*), Bash(python3:*), Bash(cat:*), Bash(ctx:*), Bash(stat:*), Read, Write, Edit
+allowed-tools: Bash(ls:*), Bash(python3:*), Bash(cat:*), Bash(ctx:*), Bash(stat:*), Read, Write, Edit, AskUserQuestion
 argument-hint: [status | resume | learn <fact> [--global] | consolidate | last N | remember <fact> | references | forget <text> | clear N]
 ---
 
@@ -47,7 +47,7 @@ The reference store holds things you want every future session to know: reposito
 
 It is deliberately an **explicit, legible artifact** — a plain markdown file the user can read and edit directly (an "idea file" / personal knowledge base), not opaque implicit memory. Keep entries terse and durable, and prune stale ones with `forget`: an overgrown store distracts the model more than it helps.
 
-**Always confirm before writing to or deleting from the global store** — it persists across all projects. Saving a reference is permissioned: state exactly what you'll save and wait for a yes.
+**Always confirm before writing to or deleting from the global store** — it persists across all projects. State exactly what you'll save or remove, then gate with **AskUserQuestion** (Approve / Cancel); end your turn at the call and act only on Approve.
 
 ```bash
 # View the store
@@ -81,8 +81,8 @@ To **forget**, show the matching lines, confirm, then remove them with an Edit.
 
 1. Parse the request from `$ARGUMENTS` (or ask): `status`, `resume`, `learn <fact> [--global]`, `consolidate`, `last N`, `branch X`, `since DATE`, `clear N`, `remember <fact>`, `references`, `forget <text>`. **If you must ask, end your turn and wait.**
 2. For reads (history view, `references`, `status`, `resume`): run the command and present results.
-3. For `remember` / `learn --global`: classify the fact, state what you'll save, **wait for confirmation**, then append (global store persists across all projects). Project-scoped `learn` (no `--global`) needs no confirmation — it's local and cheap.
-4. For `forget` / `clear` / `consolidate` pruning: show what will be removed and **wait for an explicit yes** before deleting (this is permanent).
+3. For `remember` / `learn --global`: classify the fact, state what you'll save, then gate with **AskUserQuestion** (Save / Cancel) — end your turn at the call — and append only on Save (global store persists across all projects). Project-scoped `learn` (no `--global`) needs no confirmation — it's local and cheap.
+4. For `forget` / `clear` / `consolidate` pruning: show what will be removed, then gate with **AskUserQuestion** (Delete / Cancel) before removing anything (this is permanent); end your turn at the call and delete only on Delete.
 
 ## Clearing old chronicles (uses the N you were given)
 

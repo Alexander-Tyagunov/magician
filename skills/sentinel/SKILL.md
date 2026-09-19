@@ -47,13 +47,13 @@ Run for detected stack:
 - Java: OWASP dependency-check (if configured)
 
 ### 2.5 Dependency Supply-Chain Check
-Known-CVE audits miss supply-chain attacks — the vector behind recent real incidents (litellm/PyPI, npm axios) where a plain install exfiltrates SSH keys, cloud creds, and env secrets. Check the install-time surface:
+Known-CVE audits miss supply-chain attacks — the vector behind real-world incidents (litellm/PyPI, npm axios) where a plain install exfiltrates SSH keys, cloud creds, and env secrets. Check the install-time surface:
 - **Install-time scripts** — flag lifecycle hooks that run arbitrary code on install:
   ```bash
   grep -rEn '"(preinstall|install|postinstall)"\s*:' package.json 2>/dev/null
   ```
   (Python equivalent: custom `setup.py`/`pyproject.toml` build hooks.)
-- **Recently added / unfamiliar deps** — review new lockfile entries and dependencies that are typosquats of popular packages.
+- **Newly added / unfamiliar deps** — review new lockfile entries and dependencies that are typosquats of popular packages.
 - **Exfiltration shape** — a dependency that reads credentials (`~/.ssh`, `~/.aws`, env vars, wallets) *and* reaches the network is high-risk; escalate as Critical.
 - Prefer lockfile integrity in CI (`npm ci`, not `npm install`) and pinned versions.
 

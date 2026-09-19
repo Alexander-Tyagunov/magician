@@ -12,5 +12,10 @@ Thumbs.db
 # Test artifacts
 /tmp/magician-test/
 
+# Behavioral eval run output (scripts/gate.sh --evals, `claude plugin eval`)
+/.gate-evals*.json
+/.gate-evals*.log
+evals/results/
+
 __pycache__/
 *.pyc

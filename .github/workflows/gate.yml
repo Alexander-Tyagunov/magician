@@ -1,0 +1,44 @@
+name: magician-gate
+
+# The plugin's own quality gate. The offline tiers (Claude + Codex gates) run on every push and PR —
+# they are dependency-free (stdlib unittest only), deterministic, and need no secrets or network.
+# The behavioral eval tier (`claude plugin eval`) spends API budget, so it runs only on demand.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_evals:
+        description: "Also run the behavioral eval suite (spends API budget)"
+        type: boolean
+        default: false
+
+jobs:
+  offline-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run offline gates (Claude + Codex)
+        run: bash scripts/gate.sh
+
+  behavioral-evals:
+    # Opt-in: manual dispatch with run_evals=true. Needs ANTHROPIC_API_KEY in repo secrets.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_evals }}
+    runs-on: ubuntu-latest
+    needs: offline-gates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Run behavioral eval suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bash scripts/gate.sh --evals --threshold 0.8

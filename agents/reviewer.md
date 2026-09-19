@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Correctness reviewer for a code change — finds bugs, logic errors, and edge cases. Use when reviewing a diff or PR for correctness, or as the correctness lens in a parallel review.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob
 model: opus
 color: orange
 ---
