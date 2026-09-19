@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-4.13.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
+[![Version](https://img.shields.io/badge/version-4.13.1-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
 [![Claude 5](https://img.shields.io/badge/Claude_5-Opus_·_Sonnet_·_Fable-f59e0b?style=for-the-badge&labelColor=0b0b14)](lore/models.md)
 [![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
@@ -433,13 +433,15 @@ This is a **denylist, not a sandbox** ([CWE-78](https://cwe.mitre.org/data/defin
 <h4>Claude Code</h4>
 <pre><code>/plugin marketplace add https://github.com/Alexander-Tyagunov/magician
 /plugin install magician@magician</code></pre>
-Restart if prompted, then initialize your workspace with <code>/almanac</code>.
+Restart if prompted, then initialize your workspace with <code>/almanac</code>.<br>
+Updates install automatically; force one with <code>/plugin marketplace update</code> then <code>/plugin update magician@magician</code>.
 </td>
 <td width="50%" valign="top">
 <h4>Codex</h4>
 <pre><code>codex plugin marketplace add Alexander-Tyagunov/magician
 codex plugin add magician@magician</code></pre>
 Restart or open a new task, then: <i>“Use $almanac to set up Magician in this workspace.”</i><br>
+<b>Update later</b> with <code>codex plugin marketplace upgrade</code> (Codex has no auto-update), then re-run <code>codex plugin add magician@magician</code> if prompted.<br>
 Codex also ships <code>$project-context</code>, a read-only stack detector that progressively loads
 only relevant lore cores and task-matched deep dives.
 </td>
