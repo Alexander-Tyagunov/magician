@@ -1,0 +1,6 @@
+interface:
+  display_name: "Transmute"
+  short_description: "Comprehend and port a feature with parity gates"
+  default_prompt: "Use $transmute to comprehend and port this feature while preserving its parity and safety gates."
+policy:
+  allow_implicit_invocation: false

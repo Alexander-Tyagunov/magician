@@ -1,0 +1,109 @@
+---
+name: blueprint
+description: Converts an approved spec into a TDD task plan with a parallelism map (PARALLEL vs SEQUENTIAL), saved to .workspace/shared/plans/. Use after a spec is approved, before implementation.
+allowed-tools: Read, Glob, AskUserQuestion, Edit(./.workspace/shared/plans/**)
+argument-hint: "[spec-file-path]"
+---
+
+# /blueprint — Task Planning
+
+Convert an approved spec into an implementation task plan with parallelism analysis.
+
+## Inputs Required
+
+If the spec file path is not clear from context, ask: "Which spec should I plan from? (I'll use the most recent file in `.workspace/shared/specs/` if you don't specify.)"
+
+**End your turn. Wait for their reply (or proceed with most recent if context is unambiguous).**
+
+## Process
+
+1. **Read the spec** — understand all requirements, components, and constraints. Also read any related research in `.workspace/shared/research/` (from `/magic`) to ground approach and library choices; if a key approach is unresearched, suggest running `/magic` first.
+2. **Map file structure** — list every file to create/modify with its responsibility
+3. **Decompose into tasks** — each task: one component, 2–5 minutes of work, starts with a failing test
+4. **Build parallelism map** — mark each task: PARALLEL (no shared files, no dependency) or SEQUENTIAL (depends on task N)
+5. **Write the plan** — save to `.workspace/shared/plans/YYYY-MM-DD-<feature>.md`
+6. **Present summary & gate (use the AskUserQuestion tool — not plain prose)** — show the task list with parallelism annotations, then present the approval gate via **AskUserQuestion** so the user gets structured options instead of a prose question. Frame it "Blueprint ready — lock it in?" with options:
+   - **Approve → /orchestrate** — dispatch parallel agents (branch + commits happen there; push/PR still gate)
+   - **Approve → /ward** — execute tasks one at a time
+   - **Revise** — split / merge / reorder tasks (they describe the change)
+   - **Adjust scope** — add or drop tasks
+
+   **End your turn at the AskUserQuestion call.** Act on the selection; treat any free-form "looks good / approved / yes" as Approve. This is a genuine decision gate — always the structured tool, never a bare sentence.
+
+## Autonomy — approve the plan, then run
+
+Steps 1–5 run as **one autonomous pass** — read the spec + `.workspace/shared/research/`, map files, decompose, build the parallelism map, and write the plan to `.workspace/shared/plans/`. Reading and searching those inputs, and writing that plan file (the one path this skill pre-approves), need no confirmation question. The **only** gate is step 6: presenting the plan for approval. The real downstream side effects — implementation file edits, `git add`/`commit`/`push`, PR create/merge — are gated later by `/orchestrate` and `/ward`, not here. See [lore/autonomy.md](../../lore/autonomy.md).
+
+## Global Constraints — inherited by every task
+
+Open the plan with a **Global Constraints** section in the header, before Task 1. Copy each project-wide requirement from the spec **verbatim — one line each**: version floors, dependency limits, naming/copy rules, platform requirements — anything that binds the whole feature rather than a single task. Lift the spec's words; don't paraphrase or re-derive.
+
+Every task **implicitly inherits** this section — say so in the plan, so each dispatched subagent carries the constraints without re-deriving them from the spec:
+
+```
+## Global Constraints
+_Every task inherits these — do not restate per task._
+- <requirement copied verbatim from the spec>
+- <requirement copied verbatim from the spec>
+```
+
+## Task Format
+
+Each task in the plan:
+```
+### Task N: <Component Name>
+Parallel: YES | NO (depends on Task M)
+
+**Files:**
+- Create: `exact/path/file.ts`
+- Modify: `exact/path/existing.ts`
+- Test: `tests/exact/path/test.ts`
+
+- [ ] Write failing test: <actual test code>
+- [ ] Run test: verify FAIL
+- [ ] Implement: <actual implementation code>
+- [ ] Run test: verify PASS
+- [ ] Commit: `git commit -m "feat: <description>"`
+```
+
+## Task Right-Sizing
+
+A task is the **smallest unit that carries its own test cycle and is worth a fresh reviewer's gate** — no finer. Size each one by that rule:
+
+- **Fold in** setup, scaffolding, and docs — attach them to the task whose deliverable needs them instead of spinning them into standalone tasks.
+- **Split** only where a reviewer could accept one task while rejecting its neighbor. If two pieces always pass or fail together, they are one task.
+- Every task ends with an **independently testable deliverable** — the RED→GREEN cycle in the Task Format above is the proof it stands on its own.
+
+## Parallelism Rules
+
+A task is PARALLEL-safe if:
+- It does not write to any file another parallel task reads or writes
+- It does not depend on types/functions defined in another parallel task
+- Integration tasks (wiring components) are always SEQUENTIAL
+
+## After Approval
+
+Say: "Blueprint ready. Run /orchestrate to dispatch parallel agents, or /ward task <N> to execute tasks one by one."
+
+> Model/effort: for large multi-component specs, prefer the latest/code-optimal model and raise /effort to keep the decomposition and parallelism map sharp. See [lore/models.md](../../lore/models.md).
+
+## Obstacles
+
+If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
+
+```
+STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
+OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
+BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
+SEVERITY: Critical | High | Medium | Low
+WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
+RECURRENCE: First-seen | Recurring | Systemic
+SCOPE: <this task only | likely hits sibling/downstream work too>
+NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
+```
+
+When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+
+## Completion Signal
+
+"Blueprint complete. <N> tasks planned (<P> parallel, <S> sequential), saved to .workspace/shared/plans/. Run /orchestrate to dispatch, or /ward task <N> to execute one by one."

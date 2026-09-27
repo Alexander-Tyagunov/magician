@@ -1,0 +1,6 @@
+interface:
+  display_name: "Almanac"
+  short_description: "Initialize Magician's Codex workspace conventions"
+  default_prompt: "Use $almanac to initialize this project for Codex without changing Claude configuration."
+policy:
+  allow_implicit_invocation: false

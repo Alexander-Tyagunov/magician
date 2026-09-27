@@ -1,0 +1,16 @@
+name: codex-gate
+on:
+  push: { branches: [codex-plugin] }
+  pull_request: { branches: [codex-plugin] }
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: main, path: .main, fetch-depth: 0 }   # full history so SOURCE_REF (tag/sha) resolves
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: bash .codex-plugin/scripts/gate.sh "$GITHUB_WORKSPACE/.main"

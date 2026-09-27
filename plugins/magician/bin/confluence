@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""magician confluence helper — Confluence REST over HTTPS, one command per call.
+
+Connection settings (base URL — Cloud includes /wiki — token, and the account email for Cloud)
+are resolved in the connection-config block below. Email set → Cloud (Basic); else
+Server/Data-Center (Bearer). Requests go through curl (system trust store); the auth header is
+passed on stdin, never in the process arguments, and redirects are not followed. `search`/`cql`
+take `--max N` (default 25) and `children` takes `--max N` (default 50).
+"""
+import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil, html
+
+# ---- magician:connection-config begin (Codex build: environment variables only) ----
+# Codex build: connection settings come straight from the environment Codex runs in —
+# CONFLUENCE_BASE_URL, a token (CONFLUENCE_API_TOKEN / CONFLUENCE_PAT / CONFLUENCE_PROD_PAT) and, for Cloud, CONFLUENCE_EMAIL.
+# Codex has no plugin-settings form, so there is no settings bridge to wait for.
+BASE = (os.environ.get("CONFLUENCE_BASE_URL") or "").strip().rstrip("/")
+TOKEN = ((os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("CONFLUENCE_PAT") or os.environ.get("CONFLUENCE_PROD_PAT")) or "").strip()
+EMAIL = (os.environ.get("CONFLUENCE_EMAIL") or "").strip()
+# Atlassian Cloud uses one API token per site for Jira and Confluence. Reuse the Jira token + email
+# only when Jira is Cloud (email set) AND both base URLs share scheme and host:port, so a token is
+# never sent to a different server.
+_jira_base = (os.environ.get("JIRA_BASE_URL") or "").strip()
+_jira_email = (os.environ.get("JIRA_EMAIL") or "").strip()
+if not TOKEN and BASE and _jira_base and _jira_email and \
+        urllib.parse.urlsplit(BASE.lower())[:2] == urllib.parse.urlsplit(_jira_base.lower())[:2]:
+    TOKEN = ((os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_PAT") or os.environ.get("JIRA_PROD_PAT")) or "").strip()
+    EMAIL = EMAIL or _jira_email
+SETUP_HINT = ("export CONFLUENCE_BASE_URL and CONFLUENCE_API_TOKEN (plus CONFLUENCE_EMAIL for Cloud) "
+              "in your shell profile or the shell that launches Codex, then restart Codex "
+              "from that shell; never paste the token into the conversation")
+BASE_URL_HINT = "the Confluence base URL (CONFLUENCE_BASE_URL)"
+# ---- magician:connection-config end ----
+
+# Resilience knobs (env-overridable) — mirrors bin/jira: throttle-aware retries, brief
+# GET cache, bulk-loop pacing, connect-timeout.
+TIMEOUT = int(os.environ.get("CONFLUENCE_TIMEOUT", "45"))
+RETRIES = int(os.environ.get("CONFLUENCE_RETRIES", "3"))
+CACHE_TTL = int(os.environ.get("CONFLUENCE_CACHE_TTL", "30"))
+MIN_INTERVAL = float(os.environ.get("CONFLUENCE_MIN_INTERVAL_MS", "120")) / 1000.0
+# Cache/pacing dir (Codex build): MAGICIAN_HOME, then $CODEX_HOME/magician, then ~/.codex/magician.
+PLUGIN_DATA = (os.environ.get("MAGICIAN_HOME") or (os.path.join(os.environ["CODEX_HOME"], "magician") if os.environ.get("CODEX_HOME") else os.path.join(os.path.expanduser("~"), ".codex", "magician")))
+CACHE_DIR = os.path.join(PLUGIN_DATA, "confluence-cache")
+PACE_FILE = os.path.join(PLUGIN_DATA, "confluence-last-call")
+
+
+def die(msg, code=1):
+    print(f"confluence: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _take_max(a, default):
+    """Split `--max N` / `--max=N` out of a command's arguments → (remaining args, N)."""
+    rest, n, i = [], default, 0
+    while i < len(a):
+        if a[i] == "--max":
+            if i + 1 >= len(a):
+                die("--max needs a number, e.g. --max 20")
+            n, i = a[i + 1], i + 2
+            continue
+        if a[i].startswith("--max="):
+            n, i = a[i][len("--max="):], i + 1
+            continue
+        rest.append(a[i])
+        i += 1
+    n = str(n).strip()
+    if not n.isdigit() or int(n) < 1:
+        die(f"--max needs a positive whole number, got {n!r}")
+    return rest, int(n)
+
+
+def _auth():
+    if EMAIL:
+        return "Basic " + base64.b64encode(f"{EMAIL}:{TOKEN}".encode()).decode()
+    return "Bearer " + TOKEN
+
+
+def _ckey(method, path):
+    return hashlib.sha1(f"{method} {BASE}/rest/api/{path}".encode()).hexdigest()[:20]
+
+
+def _cache_get(method, path):
+    if CACHE_TTL <= 0 or method != "GET":
+        return None
+    p = os.path.join(CACHE_DIR, _ckey(method, path) + ".json")
+    try:
+        if time.time() - os.path.getmtime(p) <= CACHE_TTL:
+            return json.load(open(p))
+    except Exception:
+        pass
+    return None
+
+
+def _cache_put(method, path, val):
+    if CACHE_TTL <= 0 or method != "GET":
+        return
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        json.dump(val, open(os.path.join(CACHE_DIR, _ckey(method, path) + ".json"), "w"))
+    except Exception:
+        pass
+
+
+def _pace():
+    if MIN_INTERVAL > 0:
+        try:
+            wait = MIN_INTERVAL - (time.time() - os.path.getmtime(PACE_FILE))
+            if wait > 0:
+                time.sleep(min(wait, 5))
+        except Exception:
+            pass
+    try:
+        os.makedirs(PLUGIN_DATA, exist_ok=True)
+        open(PACE_FILE, "w").write(".")
+    except Exception:
+        pass
+
+
+def api(method, path, body=None, timeout=None):
+    if not BASE or not TOKEN:
+        die(f"no Confluence {'base URL' if not BASE else 'API token'} configured: {SETUP_HINT}.")
+    if not BASE.lower().startswith("https://") and \
+            urllib.parse.urlsplit(BASE).hostname not in ("localhost", "127.0.0.1", "::1"):
+        die(f"{BASE_URL_HINT} must start with https:// so the token isn't sent in clear text.")
+    method = method.upper()
+    timeout = timeout or TIMEOUT
+    if method == "GET":
+        cached = _cache_get(method, path)
+        if cached is not None:
+            return cached
+    else:
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+    # Shell out to curl so the system trust store is used. The auth header goes on stdin (-H @-)
+    # so it never shows in the process list.
+    headers = "Authorization: " + _auth() + "\nAccept: application/json\n"
+    cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
+           "-X", method, "-H", "@-"]
+    if body is not None:
+        headers += "Content-Type: application/json\n"
+        cmd += ["--data-binary", json.dumps(body)]
+    cmd += ["-w", "\n%{http_code}", f"{BASE}/rest/api/{path}"]
+    attempt = 0
+    while True:
+        _pace()
+        try:
+            p = subprocess.run(cmd, input=headers, capture_output=True, text=True, timeout=timeout + 5)
+        except subprocess.TimeoutExpired:
+            die(f"request timed out after {timeout}s — check VPN / base URL (raise CONFLUENCE_TIMEOUT if needed).")
+        if p.returncode != 0:
+            die(f"connection failed — {p.stderr.strip()[:200]} (check {BASE_URL_HINT} and VPN).")
+        out = p.stdout
+        nl = out.rfind("\n")
+        code, payload = out[nl + 1:].strip(), out[:nl]
+        if not code.isdigit():
+            die(f"unexpected response: {out[:200]}")
+        code = int(code)
+        if code in (429, 503) and attempt < RETRIES:
+            time.sleep(min(2 ** attempt, 30))
+            attempt += 1
+            continue
+        if code == 429:
+            die("HTTP 429 — Confluence is rate-limiting and retries are exhausted. STOP: don't retry in a tight "
+                "loop. Wait ~60s, shrink the batch, pace requests (CONFLUENCE_MIN_INTERVAL_MS=300+). "
+                f"Body: {payload[:160]}")
+        if 300 <= code < 400:
+            die(f"HTTP {code} redirect on {method} {path} — redirects aren't followed; check {BASE_URL_HINT}.")
+        if code >= 400:
+            die(f"HTTP {code} on {method} {path} — {payload[:400]}")
+        val = json.loads(payload) if payload.strip() else {}
+        _cache_put(method, path, val)
+        return val
+
+
+def _weburl(d):
+    links = d.get("_links", {})
+    base = links.get("base") or BASE
+    return base + links.get("webui", "")
+
+
+# Block-level tags whose close should become a line break, so structure (headings,
+# paragraphs, list items, table rows) survives the tag strip instead of collapsing
+# into one blurred line. `limit=0` means NO truncation — return the whole body.
+_BLOCK_CLOSE = re.compile(r"</(p|div|h[1-6]|li|tr|table|thead|tbody|ul|ol|blockquote|pre|section)\s*>", re.I)
+_CELL_CLOSE = re.compile(r"</(td|th)\s*>", re.I)
+_LI_OPEN = re.compile(r"<li\b[^>]*>", re.I)
+_BR = re.compile(r"<br\s*/?>", re.I)
+
+
+def _text(body, limit=0):
+    """Confluence storage/rendered XHTML → readable text.
+
+    Block-aware (keeps line structure) and, by default, complete: the previous
+    600/4000-char cap silently dropped the back half of long pages. Pass limit>0
+    (e.g. CONFLUENCE_BODY_MAX) only to deliberately cap output.
+    """
+    s = body or ""
+    s = _BR.sub("\n", s)
+    s = _LI_OPEN.sub("\n- ", s)
+    s = _CELL_CLOSE.sub(" | ", s)
+    s = _BLOCK_CLOSE.sub("\n", s)
+    s = re.sub(r"<[^>]+>", "", s)             # drop remaining tags
+    s = html.unescape(s)                       # &amp; &lt; &#160; → real chars
+    s = re.sub(r"[ \t\xa0]+", " ", s)
+    s = "\n".join(line.strip() for line in s.split("\n"))
+    s = re.sub(r"\n{3,}", "\n\n", s).strip()
+    if limit and len(s) > limit:
+        return s[:limit] + f"\n… [truncated at {limit} chars — raise CONFLUENCE_BODY_MAX or use `confluence get <id> storage`]"
+    return s
+
+
+def c_whoami(a):
+    d = api("GET", "user/current")
+    print(f'{d.get("displayName")} ({d.get("username") or d.get("accountId","")})')
+
+
+def c_get(a):
+    if not a:
+        die("usage: confluence get <id> [body|storage]")
+    d = api("GET", f"content/{a[0]}?expand=space,version,body.storage")
+    print(f'{d.get("title")} | space: {(d.get("space") or {}).get("key")} | v{(d.get("version") or {}).get("number")}')
+    print(f'  {_weburl(d)}')
+    mode = a[1] if len(a) > 1 else ""
+    if mode in ("body", "storage", "raw"):
+        storage = ((d.get("body") or {}).get("storage") or {}).get("value", "")
+        print()
+        if mode == "body":
+            # Full readable text by default — no silent cap. CONFLUENCE_BODY_MAX>0 caps it.
+            print(_text(storage, int(os.environ.get("CONFLUENCE_BODY_MAX", "0") or "0")))
+        else:  # storage / raw → exact XHTML storage markup (for editing / macro inspection)
+            print(storage)
+
+
+def c_search(a):
+    a, limit = _take_max(a, os.environ.get("CONFLUENCE_MAX", "25"))
+    if not a:
+        die("usage: confluence search <CQL> [--max N]")
+    q = urllib.parse.urlencode({"cql": " ".join(a), "limit": limit, "expand": "space"})
+    d = api("GET", f"content/search?{q}")
+    res = d.get("results", [])
+    print(f"results: {len(res)}")
+    for x in res:
+        print(f'  {x.get("id","")}  [{(x.get("space") or {}).get("key","")}] {x.get("type","")} · {x.get("title","")}')
+
+
+def c_raw(a):
+    if len(a) < 2:
+        die("usage: confluence raw <METHOD> <path> [json-body]  (path is after rest/api/)")
+    body = json.loads(a[2]) if len(a) > 2 and a[2] else None
+    out = json.dumps(api(a[0].upper(), a[1], body), indent=2)
+    # No silent truncation — a raw fetch returns the whole resource. Set CONFLUENCE_RAW_MAX=<N>
+    # only to deliberately cap output; unset/0 means full output.
+    cap = int(os.environ.get("CONFLUENCE_RAW_MAX", "0") or "0")
+    print(out[:cap] if cap > 0 else out)
+
+
+def c_children(a):
+    a, limit = _take_max(a, os.environ.get("CONFLUENCE_MAX", "50"))
+    if not a:
+        die("usage: confluence children <id> [--max N]")
+    res = api("GET", f"content/{a[0]}/child/page?limit={limit}").get("results", [])
+    print(f"children: {len(res)}")
+    for x in res:
+        print(f'  {x.get("id")}  {x.get("title","")}')
+
+
+def c_comments(a):
+    # All comments on a page, full bodies (block-aware text), paginated — no silent cut.
+    if not a:
+        die("usage: confluence comments <id>")
+    cap = int(os.environ.get("CONFLUENCE_BODY_MAX", "0") or "0")
+    got, start, page_size = [], 0, 100
+    while True:
+        d = api("GET", f"content/{a[0]}/child/comment?expand=body.storage,version"
+                        f"&limit={page_size}&start={start}")
+        res = d.get("results", [])
+        got.extend(res)
+        start += len(res)
+        # _links.next is present while more pages remain (Cloud); fall back to size math.
+        if not res or not (d.get("_links") or {}).get("next"):
+            break
+    print(f"comments: {len(got)}")
+    for x in got:
+        who = ((x.get("version") or {}).get("by") or {}).get("displayName", "")
+        when = ((x.get("version") or {}).get("when") or "")[:16].replace("T", " ")
+        body = _text(((x.get("body") or {}).get("storage") or {}).get("value", ""), cap)
+        print(f'\n[{when}] {who}:')
+        print(body)
+
+
+CMDS = {"whoami": c_whoami, "get": c_get, "search": c_search, "cql": c_search,
+        "children": c_children, "comments": c_comments, "raw": c_raw}
+
+
+def main():
+    av = sys.argv[1:]
+    if not av or av[0] in ("help", "-h", "--help"):
+        print(__doc__)
+        print("commands: whoami | get <id> [body|storage] | search <CQL> [--max N] | children <id> [--max N] | "
+              "comments <id> | raw <METHOD> <path> [json-body]", file=sys.stderr)
+        return
+    fn = CMDS.get(av[0])
+    if not fn:
+        die(f"unknown command '{av[0]}' (try: confluence help)")
+    fn(av[1:])
+
+
+if __name__ == "__main__":
+    main()

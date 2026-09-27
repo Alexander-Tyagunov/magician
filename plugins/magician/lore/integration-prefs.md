@@ -1,0 +1,45 @@
+# Integration preferences — opt-out memory
+
+Some users don't use a given integration (Jira, Confluence, …) and don't want to be asked about it. Respect that: once a user says they don't have it, or declines setup with "don't ask again", **stop proactively suggesting it**. The same applies to the local **knowledge-graph** index (key `knowledge-graph`) — if a user declines building one with "don't ask again", stop nudging.
+
+## Store
+
+`integration-prefs.json` in magician's plugin data dir: `${CLAUDE_PLUGIN_DATA}` in hooks, exported to the
+Bash tool as `$MAGICIAN_DATA` at session start (`~/.local/share/magician` only when neither is set).
+
+```json
+{ "jira": "disabled", "confluence": "disabled", "knowledge-graph": "disabled" }
+```
+A key set to `"disabled"` = the user opted out. Absent key = ask normally. The Jira/Confluence
+resolution memory (which names map to which projects, boards and spaces) is separate from this registry
+and lives in the same folder: `${CLAUDE_PLUGIN_DATA}/jira-memory.md` and `${CLAUDE_PLUGIN_DATA}/confluence-memory.md`.
+Read it:
+```bash
+PREFS="${MAGICIAN_DATA:-${CLAUDE_PLUGIN_DATA:-$HOME/.local/share/magician}}/integration-prefs.json"
+state=$(jq -r '.jira // "ask"' "$PREFS" 2>/dev/null || echo ask)   # "disabled" | "ask"
+```
+Write it (merge, don't clobber other keys):
+```bash
+mkdir -p "$(dirname "$PREFS")"
+tmp=$(jq -c '. + {"jira":"disabled"}' "$PREFS" 2>/dev/null || echo '{"jira":"disabled"}'); printf '%s\n' "$tmp" > "$PREFS"
+```
+
+## Rules
+
+- **Record an opt-out** when the user says they don't use a service ("I don't have Jira", "we don't use Confluence", "skip the integration"), or declines setup with *don't ask again*: set that key to `"disabled"`. Say so briefly ("Noted — I won't bring up Jira again unless you ask.").
+- **Proactive suggestions** (from `/magic`, `/divine`, or any dependent skill): if the key is `"disabled"`, do **not** suggest setting it up or using it. Stay silent and use other sources.
+- **Direct requests override.** If the user directly invokes the skill or asks to use the service ("check jira", `/magician:jira`, "set up confluence"), honor it — that *is* them asking again. Proceed with setup/use and **clear** the `"disabled"` flag (`jq 'del(.jira)'`), since they now want it.
+- Opt-out is per service, and reversible at any time by the user asking for it.
+
+## Bundled lore (separate toggle)
+
+The plugin's bundled language & database **lore** (the concise stack cores injected at SessionStart) is
+ENABLED by default and is a baseline **below** the repo's own rules. It has its own switch, distinct from
+this integration registry — if a user says the lore is interfering with their project/local knowledge or
+"turn off the lore / stop injecting that", disable it:
+- **Global:** `magician-ui lore off` (writes `cli-ui.json` `"lore":"disabled"`; `magician-ui lore on` to restore, `magician-ui lore status` to check).
+- **Per-project:** create `.magician/lore.off` in the repo (that repo only).
+- **Env:** `MAGICIAN_LORE=0`.
+
+When off, SessionStart injects no lore and the status bar (if the user enabled it) shows `📚 lore:off`. Deep-dive files (`lore/deep/*.md`)
+remain readable on demand regardless. Re-enable the same way, inverted.

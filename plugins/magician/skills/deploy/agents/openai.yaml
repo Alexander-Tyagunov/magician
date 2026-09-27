@@ -1,0 +1,6 @@
+interface:
+  display_name: "Deploy"
+  short_description: "Plan and manage a CI/CD pipeline"
+  default_prompt: "Use $deploy to plan this CI/CD change, preserving all write and remote-action gates."
+policy:
+  allow_implicit_invocation: false

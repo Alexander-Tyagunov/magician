@@ -1,0 +1,359 @@
+#!/usr/bin/env python3
+"""magician ctx — context size readout and the per-project learnings store.
+
+Commands:
+  pct --session <id> | --transcript <path>
+                            Context occupancy of one session, from the latest assistant `usage`
+                            numbers (input + cache_read + cache_creation) in that session's
+                            transcript file: --session resolves exactly
+                            <config dir>/projects/<encoded cwd>/<id>.jsonl (no search, no other
+                            file is opened); --transcript names the file directly. Only usage and
+                            model fields are read, never message text, and nothing is stored.
+                            Fallback when no usage is found: file bytes / 4, tagged ~approx.
+  learn --from-git [--session ID | --since ISO]
+                            Adds decision-style commit subjects ("decided", "switched to", ...)
+                            since the session started to this project's learnings.
+  learn --list [--n N]      Shows the newest N project learnings.
+  learn --add "<fact>" [--global]
+                            Remembers a fact for this project, or (--global) in references.md.
+  consolidate               Shows recurring project learnings.
+
+Honest limits (see skills/chronicle/references/context-mgmt.md): there is no live token count
+through any API, so `pct` is one turn stale; a plugin cannot force, schedule or steer compaction.
+
+Data directory: $MAGICIAN_HOME, else $CODEX_HOME/magician, else ~/.codex/magician.
+Learnings live in <data>/projects/<first 12 hex of md5(cwd)>/learnings.jsonl (the same key the
+hooks use); the session start time comes from <data>/sessions/<session id>.start.
+Env: CTX_MAX (hard override of the context window), CLAUDE_CODE_DISABLE_1M_CONTEXT (holds
+native-1M models to 200K, matching Claude Code). Without an override the window comes from the
+transcript's model id — see _effective_max.
+"""
+import os, sys, json, time, hashlib, subprocess, re
+
+HOME = os.path.expanduser("~")
+PLUGIN_DATA = (os.environ.get("MAGICIAN_HOME") or (os.path.join(os.environ["CODEX_HOME"], "magician") if os.environ.get("CODEX_HOME") else os.path.join(HOME, ".codex", "magician")))
+_DECISION = re.compile(r"\b(decided|chose|chosen|prefer|switch(?:ed)? to|use[ds]? .* over|going with|standardiz)", re.I)
+_SID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+
+def die(m, code=1):
+    print(f"ctx: {m}", file=sys.stderr)
+    sys.exit(code)
+
+
+def argval(a, flag, default=None):
+    return a[a.index(flag) + 1] if (flag in a and a.index(flag) + 1 < len(a)) else default
+
+
+def project_hash():
+    # Same key as the hooks: first 12 hex of md5 of the physical cwd (`pwd -P`).
+    return hashlib.md5(os.getcwd().encode()).hexdigest()[:12]
+
+
+def proj_dir():
+    return os.path.join(PLUGIN_DATA, "projects", project_hash())
+
+
+def _ensure(d):
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+# ─────────────────────────── transcript usage (pct) ────────────────────────
+def _tail(path, nbytes=524288):
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        size = f.tell()
+        f.seek(max(0, size - nbytes))
+        return f.read().decode("utf-8", "replace"), size
+
+
+def _iter_rev(text):
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            yield json.loads(line)
+        except Exception:
+            continue
+
+
+def _msg(o):
+    return o.get("message") if isinstance(o.get("message"), dict) else o
+
+
+def _is_role(o, role):
+    m = _msg(o)
+    return o.get("type") == role or m.get("role") == role
+
+
+def last_tokens(path):
+    """Real current-context occupancy = latest assistant turn's input-side tokens."""
+    try:
+        text, size = _tail(path)
+    except Exception:
+        return None, None
+    for o in _iter_rev(text):
+        if not isinstance(o, dict):
+            continue
+        u = (_msg(o).get("usage") or o.get("usage") or {})
+        # Accept the latest assistant turn, OR any line carrying real usage — schema
+        # varies across host apps, so don't hard-require the role label.
+        if u and (_is_role(o, "assistant") or u.get("input_tokens")):
+            t = (u.get("input_tokens", 0) or 0) + (u.get("cache_read_input_tokens", 0) or 0) \
+                + (u.get("cache_creation_input_tokens", 0) or 0)
+            if t:
+                return t, False  # exact
+    return max(1, size // 4), True   # ~approx fallback by bytes
+
+
+def last_model(path):
+    """Model id of the latest assistant turn, e.g. 'claude-opus-5'. None when unknown.
+
+    Same tail scan as last_tokens (bounded, no extra I/O beyond one read)."""
+    try:
+        text, _ = _tail(path)
+    except Exception:
+        return None
+    for o in _iter_rev(text):
+        if not isinstance(o, dict):
+            continue
+        m = _msg(o).get("model") or o.get("model")
+        if isinstance(m, str) and m:
+            return m
+    return None
+
+
+# Models whose native context window is 1M. Matched as a substring of the transcript's model id, so
+# provider-prefixed ids (anthropic.claude-opus-5, claude-opus-5@2026…) resolve too. Everything else —
+# Haiku, the 4.5 generation, unknown ids — falls through to the 200K default.
+_WIN_1M = ("fable-5", "mythos-5", "mythos-preview", "opus-5", "sonnet-5",
+           "opus-4-8", "opus-4-7", "opus-4-6", "sonnet-4-6")
+
+
+def _window_for_model(model):
+    """Native context window for a model id, or None when the id is unknown/absent."""
+    if not model:
+        return None
+    m = model.lower()
+    if any(tag in m for tag in _WIN_1M):
+        return 1_000_000
+    # Known-200K families. Anything else stays None so the caller keeps its heuristic.
+    if "haiku" in m or "sonnet-4-5" in m or "opus-4-5" in m or "opus-4-1" in m:
+        return 200_000
+    return None
+
+
+def _effective_max(toks, model=None):
+    """Context window, most explicit signal first:
+
+      1. CTX_MAX — an operator override always wins.
+      2. CLAUDE_CODE_DISABLE_1M_CONTEXT — Claude Code holds every native-1M model to 200K via
+         auto-compaction, so the effective window really is 200K regardless of the model.
+      3. The transcript's model id — every current Claude 5 model is natively 1M, so guessing 200K
+         and waiting to be proven wrong misreports occupancy for most of a session.
+      4. Unknown model → the original heuristic: a 200K session would have compacted before
+         exceeding 200K, so observed tokens above that imply the extended window.
+    """
+    env = os.environ.get("CTX_MAX")
+    if env and env.isdigit():
+        return int(env)
+    if (os.environ.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") or "").strip().lower() in ("1", "true", "yes", "on"):
+        return 200_000
+    win = _window_for_model(model)
+    if win:
+        return win
+    return 1_000_000 if (toks and toks > 200_000) else 200_000
+
+
+# ─────────────────────────── git helpers ───────────────────────────────────
+def _git(args, timeout=8):
+    try:
+        p = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=timeout)
+        return p.stdout.strip() if p.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _read_start(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            s = f.readline().strip()
+    except Exception:
+        return ""
+    return s if _ISO.match(s) else ""
+
+
+def session_start(a=()):
+    """Start time of the session: --since ISO, else sessions/<--session ID>.start, else the
+    newest sessions/*.start in the data directory. Empty when none is known."""
+    since = argval(a, "--since")
+    if since and _ISO.match(since):
+        return since
+    d = os.path.join(PLUGIN_DATA, "sessions")
+    sid = argval(a, "--session")
+    if sid and _SID.match(sid):
+        return _read_start(os.path.join(d, sid + ".start"))
+    try:
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".start")]
+    except Exception:
+        return ""
+    if not files:
+        return ""
+    return _read_start(max(files, key=os.path.getmtime))
+
+
+def git_decisions(a=()):
+    s = session_start(a)
+    log = _git(["log", "--since", s, "--pretty=%s"]) if s else _git(["log", "-8", "--pretty=%s"])
+    return [l for l in log.splitlines() if l][:10]
+
+
+# ─────────────────────────── learnings store ───────────────────────────────
+def learn_path():
+    return os.path.join(proj_dir(), "learnings.jsonl")
+
+
+def list_learnings(n=3):
+    try:
+        with open(learn_path(), encoding="utf-8") as f:
+            lines = [json.loads(l) for l in f if l.strip()]
+    except Exception:
+        return []
+    return lines[-n:]
+
+
+def add_learning(fact, source="manual"):
+    fact = re.sub(r"\s+", " ", fact).strip()[:240]
+    if not fact:
+        return False
+    recent = {x.get("fact") for x in list_learnings(40)}
+    if fact in recent:
+        return False
+    _ensure(proj_dir())
+    with open(learn_path(), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"fact": fact, "source": source, "ts": int(time.time())},
+                           ensure_ascii=False, separators=(",", ":")) + "\n")
+    return True
+
+
+# ─────────────────────────── pct / learn / consolidate ─────────────────────
+def session_transcript(sid):
+    """Transcript path of session `sid` in the current directory, built the way Claude Code names
+    it (<config dir>/projects/<cwd with every non-alphanumeric character as '-'>/<sid>.jsonl).
+    Only this one path is computed; no directory is listed or searched."""
+    if not _SID.match(sid or ""):
+        die("--session takes a session id (letters, digits, '_' and '-')")
+    conf = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
+    name = os.environ.get("CLAUDE_CODE_PROJECT_DIR_NAME") if os.environ.get("CLAUDE_CONFIG_DIR") else None
+    if not name:
+        name = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(os.getcwd()))
+    return os.path.join(conf, "projects", name, sid + ".jsonl")
+
+
+def c_pct(a):
+    sid = argval(a, "--session")
+    tpath = argval(a, "--transcript") or (session_transcript(sid) if sid else None)
+    if not tpath:
+        die("usage: ctx pct --session <session id> | --transcript <path to the session transcript .jsonl>")
+    if not os.path.isfile(tpath):
+        die(f"transcript not found: {tpath}")
+    toks, approx = last_tokens(tpath)
+    if not toks:
+        die("could not read transcript usage")
+    model = last_model(tpath)
+    mx = _effective_max(toks, model)
+    pct = round(100.0 * toks / mx)
+    tag = f" [{model}]" if model else ""
+    print(f"context: {'~' if approx else ''}{pct}% ({toks:,} / {mx:,} tokens){tag}"
+          f"{' [approx]' if approx else ''}")
+
+
+def c_learn(a):
+    if "--from-git" in a:
+        added = 0
+        for subj in git_decisions(a):
+            if _DECISION.search(subj):
+                if add_learning(subj, "git"):
+                    added += 1
+        print(f"learnings: +{added} from commits")
+        return
+    if "--list" in a:
+        n = int(argval(a, "--n", "3"))
+        for x in list_learnings(n):
+            print(f"- {x.get('fact')}")
+        return
+    if "--add" in a:
+        fact = argval(a, "--add")
+        if not fact:
+            die("usage: ctx learn --add \"<fact>\" [--global]")
+        if "--global" in a:
+            _promote_global(fact)
+            print(f"remembered globally: {fact[:80]}")
+        else:
+            add_learning(fact, "manual")
+            print(f"remembered for this project: {fact[:80]}")
+        return
+    die("usage: ctx learn --from-git [--session ID | --since ISO] | --list [--n N] | --add \"<fact>\" [--global]")
+
+
+def _promote_global(fact):
+    path = os.path.join(PLUGIN_DATA, "references.md")
+    fact = re.sub(r"\s+", " ", fact).strip()[:240]
+    try:
+        text = open(path, encoding="utf-8").read() if os.path.exists(path) else "# Remembered references (global)\n"
+    except Exception:
+        text = "# Remembered references (global)\n"
+    if fact in text:
+        return
+    if "## Learnings" not in text:
+        text += "\n## Learnings\n"
+    lines = text.splitlines()
+    out = []
+    for ln in lines:
+        out.append(ln)
+        if ln.strip() == "## Learnings":
+            out.append(f"- {fact}")
+    _ensure(PLUGIN_DATA)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out) + "\n")
+
+
+def c_consolidate(a):
+    try:
+        with open(learn_path(), encoding="utf-8") as f:
+            items = [json.loads(l) for l in f if l.strip()]
+    except Exception:
+        items = []
+    if not items:
+        print("no project learnings yet")
+        return
+    counts = {}
+    for x in items:
+        key = re.sub(r"\W+", " ", (x.get("fact") or "").lower()).strip()
+        counts[key] = counts.get(key, 0) + 1
+    freq = sorted(counts.items(), key=lambda kv: -kv[1])
+    print(f"{len(items)} project learnings; top recurring:")
+    for key, c in freq[:8]:
+        print(f"  {c}x  {key[:90]}")
+    print("Promote high-frequency ones to global with: ctx learn --add \"<fact>\" --global (confirm first)")
+
+
+CMDS = {"pct": c_pct, "learn": c_learn, "consolidate": c_consolidate}
+
+
+def main():
+    av = sys.argv[1:]
+    if not av or av[0] in ("help", "-h", "--help"):
+        print(__doc__)
+        return
+    fn = CMDS.get(av[0])
+    if not fn:
+        die(f"unknown command '{av[0]}' (try: ctx help)")
+    fn(av[1:])
+
+
+if __name__ == "__main__":
+    main()

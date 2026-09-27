@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+# gate/CI scratch: a second checkout of main, and interrupted package builds
+/.main/
+/plugins/magician-codex-package-*/
+# local editor / tool state (mirrors main)
+.idea/
+.vscode/
+.workspace/local/
+.magician/
+Thumbs.db
