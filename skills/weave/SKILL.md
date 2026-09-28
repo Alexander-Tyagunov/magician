@@ -8,6 +8,8 @@ argument-hint: "[goal · \"implement these N tickets\" · \"migrate X across rep
 
 # /weave — compose & run a delivery pipeline as one Workflow
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 When the task is "deliver many similar units" — N stories/tickets, a set of features/endpoints, a codebase-wide migration, a batch sweep — **don't hand-roll dozens of `Agent` calls.** Compose a single **native `Workflow`** that delivers all of them, and run it via the `Workflow` tool. The Workflow engine is the fast, deterministic fan-out (pipeline/parallel/orchestrator-worker) Claude reaches for anyway; this skill makes magician *own* it, with the guardrails baked in.
 
 For a **single** task use `/ward` (TDD) directly; for executing an existing **blueprint** wave-by-wave use `/orchestrate`. `/weave` is for *adaptive, multi-unit delivery* where you compose the pipeline to the work.

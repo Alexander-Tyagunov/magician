@@ -119,18 +119,37 @@ class StrictFrontmatterTests(unittest.TestCase):
         good = ["Read", "Glob", "AskUserQuestion", "mcp__context7__query-docs",
                 "Edit(./.workspace/shared/**)", "Edit(~/.claude/plugins/data/magician-*/x.json)",
                 "Bash(gh pr view *)", "Bash(git commit -m *)", "Bash(kg check)",
-                "Bash(${CLAUDE_SKILL_DIR}/scripts/vc-start.sh *)", "WebFetch(domain:example.com)"]
+                "Bash(${CLAUDE_SKILL_DIR}/scripts/vc-start.sh *)", "WebFetch(domain:example.com)",
+                "Bash(${CLAUDE_PLUGIN_ROOT}/tools/kg query *)"]
         bad = ["Bash", "Bash(*)", "Write", "Write(./docs/**)", "Monitor", "WebSearch", "WebFetch",
                "Edit", "Edit(./**)", "Edit(~/.claude/settings.json)", "Edit(${CLAUDE_PLUGIN_DATA}/x)",
                "Bash(python3 *)", "Bash(python3:*)", "Bash(node *)", "Bash(bash -c *)",
                "Bash(sh -c *)", f"Bash({launcher} tsc *)", "Bash(gh *)", "Bash(git:*)", "Bash(rm -rf *)",
-               "Bash(FOO=1 jira *)", "Bash(claude mcp add *)", "Bash(ls:*)", "mcp__context7__*"]
+               "Bash(FOO=1 jira *)", "Bash(claude mcp add *)", "Bash(ls:*)", "mcp__context7__*",
+               "Bash(${CLAUDE_PLUGIN_ROOT}/tools/jira *)", "Bash(${CLAUDE_PLUGIN_ROOT}/tools/jira:*)",
+               "Bash(${CLAUDE_PLUGIN_ROOT}/tools/magician-ui allow *)",
+               "Bash(${CLAUDE_PLUGIN_ROOT}/tools/kg && rm x)", "Bash(${CLAUDE_PLUGIN_ROOT}/tools/../../x *)",
+               "Bash(${CLAUDE_PLUGIN_ROOT}/tools/kg query $(x) *)"]
         for entry in good:
             with self.subTest(good=entry):
                 self.assertEqual([], S.tool_problems(entry))
         for entry in bad:
             with self.subTest(bad=entry):
                 self.assertTrue(S.tool_problems(entry), f"{entry} should be rejected")
+
+    def test_schema_rejects_what_the_claude_ai_upload_rejects(self) -> None:
+        """The claude.ai plugin upload failed on placeholders like <file> in a description."""
+        def problems(**fields) -> list[str]:
+            base = {"name": "x", "description": "Does x."}
+            base.update(fields)
+            return S.schema_problems(Path("x"), base, {k: "plain" for k in base}, "skill")
+        self.assertEqual([], problems(description='Use for "blast radius of this file", a -> b.'))
+        for desc in ("blast radius of <file>", "into <url/app>", "a <b>tag</b>", "x" * 1025):
+            with self.subTest(description=desc[:30]):
+                self.assertTrue(problems(description=desc))
+        for name in ("claude-helper", "my-anthropic-tool"):
+            with self.subTest(name=name):
+                self.assertTrue(problems(name=name))
 
     # ------------------------------------------------------------ optional full-YAML pass
     def test_full_yaml_parsers_agree(self) -> None:

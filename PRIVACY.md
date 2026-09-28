@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective date: 2026-09-27.
+Effective date: 2026-09-28.
 
 This policy covers magician, the Claude Code plugin in this repository, from version 4.15.0 onwards. It explains what magician reads and stores on your computer, what it sends and to whom, and how to remove it.
 
@@ -30,6 +30,7 @@ The plugin data folder is the folder Claude Code gives each plugin, usually `~/.
 | Same folder | Jira and Confluence memory: the names of people, projects, boards, epics, spaces, pages and repositories you work with, which the `/jira` and `/confluence` skills record without asking and announce with "Remembered" | Until you edit or delete `jira-memory.md` and `confluence-memory.md`, or uninstall |
 | Same folder | Your integration opt-outs, the workspace mode you chose in `/almanac`, and the pull requests `/divine` has reviewed with the commit it reviewed | Until you uninstall |
 | Same folder | A short-lived cache of Jira and Confluence responses, reused for 30 seconds and replaced by later requests, and the time of the last request, used for pacing | Until you uninstall |
+| Same folder | One launcher per bundled command in a `tools/` folder, in a subfolder per installed version: a two-line script that runs the command from the installed plugin, with no personal data | Rewritten each session; a version's subfolder is deleted once that version is no longer installed, the rest when you uninstall |
 | Same folder | Small marker files, such as a note that a one-time or weekly message was shown | Until you uninstall |
 | `~/.claude/magician/` | Your magician preferences (status line, voice and lore settings), a copy of the status line renderer, and the local code index for repositories you index, including a local socket file while the optional index helper runs | Until you delete them |
 | `~/.claude/magician/status/` | Per-session status line markers such as the active skill name, written only while the status line is on | 7 days |
@@ -61,7 +62,7 @@ Text that magician adds to your session, such as lore, project notes and scan re
 
 You enter Jira and Confluence settings in the plugin's options (`/plugin configure magician`). Claude Code stores the tokens in your system keychain, or in its credentials file where no keychain is available, and stores the other values in its settings.
 
-At the start of each session, a magician hook copies the non-empty Jira and Confluence values, tokens included, into the session environment file that Claude Code provides. The `jira` and `confluence` commands read them from there. The hook also writes, in every session, the path of magician's data folder and a variable showing that it ran; these hold no personal data. When the hook creates that file it is readable only by your user account, the hook never prints the values, and Claude Code manages the file's lifetime.
+At the start of each session, a magician hook copies the non-empty Jira and Confluence values, tokens included, into the session environment file that Claude Code provides. The `jira` and `confluence` commands read them from there. The hook also writes, in every session, the path of magician's data folder and a variable showing that it ran; these hold no personal data. A second hook adds one line to the same file that puts magician's launcher folder first on the PATH, which holds no personal data either. When the hook creates that file it is readable only by your user account, the hook never prints the values, and Claude Code manages the file's lifetime.
 
 While a session runs, any command Claude runs in it can read those values from its environment. Tokens are sent only to the site you configured, over HTTPS; the commands refuse plain HTTP URLs unless the site runs on your own computer, pass the token to curl without putting it on the command line, and don't follow redirects. magician never writes tokens to your repositories or to settings files.
 

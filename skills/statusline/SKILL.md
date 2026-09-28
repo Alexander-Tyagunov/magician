@@ -7,6 +7,8 @@ argument-hint: "[enable · disable · status · set <components> · cleanup]"
 
 # /statusline — Magician CLI status line
 
+> **Bundled command:** if `magician-ui` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/magician-ui`. If that is missing too (Claude chat ships no plugin tools), say the status line needs Claude Code.
+
 A native Claude Code **status line** rendered by magician. It runs **locally, consumes zero API tokens**, updates on each message (debounced), and helps you catch **context rot** before it bites. It's driven by the bundled **`magician-ui`** CLI, which edits `~/.claude/settings.json` **safely** (timestamped backup → validate → atomic write; it never leaves settings broken). Backups are mode 0600 and only the newest 3 are kept; an edit that changes nothing writes nothing. `enable`, `set` and `disable` touch only the `statusLine` key; `cleanup` removes only entries on the fixed list older magician versions used, and only when `cli-ui.json` records that they added them (a matching rule the user added too goes with them; see below). Enabling copies the renderer to `~/.claude/magician/statusline.py`, which the `statusLine` command points at.
 
 The status line is **off until the user asks for it**: magician never enables it on its own. Every command that changes settings (`enable`, `set`, `disable`, `cleanup`, `voice <level>`) goes through the normal permission prompt; only the read-only `status` commands are pre-approved.

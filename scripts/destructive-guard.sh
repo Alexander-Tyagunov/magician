@@ -964,7 +964,7 @@ case "$proc_cmd" in
     block "a command references a magician userConfig secret variable" ;;
 esac
 # Spelled in two pieces (never contiguous in this file's own source) so this script itself still
-# passes the "only the env bridge names the session env file" contract that every OTHER hook is
+# passes the "only the env writers name the session env file" contract that every OTHER hook is
 # held to, while still matching the real environment variable name at runtime.
 _CEFNAME="CLAUDE_ENV"
 _CEFNAME="${_CEFNAME}_FILE"

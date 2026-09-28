@@ -8,6 +8,8 @@ argument-hint: "[create|monitor|fix] [provider]"
 
 # /deploy — CI/CD Management
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 Create and manage CI/CD pipelines.
 
 ## Detect Existing Pipeline

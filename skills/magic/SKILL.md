@@ -7,6 +7,8 @@ argument-hint: "[topic or research question]"
 
 # /magic — Research, Analysis & Consulting
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 Structured research and consulting workflow. Uses web search, document analysis, and library documentation. Every decision point uses `AskUserQuestion` so the user explicitly drives the process via action-reaction UI.
 
 <HARD-GATE>

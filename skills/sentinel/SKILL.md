@@ -9,6 +9,8 @@ argument-hint: "[path]"
 
 # /sentinel — Security Scan
 
+> **Bundled command:** if `magician-scan` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/magician-scan`. If that is missing too (Claude chat ships no plugin tools), skip the static-analysis step, say so in the report, and run the rest.
+
 Run a comprehensive security scan of the codebase. Available as CLI: `magician-scan` (plugin-provided; on PATH when the plugin is enabled).
 
 For very large repos, raise /effort so the analysis stays thorough across the codebase (your model's deepest level — `xhigh`, or `max` where unsupported). See [lore/models.md](../../lore/models.md).
@@ -34,7 +36,7 @@ Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook, `s
 magician-scan .
 ```
 
-`magician-scan` is plugin-provided (on PATH when the plugin is enabled) and makes no network calls. If the command is not found, note that in the report, skip this step, and continue with the remaining checks.
+`magician-scan` is plugin-provided (on PATH when the plugin is enabled) and makes no network calls. If `magician-scan` can't be run, note that in the report, skip this step, and continue with the remaining checks.
 
 Reports: hardcoded credentials, private keys, eval() calls, SQL injection via % formatting, innerHTML XSS, dangerouslySetInnerHTML, os.system calls, shell=True subprocess.
 

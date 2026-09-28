@@ -20,7 +20,7 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[2]
 LORE = ROOT / "lore"
 DEEP = LORE / "deep"
-SCAN = ["lore", "skills", "agents", "scripts", "bin", "hooks", "evals", "monitors", "README.md"]
+SCAN = ["lore", "skills", "agents", "scripts", "tools", "hooks", "evals", "monitors", "README.md"]
 # A lore path starts a token, optionally after the plugin-root variable or ./ and ../ segments.
 BOUND = r"(?<![\w./-])(?:\$\{CLAUDE_PLUGIN_ROOT\}/|\$CLAUDE_PLUGIN_ROOT/|(?:\.\.?/)+)?"
 REF_DEEP = re.compile(BOUND + r"lore/deep/([a-z0-9-]+)\.md(?:#(\{[a-z0-9,-]+\}|[a-z0-9-]+))?")

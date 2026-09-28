@@ -10,7 +10,7 @@ take `--max N` (default 25) and `children` takes `--max N` (default 50).
 import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil, html
 
 # ---- magician:connection-config begin (the Codex build replaces this whole block) ----
-# Values come from magician's userConfig (`/plugin configure magician`); see bin/jira for the bridge.
+# Values come from magician's userConfig (`/plugin configure magician`); see tools/jira for the bridge.
 BASE = (os.environ.get("CLAUDE_PLUGIN_OPTION_CONFLUENCE_BASE_URL") or "").strip().rstrip("/")
 TOKEN = (os.environ.get("CLAUDE_PLUGIN_OPTION_CONFLUENCE_API_TOKEN") or "").strip()
 EMAIL = (os.environ.get("CLAUDE_PLUGIN_OPTION_CONFLUENCE_EMAIL") or "").strip()
@@ -30,7 +30,7 @@ SETUP_HINT = ("run `/plugin configure magician` (skip if already done), fill in 
 BASE_URL_HINT = "the Confluence base URL (/plugin configure magician)"
 # ---- magician:connection-config end ----
 
-# Resilience knobs (env-overridable) — mirrors bin/jira: throttle-aware retries, brief
+# Resilience knobs (env-overridable) — mirrors tools/jira: throttle-aware retries, brief
 # GET cache, bulk-loop pacing, connect-timeout.
 TIMEOUT = int(os.environ.get("CONFLUENCE_TIMEOUT", "45"))
 RETRIES = int(os.environ.get("CONFLUENCE_RETRIES", "3"))

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCAN = ROOT / "bin" / "magician-scan"
+SCAN = ROOT / "tools" / "magician-scan"
 
 
 class MagicianScanRedactionTests(unittest.TestCase):

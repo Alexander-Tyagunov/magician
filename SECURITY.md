@@ -31,7 +31,7 @@ magician is maintained by one person, so complex issues can take longer; you'll 
 In scope:
 
 - The hook scripts in `scripts/` and the hook list in `hooks/hooks.json`.
-- The bundled commands in `bin/`, including how they handle credentials, build requests and write files.
+- The bundled commands in `tools/` and the launchers magician writes for them, including how they handle credentials, build requests and write files.
 - Skill or agent instructions that could lead Claude to take an unsafe action, or to act without the confirmation the README describes.
 - The `/conjure` preview server.
 - Any network access, stored data or settings change that the README and privacy policy don't disclose.

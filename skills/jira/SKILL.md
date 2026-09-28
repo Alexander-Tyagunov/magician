@@ -1,15 +1,17 @@
 ---
 name: jira
-description: Work with Jira over its REST API — "check/fetch/get jira", "look up a ticket", "search jira / JQL", "my board / my sprint", "the <team> board", "create a jira / story / bug", "comment on a ticket", "@mention / tag someone on a ticket", "ask a clarifying question on a ticket", "transition / move / change status", "log time", "is there an MR/PR for this ticket", "clone the repo for this ticket". Any read/search/create/update/transition on Jira issues, including references to a remembered board, project, epic, or person. Uses the bundled `jira` CLI (Jira REST over HTTPS).
+description: Work with Jira over its REST API — "check/fetch/get jira", "look up a ticket", "search jira / JQL", "my board / my sprint", "the X team's board", "create a jira / story / bug", "comment on a ticket", "@mention / tag someone on a ticket", "ask a clarifying question on a ticket", "transition / move / change status", "log time", "is there an MR/PR for this ticket", "clone the repo for this ticket". Any read/search/create/update/transition on Jira issues, including references to a remembered board, project, epic, or person. Uses the bundled `jira` CLI (Jira REST over HTTPS).
 allowed-tools: Read, AskUserQuestion, Bash(jira myself), Bash(jira mine *), Bash(jira sprint *), Bash(jira get *), Bash(jira comments *), Bash(jira board *), Bash(jira search *), Bash(jira jql *), Bash(jira transitions *), Bash(jira url *), Bash(jira raw GET *), Bash(gh pr list *), Bash(gh pr view *), Edit(~/.claude/plugins/data/magician-*/jira-memory.md)
 argument-hint: "[ticket key · JQL · 'my board' · 'create …' · setup]"
 ---
 
 # /jira — Jira via the bundled `jira` CLI
 
+> **Bundled command:** if `jira` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/jira` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), or magician's connection settings can't be entered (Cowork doesn't ask for them), suggest a Jira connector instead if the user has one.
+
 Work with Jira through the plugin's **`jira` helper** (on PATH when magician is enabled). It calls the Jira REST API over HTTPS using the connection settings from magician's plugin configuration, one short command per call, and handles auth, retries, pacing, and caching for you, so there's no need to build HTTP requests by hand. This skill pre-approves the read commands (`myself`, `mine`, `sprint`, `get`, `comments`, `board`, `search`/`jql`, `transitions`, `url`, `raw GET`); writes (`create`, `link`, `raw POST|PUT`) ask for approval.
 
-This skill uses the bundled `jira` CLI. If the user prefers another installed Jira integration, use that. The `jira` CLI is on PATH for workflow subagents too.
+This skill uses the bundled `jira` CLI. If the user prefers another installed Jira integration, use that. Workflow subagents have `jira` on PATH whenever you do.
 
 - **Field ids, JQL patterns, transitions, link types, MR/clone, raw REST shapes** → [reference.md](reference.md)
 - **Issue/comment formatting, wiki markup, Gherkin AC / DoD templates** → [authoring.md](authoring.md)
@@ -48,8 +50,8 @@ Resolve the user's board id from memory (e.g. "my board") and pass it to `jira s
 ## Resilience — let the CLI handle Jira
 
 The `jira` CLI is **throttle-aware and self-pacing**, which matters most for bulk work:
-- **Invoke the `jira` command, one call per item.** Hand-rolled HTTP calls from your own script, or importing `bin/jira` as a module to call `api()` in a loop, **bypasses the retry/cache/pacing below**, which is how bulk work trips 429s and stalls.
-- **Version/path hygiene — use `jira` on `PATH`, not a hardcoded path into the plugin cache.** `jira` on `PATH` resolves to the *current* plugin version; a pinned *older* copy can predate the throttle/backoff/pacing hardening (added in **3.6.0**) and will 429 and hang on bulk work. After a plugin upgrade, **start a new session** so `jira` (and every skill/bin) resolves to one, current version.
+- **Invoke the `jira` command, one call per item.** Hand-rolled HTTP calls from your own script, or importing the `jira` script as a module to call `api()` in a loop, **bypasses the retry/cache/pacing below**, which is how bulk work trips 429s and stalls.
+- **Version/path hygiene — use `jira` on `PATH`, not a path to an older copy in the plugin cache.** `jira` on `PATH` resolves to the *current* plugin version; a pinned *older* copy can predate the throttle/backoff/pacing hardening (added in **3.6.0**) and will 429 and hang on bulk work. After a plugin upgrade, **start a new session** so `jira` (and every skill and bundled command) resolves to one, current version.
 - **On HTTP 429 (rate-limited):** the CLI already backs off and retries (`JIRA_RETRIES`). If it still returns 429, it tells you to STOP — **do not re-run the same call in a tight loop.** Wait, shrink the batch, and slow the pace with `JIRA_MIN_INTERVAL_MS=300 jira …` (or higher); a prefixed command isn't pre-approved, so it asks first.
 - **Repeated identical reads are free** — GETs are cached briefly (`JIRA_CACHE_TTL`, cleared on any write), so you don't need to avoid re-reading, but don't *spam* the same query expecting change.
 
