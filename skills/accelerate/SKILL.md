@@ -7,6 +7,8 @@ argument-hint: "[what is slow] [target, e.g. p99<500ms]"
 
 # /accelerate — Performance Profiling
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 Profile and optimize performance systematically. No optimization without measurement.
 
 Scale [/effort](../../lore/models.md) to the optimization scope: low for a single hot path, high for cross-cutting work. (Haiku and the 4.5 generation have no effort axis at all — don't suggest a level there.)

@@ -7,6 +7,8 @@ argument-hint: "<bug or error description>"
 
 # /unravel — Systematic Debugging
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 Debug systematically. No random changes in the hope something helps.
 
 Scale `/effort` to bug complexity — for deep, multi-layer root-cause hunts use your model's deepest level (`xhigh`, or `max` on models that lack it). See [lore/models.md](../../lore/models.md).

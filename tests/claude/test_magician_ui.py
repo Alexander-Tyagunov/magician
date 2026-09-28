@@ -42,15 +42,15 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-UI = ROOT / "bin" / "magician-ui"
-RENDERER = ROOT / "bin" / "magician-statusline"
+UI = ROOT / "tools" / "magician-ui"
+RENDERER = ROOT / "tools" / "magician-statusline"
 UI_SRC = UI.read_text(encoding="utf-8")
 
 
 def _list_const(name: str) -> list[str]:
     """Read a list constant from the CLI source without importing it (import would bind real paths)."""
     m = re.search(rf"^{name} = (\[.*?\n?\])$", UI_SRC, re.S | re.M)
-    assert m, f"{name} not found in bin/magician-ui"
+    assert m, f"{name} not found in tools/magician-ui"
     return ast.literal_eval(m.group(1))
 
 

@@ -7,6 +7,8 @@ argument-hint: "[status | learn <fact> [--global] | consolidate | last N | remem
 
 # /chronicle — Memory, History & Context Steward
 
+> **Bundled command:** if `ctx` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/ctx`. If that is missing too (Claude chat ships no plugin tools), say /chronicle needs Claude Code or Cowork.
+
 Three stores, all global to this machine and kept in the magician plugin data folder `${CLAUDE_PLUGIN_DATA}` (they survive across projects and sessions):
 
 - **Session history** — `${CLAUDE_PLUGIN_DATA}/chronicle/` — one small JSON record per session, written from git by the Stop hook (the newest 50 are kept). Turned off by the plugin's `session_history` option.

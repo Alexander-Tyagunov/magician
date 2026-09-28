@@ -1,11 +1,13 @@
 ---
 name: knowledge-graph
-description: Local code knowledge-graph + cache for fast, cheap, targeted retrieval — "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of <file>", "what depends on <file/symbol>", "find the code for <thing>". A per-repo SQLite graph of symbols + relationships at ~/.claude/magician/knowledge-graph; query it for ranked file:line instead of grepping and reading whole files. No MCP, no network, stdlib by default.
+description: Local code knowledge-graph + cache for fast, cheap, targeted retrieval — "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of this file", "what depends on this file or symbol", "find the code for X". A per-repo SQLite graph of symbols + relationships at ~/.claude/magician/knowledge-graph; query it for ranked file:line instead of grepping and reading whole files. No MCP, no network, stdlib by default.
 allowed-tools: Read, AskUserQuestion, mcp__visualize__show_widget, Bash(kg check), Bash(kg status *), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Bash(kg stale), Bash(kg refresh), Bash(kg cache stats)
 argument-hint: "[status · init · refresh · reset · query \"<text>\" · blast <file>]"
 ---
 
 # /knowledge-graph — code graph + cache via the bundled `kg` CLI (no MCP)
+
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), say the knowledge graph needs Claude Code or Cowork.
 
 A per-repo **knowledge graph** of symbols and their relationships, plus a content-addressed cache, so agents retrieve a ranked set of `file:line` ranges instead of grepping and reading whole files — fewer tokens, faster search, a durable shared map that survives hand-offs between agents/pipelines/teams with **zero context loss**. Driven by the plugin's **`kg` helper** (on PATH when magician is enabled); it is pure-stdlib by default and uses native accelerators only if already installed. **Always use the `kg` CLI; never hand-write graph queries.** Run one clean command per call: this skill's `allowed-tools` pre-approve the read and refresh commands (`check`, `status`, `query`, `neighbors`, `blast`, `stale`, `refresh`, `cache stats`), while `init`, `reset`, `cache clear` and `daemon` go through the normal permission prompt because they build or delete a store or start a process.
 

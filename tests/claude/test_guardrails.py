@@ -160,7 +160,7 @@ def download_and_run_hits(paths: list[Path]) -> list[str]:
 
 
 def bin_clis() -> list[Path]:
-    return sorted(p for p in (ROOT / "bin").glob("*") if p.is_file() and "__pycache__" not in p.parts)
+    return sorted(p for p in (ROOT / "tools").glob("*") if p.is_file() and "__pycache__" not in p.parts)
 
 
 def guard_tokens(name: str) -> list[str] | None:

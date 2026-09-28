@@ -34,6 +34,8 @@ STR_KEYS = {"name", "description", "when_to_use", "argument-hint", "model", "eff
             "context", "agent", "shell", "license", "compatibility", "color"}
 # House rule: always a double-quoted string (hints are bracket-heavy; write an inner " as \").
 MUST_DOUBLE_QUOTE = {"argument-hint"}
+TAG_RE = re.compile(r"<[^<>]*>")
+RESERVED_NAME_RE = re.compile(r"anthropic|claude", re.IGNORECASE)
 BLOCK_INDICATORS = {">", ">-", ">+", "|", "|-", "|+"}
 KEY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):(?: (.*))?$")
 # JSON-compatible escapes only, so json.loads() decodes exactly what every YAML parser does.
@@ -164,6 +166,15 @@ def schema_problems(path: Path, fields: dict, styles: dict, kind: str) -> list[s
             out.append(f"{path}: {k!r} must be true or false")
         if k in MUST_DOUBLE_QUOTE and st != "dq":
             out.append(f"{path}: {k!r} must be a double-quoted string (house rule)")
+    # claude.ai plugin upload (Chat/Cowork) rejects these; placeholders belong in argument-hint.
+    desc, name = fields.get("description"), fields.get("name")
+    if isinstance(desc, str):
+        if TAG_RE.search(desc):
+            out.append(f"{path}: 'description' cannot contain XML tags ({TAG_RE.search(desc).group()})")
+        if len(desc) > 1024:
+            out.append(f"{path}: 'description' is {len(desc)} characters (max 1024)")
+    if isinstance(name, str) and RESERVED_NAME_RE.search(name):
+        out.append(f"{path}: 'name' cannot contain the reserved words anthropic or claude")
     return out
 
 
@@ -186,6 +197,7 @@ REDUNDANT = {"ls", "cat", "echo", "pwd", "head", "tail", "grep", "find", "wc", "
 BROAD_EDIT = {"*", "**", "./**", "./*", "/**", "//**", "~/**", "~/.claude/**"}
 SETTINGS_PATH = re.compile(r"(^|/)\.claude/(settings(\.local)?\.json|\*)")
 # Commands that change Claude Code's own configuration/permissions: never pre-approve.
+PLUGIN_TOOLS = "${CLAUDE_PLUGIN_ROOT}/tools/"
 SETTINGS_CMDS = re.compile(r"^(claude (mcp|config|permissions)\b|magician-ui (allow|automode|enable|disable|set)\b)")
 
 
@@ -250,15 +262,21 @@ def tool_problems(entry: str) -> list[str]:
             probs.append("package launcher (download-and-run)")
         if "*" in cmd:
             probs.append("wildcard before the end of the rule")
-        if any(c in cmd for c in ";&|`$(<>") and not cmd.startswith("${CLAUDE_"):
+        # A plugin-path grant is judged by what follows the ${CLAUDE_...} prefix, and a bundled
+        # command by its full path exactly as by its name on PATH.
+        unprefixed = re.sub(r"^\$\{CLAUDE_[A-Z_]+\}", "", cmd)
+        named = cmd[len(PLUGIN_TOOLS):] if cmd.startswith(PLUGIN_TOOLS) else cmd
+        if any(c in unprefixed for c in ";&|`$(<>"):
             probs.append("shell metacharacter in rule")
-        if cmd in WHOLE_CLI and arg.strip() != cmd:  # "gh *" / "gh:*"
-            probs.append(f"whole-CLI grant for multi-purpose {cmd!r} -- name the subcommand")
+        if cmd.startswith("${CLAUDE_") and ".." in first.split("/"):
+            probs.append("plugin-path grant leaves the plugin folder (..)")
+        if named in WHOLE_CLI and arg.strip() != cmd:  # "gh *" / "gh:*"
+            probs.append(f"whole-CLI grant for multi-purpose {named!r} -- name the subcommand")
         if first in ("rm", "chmod", "chown", "sudo", "dd", "mkfs"):
             probs.append(f"destructive command {first!r}")
-        if cmd.startswith("${CLAUDE_") and "/scripts/" not in cmd and "/bin/" not in cmd:
+        if cmd.startswith("${CLAUDE_") and "/scripts/" not in cmd and "/tools/" not in cmd:
             probs.append("plugin-path grant must name a specific script")
-        if SETTINGS_CMDS.match(cmd):
+        if SETTINGS_CMDS.match(named):
             probs.append("pre-approves a command that changes Claude Code settings/permissions")
         if cmd in REDUNDANT:
             probs.append(f"redundant: {cmd!r} is auto-allowed read-only")

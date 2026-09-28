@@ -1,6 +1,6 @@
 {
   "name": "magician",
-  "version": "4.15.3",
+  "version": "4.16.0",
   "description": "Skills and agents for the software lifecycle in Claude Code: research, design, planning, test-first building, code review, security checks and release. Includes a local code index, per-project workspace notes, stack-specific guidance at session start, and optional Jira and Confluence access.",
   "author": {
     "name": "Alexander Tyagunov",

@@ -220,20 +220,20 @@ def parse_components(args):
 
 # --------------- renderer install ---------------
 def _version_key(path):
-    """Sort key for .../magician/<version>/bin/magician-statusline — numeric, so 4.15 sorts after 4.9."""
+    """Sort key for .../magician/<version>/tools/magician-statusline — numeric, so 4.15 sorts after 4.9."""
     ver = os.path.basename(os.path.dirname(os.path.dirname(path)))
     return [int(x) if x.isdigit() else -1 for x in re.split(r"[.+-]", ver)]
 
 
 def _find_renderer():
-    # sibling of this CLI in the plugin bin/ (works when invoked via PATH)
+    # sibling of this CLI in the plugin tools/ folder (works when invoked via PATH)
     here = os.path.dirname(os.path.realpath(sys.argv[0] or __file__))
     cand = os.path.join(here, "magician-statusline")
     if os.path.isfile(cand):
         return cand
     # fallback: newest version in the plugin cache
     hits = glob.glob(os.path.expanduser(
-        "~/.claude/plugins/cache/*/magician/*/bin/magician-statusline"))
+        "~/.claude/plugins/cache/*/magician/*/tools/magician-statusline"))
     hits.sort(key=_version_key)
     return hits[-1] if hits else None
 
@@ -241,7 +241,7 @@ def _find_renderer():
 def install_renderer():
     src = _find_renderer()
     if not src:
-        die("could not locate bin/magician-statusline to install")
+        die("could not locate tools/magician-statusline to install")
     os.makedirs(HOME, exist_ok=True)
     tmp = INSTALLED + ".tmp"
     shutil.copyfile(src, tmp)

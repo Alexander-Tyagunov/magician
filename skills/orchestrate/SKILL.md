@@ -7,6 +7,8 @@ argument-hint: "[plan-file]"
 
 # /orchestrate — Multi-Agent Implementation
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 Execute an entire blueprint with parallel + sequential agent dispatch. (This skill absorbed the former `/summon` — wave coordination and parallel spawning are one skill.)
 
 ## Pick the right engine first

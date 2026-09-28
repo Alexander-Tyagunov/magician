@@ -7,6 +7,8 @@ argument-hint: "[PR/MR URL · branch · \"working tree\" · monitor <repo>]"
 
 # /divine — Deep Code Review
 
+> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
+
 Perceive what's hidden in a change: correctness, security, simplification, and test quality — grounded in the change's actual intent and external truth, ranked by severity, with a concrete fix for each finding.
 
 This is the **on-demand, PR/MR-aware** reviewer. Its pipeline-internal counterpart is `/scrutinize` (which reviews the branch diff vs base mid-flow and also remediates Critical/High). `/divine` adds: change-context detection (GitHub PR / GitLab MR / branch / working tree), a depth gate, optional `/magic` grounding, adversarial verification, and optional posting back to the PR — and it reports rather than auto-fixing.

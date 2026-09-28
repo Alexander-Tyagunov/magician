@@ -10,7 +10,7 @@ When a session starts, magician looks at the project and adds short guidance, ca
 
 ### Requirements
 
-- Claude Code with plugin support, in the terminal, the desktop app or an IDE. magician ships command-line tools in a `bin/` folder, so Claude chat and Cowork can't install it.
+- Claude Code with plugin support, in the terminal, the desktop app or an IDE, for everything magician does. Claude chat and Cowork can install it too, with the limits in [Claude chat and Cowork](#claude-chat-and-cowork).
 - bash 3.2 or later for the hooks. On Windows, run Claude Code with Git Bash installed or inside WSL.
 - Python 3 for the bundled commands and the status line. The hooks don't use it.
 - git. The GitHub CLI (`gh`), or `glab` for GitLab, is optional.
@@ -26,6 +26,13 @@ When a session starts, magician looks at the project and adds short guidance, ca
 Claude Code may ask for the plugin's options during install. All of them are optional and are described in [Options](#options). Restart Claude Code if it asks.
 
 The first time you open a code project, magician shows a one-line hint suggesting `/almanac`. To check that it loaded, type `/` and look for its skills, or run `/hooks` to see its hooks.
+
+### Claude chat and Cowork
+
+In the Claude desktop or web app, you can add magician for Claude chat and Cowork as well:
+
+- Claude chat uses the skills only. It runs no hooks or agents and has none of the bundled commands, so `/knowledge-graph` and `/chronicle` tell you they need Claude Code or Cowork, `/statusline` that it needs Claude Code, and `/jira` and `/confluence` suggest a connector. Other skills skip the steps that use a command.
+- Cowork doesn't ask for the plugin's options, so `/jira` and `/confluence` can't be set up there, and it may not reach a site on a private network. Use a Jira or Confluence connector instead.
 
 Using Codex? The Codex package lives on the [codex-plugin branch](https://github.com/Alexander-Tyagunov/magician/tree/codex-plugin). Add it with `codex plugin marketplace add Alexander-Tyagunov/magician --sparse .agents/plugins`, then `codex plugin add magician@magician`.
 
@@ -164,7 +171,7 @@ Skills start these agents; you rarely call them yourself. Most are read-only: `f
 
 ## Bundled commands
 
-While magician is enabled, these commands are on the PATH of the shell Claude uses, not your own terminal. Skills call them for you. To run one yourself, ask Claude, for example "run magician-ui status".
+The commands ship in the plugin's `tools/` folder. At session start, a hook writes a small launcher for each one into a folder for the running version in magician's data folder and puts that folder first on the PATH of the shell Claude uses, not your own terminal. In Claude's shell these names win over other commands with the same name, and a permission rule you wrote for such a command, like `Bash(jira:*)`, applies to magician's. Disabling magician takes effect in new sessions; the current one keeps the launchers on its PATH. Skills call them for you, and use the full path when a launcher is missing. To run one yourself, ask Claude, for example "run magician-ui status".
 
 | Command | What it does | Network |
 |---|---|---|
@@ -223,6 +230,7 @@ Hooks are scripts Claude Code runs on session events. They make no network calls
 |---|---|---|---|
 | Session start | `session-start.sh` | Detects the stack and adds matching lore, the voice note, a note from the last session in this folder, recent learnings, saved references, a code-index hint and the detected log platform | Turn off lore, voice or `session_history`; the hook itself only by disabling the plugin |
 | Session start | `userconfig-env.sh` | Copies non-empty Jira and Confluence options into the session environment, with the path of magician's data folder and a marker showing the hook ran | Leave those options empty; the folder path and marker are always written |
+| Session start | `tools-path.sh` | Writes a launcher for each [bundled command](#bundled-commands) into a folder for the running version in magician's data folder, removes everything else in that folder and the folders of versions no longer installed, and adds one line to the session environment that puts that folder first on the PATH; runs none of the commands | Disable the plugin |
 | After compaction | `compact-context.sh` | Restates the branch, uncommitted files, this session's commits and shared workspace files; writes nothing | Disable the plugin |
 | Each prompt | `pattern-detect.sh` | Adds at most one line naming a matching skill; stores nothing from the prompt | Disable the plugin |
 | Before shell commands | `destructive-guard.sh` | Blocks a fixed list of dangerous commands, see [Safety guard](#safety-guard) | Not possible, by design |
@@ -246,6 +254,7 @@ Claude Code gives each plugin a data folder, usually `~/.claude/plugins/data/mag
 | Data folder | Session start times | 30 days |
 | Data folder | Project learnings, the detected log platform and references you save with `/chronicle` | Until you remove them or uninstall |
 | Data folder | Jira and Confluence memory: names of the people, projects, boards, epics, spaces and pages you work with | Until you edit the file or uninstall |
+| Data folder | One launcher per bundled command in `tools/`, in a folder per installed version: a two-line script that runs the command from the installed plugin | Rewritten each session; a version's folder is deleted once that version is no longer installed, the rest when you uninstall |
 | Data folder | Integration opt-outs, your `/almanac` workspace choice, the pull request versions `/divine` has reviewed, a 30-second Jira and Confluence cache, and pacing and marker files | Until you uninstall |
 | `~/.claude/magician/` | Preferences in `cli-ui.json`, the status line renderer, status markers, the code index | Status markers 7 days; the rest until you delete it |
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups taken before `magician-ui` edits your settings | Newest 3 |
@@ -340,6 +349,10 @@ Follow the steps in [Jira and Confluence](#jira-and-confluence), and start a new
 ### The status line does not appear
 
 It is off by default. Run `/statusline`, then send a message or two. After an update, ask Claude to run `magician-ui enable` again to refresh the renderer copy. It keeps the components you chose.
+
+### A bundled command is not found
+
+The launchers are written at session start, so start a new session after you install or update magician. If the path of the plugin data folder contains a colon, or on Windows when Git Bash has no `cygpath`, magician can't put it on the PATH, and skills run the commands by their full path instead. The same happens when the launcher folder is a link or belongs to another user, which magician leaves alone.
 
 ### Files are not formatted
 

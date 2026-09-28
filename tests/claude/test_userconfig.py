@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PLUGIN = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
 USER_CONFIG = PLUGIN.get("userConfig", {})
 BRIDGE = ROOT / "scripts" / "userconfig-env.sh"
-BINS = {"jira": ROOT / "bin" / "jira", "confluence": ROOT / "bin" / "confluence"}
+BINS = {"jira": ROOT / "tools" / "jira", "confluence": ROOT / "tools" / "confluence"}
 WHOAMI = {"jira": "myself", "confluence": "whoami"}
 ALLOWED = {"type", "title", "description", "required", "default", "multiple", "sensitive", "min", "max"}
 SECRETISH = re.compile(r"(token|secret|password|_pat)$", re.I)

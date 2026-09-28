@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.16.0] — 2026-09-28
+
+**Claude chat and Cowork.** The bundled commands move from `bin/` to `tools/`, because a plugin with a
+top-level `bin/` folder can't be installed in Claude chat or Cowork. Claude Code no longer puts them on
+PATH by itself, so a new SessionStart hook does, and skills fall back to the full path when a command
+isn't found. In Claude Code, skills keep calling `kg`, `ctx`, `jira` and the rest by name as before.
+
+### Added
+- **`tools-path.sh` SessionStart hook.** Writes a two-line launcher for each bundled command into a
+  folder for the running plugin version under `tools/` in magician's data folder, and appends one
+  line to the session env file that puts that folder first on PATH. Sessions on different versions
+  keep separate folders, so one never repoints another's commands; a session resumed after an update
+  appends the new version's line, which wins. Everything else in the folder is removed, including
+  launchers for commands the plugin no longer ships, and folders of versions no longer installed go
+  too. A launcher is replaced by renaming a finished file over it, never written through a link, and
+  a launcher folder that is a link or belongs to another user is refused. A plugin path holding a
+  control character, or a data folder path holding a colon, is skipped with a note on stderr;
+  Windows paths from Git Bash are converted with `cygpath` first. It runs none of the commands,
+  prints nothing to stdout, and adds no PATH line when it wrote no launcher. Launchers rather than
+  symlinks, because Git Bash on Windows copies a file where a symlink was asked for, and
+  `magician-ui` finds its plugin version from its own real path.
+- **Fallback line in every skill that pre-approves a bundled command** (17 skills). If the command
+  isn't found, the skill runs it by its full path in the plugin's `tools/` folder and gives subagents
+  that path. In Claude chat, which ships no plugin tools, the knowledge graph and `/chronicle` say
+  they need Claude Code or Cowork, `/statusline` says it needs Claude Code, and other skills skip the
+  steps that use a command. `/jira` and `/confluence` suggest a connector there, and wherever
+  magician's connection settings can't be entered, as in Cowork.
+- **Upload checks in the frontmatter gate.** A skill description may not contain an XML-style tag or
+  exceed 1,024 characters, and a skill name may not contain "anthropic" or "claude", matching what
+  the claude.ai plugin upload rejects. A grant naming a bundled command by its full plugin path is
+  judged like the bare name, so it can't pre-approve a whole CLI, a settings change, a shell
+  operator or a path out of the plugin folder.
+
+### Changed
+- **`bin/` is now `tools/`.** `magician-ui` looks for `tools/magician-statusline` when it installs the
+  status line renderer. A path you saved to a bundled command inside the plugin cache needs `tools/`
+  in place of `bin/`.
+- **Skill descriptions without angle brackets.** `/knowledge-graph`, `/inscribe`, `/jira`,
+  `/confluence` and `/transmute` described placeholders such as a file or URL in angle brackets, which
+  the upload refuses; they say it in words now. The placeholders stay in each skill's argument hint.
+- **Docs.** The README covers what Claude chat and Cowork can run, the new hook, the launchers in the
+  data folder and a troubleshooting entry for a command that isn't found. PRIVACY.md lists the
+  launchers and the PATH line, and SECURITY.md names `tools/` and the launchers as in scope.
+
 ## [4.15.3] — 2026-09-28
 
 **Directory follow-up.** Fixes what could be fixed among the warnings a re-validation raised against

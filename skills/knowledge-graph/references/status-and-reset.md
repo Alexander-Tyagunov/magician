@@ -11,7 +11,7 @@ knowledge-graph · magician (c7b5e4219e76)
   fts=True · accel=numpy,blake3 · stale=2
   cache: 41 hit / 12 miss (77.4%)
   central:
-    api (function) — bin/jira
+    api (function) — tools/jira
     …
   ⚠ 2 files changed — run `kg refresh`
 ```

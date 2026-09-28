@@ -52,7 +52,8 @@ COMMAND_RE = re.compile(r'^"\$\{CLAUDE_PLUGIN_ROOT\}"/scripts/([a-z0-9-]+\.sh)$'
 # The complete wiring: event -> [(matcher or None, [(script, extra hook keys)])], in order.
 EXPECTED_WIRING = {
     "SessionStart": [
-        (None, [("session-start.sh", {}), ("userconfig-env.sh", {"timeout": 10})]),
+        (None, [("session-start.sh", {}), ("userconfig-env.sh", {"timeout": 10}),
+                ("tools-path.sh", {"timeout": 10})]),
         ("compact", [("compact-context.sh", {})]),
     ],
     "UserPromptSubmit": [(None, [("pattern-detect.sh", {})])],
@@ -178,12 +179,14 @@ class HookWiringTests(unittest.TestCase):
                 else:
                     self.assertNotIn("async", hook)
 
-    def test_userconfig_bridge_has_a_short_timeout(self) -> None:
-        found = [(e, h) for e, _g, h in self._hooks() if _script_of(h["command"]) == "userconfig-env.sh"]
-        self.assertEqual(len(found), 1)
-        event, hook = found[0]
-        self.assertEqual(event, "SessionStart")
-        self.assertEqual(hook.get("timeout"), 10)
+    def test_env_file_writers_have_a_short_timeout(self) -> None:
+        for script in ("userconfig-env.sh", "tools-path.sh"):
+            with self.subTest(script=script):
+                found = [(e, h) for e, _g, h in self._hooks() if _script_of(h["command"]) == script]
+                self.assertEqual(len(found), 1)
+                event, hook = found[0]
+                self.assertEqual(event, "SessionStart")
+                self.assertEqual(hook.get("timeout"), 10)
 
     def test_removed_hooks_and_events_are_absent(self) -> None:
         raw = HOOKS.read_text(encoding="utf-8")

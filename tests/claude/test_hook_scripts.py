@@ -4,7 +4,7 @@ Static half (reads the files): each script is plain bash 3.2 that `/bin/bash -n`
 LC_ALL=C, runs no interpreter, inline program, eval, source, package launcher, install or network
 fetcher, calls no other plugin file, never enables `set -e`/`-u`, always exits 0 (the destructive
 guard alone may exit 2), never reads transcript fields, never writes Claude Code settings or the
-session env file (only userconfig-env.sh writes that), and prints additionalContext only inside
+session env file (only userconfig-env.sh and tools-path.sh write that), and prints additionalContext only inside
 hookSpecificOutput with the event it is wired to. The scripts ported in 4.15 (pattern-detect,
 chronicle-stop, format, notify, ci-watch) are also held to a literal token list. Launcher, install and
 fetcher words are assembled from pieces so this file does not itself contain them.
@@ -45,7 +45,8 @@ COMMAND_RE = re.compile(r'^"\$\{CLAUDE_PLUGIN_ROOT\}"/scripts/([a-z0-9-]+\.sh)$'
 # Scripts ported to plain bash in 4.15: they carry no stack-detection data, so the literal list applies.
 STRICT = ("pattern-detect.sh", "chronicle-stop.sh", "format.sh", "notify.sh", "ci-watch.sh")
 GUARD = "destructive-guard.sh"          # the one hook allowed to exit 2 (it blocks the tool call)
-ENV_WRITER = "userconfig-env.sh"        # the one hook allowed to touch CLAUDE_ENV_FILE
+ENV_WRITERS = ("userconfig-env.sh", "tools-path.sh")  # the hooks allowed to touch CLAUDE_ENV_FILE
+TOOLS_LINKER = "tools-path.sh"  # names the plugin tools folder to write launchers; runs nothing from it
 
 # Steering phrases that must never appear in text a hook writes into Claude's context.
 IMPERATIVE = re.compile(
@@ -119,7 +120,7 @@ CODE_RULES = {   # name -> pattern (applied to comment-free code of every script
     "eval": r"\beval\b",
     "source": _CMD + r"(?:source|\.)\s+\S",
     "set -e/-u": r"(?:^|[;&]|\b(?:then|do|else)\s)\s*set\s+(?:-[A-Za-z]*[eu][A-Za-z]*|-o\s+(?:errexit|nounset))\b",
-    "other plugin file": r"/bin/|PLUGIN_ROOT\}?\"?/(?:bin|scripts)\b"
+    "other plugin file": r"(?<!#!)/bin/|PLUGIN_ROOT\}?\"?/(?:bin|scripts|tools)\b"
                          r"|dirname\s+\"?\$(?:0|\{?BASH_SOURCE)[^\n]*\.(?:py|js|cjs|mjs|ts|rb|pl|php|sh)\b"
                          r"|PLUGIN_ROOT[^\n]*\.(?:py|js|cjs|mjs|ts|rb|pl|php|sh)\b",
     "plugin CLI": _CMD + "(?:" + "|".join(re.escape(c) for c in PLUGIN_CLIS) + ")" + _END,
@@ -223,6 +224,8 @@ class StaticScriptTests(unittest.TestCase):
             for rule, pattern in CODE_RULES.items():
                 if rule == "exit without an explicit 0" and name == GUARD:
                     pattern = pattern.replace(r"[^0\s;)}&|]", r"[^02\s;)}&|]")
+                if rule == "other plugin file" and name == TOOLS_LINKER:
+                    pattern = pattern.replace("(?:bin|scripts|tools)", "(?:bin|scripts)")
                 with self.subTest(script=name, rule=rule):
                     m = re.search(pattern, code, re.M)
                     self.assertIsNone(m, f"{rule}: {m.group(0)!r}" if m else "")
@@ -236,10 +239,10 @@ class StaticScriptTests(unittest.TestCase):
                 lines = [ln.strip() for ln in _code(text).splitlines() if ln.strip()]
                 self.assertEqual(lines[-1] if lines else "", "exit 0")
 
-    def test_only_the_env_bridge_names_the_session_env_file(self) -> None:
+    def test_only_the_env_writers_name_the_session_env_file(self) -> None:
         for name, text in self.texts.items():
             with self.subTest(script=name):
-                if name == ENV_WRITER:
+                if name in ENV_WRITERS:
                     self.assertIn("CLAUDE_ENV_FILE", text)
                 else:
                     self.assertNotIn("CLAUDE_ENV_FILE", _code(text))
@@ -412,7 +415,7 @@ class AllScriptsTests(_SandboxCase):
                             doc = json.loads(out)
                             ctx = doc.get("hookSpecificOutput", {}).get("additionalContext", "")
                             self.assertLessEqual(len(ctx), BUDGET)
-                        if name != ENV_WRITER:
+                        if name not in ENV_WRITERS:
                             self.assertFalse(self.sb.envfile.exists(), f"{name} wrote CLAUDE_ENV_FILE")
         for name in ("osascript", "notify-send", "gh", "gofmt", "prettier"):
             self.assertEqual(self.sb.calls(name), [], f"{name} ran on empty input")
