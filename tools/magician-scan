@@ -1,11 +1,50 @@
 #!/usr/bin/env bash
 # Standalone sentinel CLI — scans project files for security issues.
-# Usage: magician-scan [path]   (defaults to current directory)
-# Exit code: 0 = clean, 1 = issues found
+# Usage: magician-scan [path]   (defaults to current directory); -h/--help prints the usage text.
+# Exit code: 0 = clean, 1 = issues found, 2 = unknown option or missing path
 
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+magician-scan — local security scan of a folder (no network, nothing written).
+
+Usage: magician-scan [path]
+       magician-scan -h | --help
+
+Walks every file under path and reports each match of a fixed pattern list — hardcoded
+credentials, private keys, AWS keys, eval(), os.system(), subprocess shell=True, %-formatted
+SQL, innerHTML and dangerouslySetInnerHTML — with its file, line and a short snippet.
+Credential and private-key values are shown as <redacted>, never printed. Skips .git,
+node_modules, __pycache__, .venv, dist, build and vendor folders, and image, font,
+source-map and lock files.
+
+Arguments:
+  path          Folder to scan (default: the current directory).
+
+Options:
+  -h, --help    Show this text and exit.
+
+Exit codes:
+  0  no issues found
+  1  issues found
+  2  unknown option, or path does not exist
+EOF
+}
+
 TARGET="${1:-.}"
+
+case "$TARGET" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+if [ ! -e "$TARGET" ]; then
+  case "$TARGET" in
+    -*) echo "magician-scan: unknown option '$TARGET' (see magician-scan --help)" >&2 ;;
+    *)  echo "magician-scan: no such file or directory: $TARGET" >&2 ;;
+  esac
+  exit 2
+fi
 
 echo "magician-scan — security scan of: $TARGET"
 echo ""

@@ -97,7 +97,7 @@ OVERALL POSTURE: Clean | Needs attention | Requires immediate action
 ```
 
 ### 6. CI Integration Note
-For CI pipeline use: `magician-scan` exits 0 (clean) or 1 (issues).
+For CI pipeline use: `magician-scan` exits 0 (clean), 1 (issues) or 2 (unknown option or missing path); `magician-scan --help` shows the usage.
 
 ```yaml
 # .github/workflows/security.yml
