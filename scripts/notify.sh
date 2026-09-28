@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 # Notification(agent_completed|agent_needs_input) — OPT-IN desktop notification when a background
 # session finishes or starts waiting for input. Off unless the user enables the
-# `desktop_notifications` plugin option. Delivery:
-#   * terminals with a notification escape (iTerm2, WezTerm, Windows Terminal, ConEmu, Kitty,
-#     Ghostty, Warp): a terminal notification sequence (OSC 9 / 99 / 777) that Claude Code writes;
-#   * other terminals on Linux with notify-send installed: notify-send;
-#   * otherwise: an OSC 777 terminal notification sequence. Terminals without a notification escape
-#     (macOS Terminal.app, the VS Code and JetBrains terminals, Alacritty, plain tmux) ignore it, so
-#     they show no notification (reaching Notification Center would take an AppleScript program, and
-#     hook scripts run no second language).
+# `desktop_notifications` plugin option. Delivery is a terminal notification sequence that Claude
+# Code writes: OSC 9 (iTerm2, WezTerm, Windows Terminal, ConEmu), OSC 99 (Kitty) or OSC 777 (Ghostty,
+# Warp and every other terminal). Terminals without a notification escape (macOS Terminal.app, the
+# VS Code and JetBrains terminals, Alacritty, plain tmux, many Linux terminals) ignore it and show no
+# notification; this hook doesn't start a desktop notifier program.
 # The notification text is the event's message with control characters removed, capped at 160 bytes.
 # Nothing is stored.
 # Plain bash; always exits 0.
@@ -57,16 +54,14 @@ else
   esac
 fi
 
-if [ -z "$OSC" ] && [ "$(uname -s 2>/dev/null)" = "Linux" ] && command -v notify-send >/dev/null 2>&1; then
-  notify-send -- "Magician: $KIND" "$MSG" >/dev/null 2>&1
-  exit 0
-fi
-
 J=${MSG//\\/\\\\}; J=${J//\"/\\\"}                  # control characters were stripped above
-case $OSC in
-  99) SEQ="\\u001b]99;;Magician: $J\\u001b\\\\" ;;
-  9)  SEQ="\\u001b]9;Magician: $J\\u0007" ;;
-  *)  SEQ="\\u001b]777;notify;Magician;$J\\u0007" ;;
-esac
+# JSON escapes, single-quoted: the JSON parser decodes them to ESC and BEL; OSC 99 ends with ESC and a backslash.
+if [ "$OSC" = 99 ]; then
+  SEQ='\u001b]99;;Magician: '"$J"'\u001b\\'
+elif [ "$OSC" = 9 ]; then
+  SEQ='\u001b]9;Magician: '"$J"'\u0007'
+else
+  SEQ='\u001b]777;notify;Magician;'"$J"'\u0007'
+fi
 printf '{"terminalSequence":"%s"}\n' "$SEQ"
 exit 0

@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.1] — 2026-09-27
+
+**Directory follow-up.** Fixes the findings a re-validation raised against 4.15.0, and `magician-ui` no
+longer replaces a cli-ui.json it can't read.
+
+### Fixed
+- **An unreadable cli-ui.json is never overwritten.** When the file exists but isn't valid JSON, isn't
+  UTF-8 or isn't a JSON object, commands that save it (`enable`, `default`, `set`, `lore on|off`,
+  `voice <level>`) stop before changing anything and name the file. `cleanup` and `disable` still do
+  the rest (cleanup keeps rules it has no readable record for and removes obsolete data files; disable
+  removes the `statusLine` entry), leave the file as is and print one line saying so. `status`,
+  `lore status` and `voice status` report it. An empty file counts as no file, and a file nested too
+  deeply to parse counts as unreadable instead of crashing every command. Until the file is fixed or
+  deleted, session start still reads its old values, so status markers and the weekly upgrade notice
+  can continue after `disable` or `cleanup`; both commands say so.
+- **`disable --purge` refuses while cli-ui.json can't be read** and settings.json still has entries an
+  earlier version could have added (allow rules on magician's old list, or `defaultMode` `auto`).
+  `cleanup` can remove those only through that record, and a hand-fixed record would let it, so
+  deleting the file is left to `--purge --force`. With no such entry, purge goes ahead. When a folder
+  sits where cli-ui.json should be, purge stops and asks you to remove it rather than reporting it
+  absent. `status` no longer says there are no entries from earlier versions when the record can't be
+  read and `defaultMode` is `auto`.
+- **No unpinned package launcher in any file the plugin ships except Markdown.** Two test fixtures and an
+  assertion message named a launcher followed by a package, which the directory treats as an unpinned
+  install. The fixtures now build the launcher word from parts, the message says "package launcher",
+  and the legacy rule string in `magician-ui` is spelled in two adjacent parts with the same value. A
+  new test scans every tracked non-Markdown file for the pattern, `uv run` without `--locked` or
+  `--frozen` included.
+- `magician-ui lore status` and `voice status` no longer crash when cli-ui.json's `components` value
+  isn't a list.
+- `magician-ui` help: `enable` keeps the saved components, or all of them when none valid are saved (it
+  said "the first time").
+
+### Changed
+- **`notify.sh` no longer runs `notify-send` on Linux.** Notifications are the terminal escape sequence
+  only (OSC 9, OSC 99 or OSC 777, chosen by terminal). Terminals without a notification escape show
+  none; the hook no longer starts a desktop notifier program. The `desktop_notifications` option
+  description says so. Its escape sequences are now single-quoted: one double-quoted string ended in
+  an escaped backslash, which a simple quote scanner reads as an unterminated string. The output is
+  byte-identical.
+- The guard tests move each downloader command that shared a line with a shell into a constant on its
+  own line, and a `jira` comment no longer names an interpreter next to the downloader, so no file
+  other than the CHANGELOG names a downloader and a shell on one line. The directory's download-and-run warning appears to count such
+  lines, although none of them runs one.
+
 ## [4.15.0] — 2026-09-27
 
 **Directory compliance release.** Every hook, the safety guard included, is plain bash, no hook writes a

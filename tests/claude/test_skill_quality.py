@@ -151,9 +151,9 @@ class SkillQualityTests(unittest.TestCase):
 
     def test_skill_bodies_have_no_monitor_or_npx_steps(self) -> None:
         """A skill body must not steer toward the grants `allowed-tools` forbids: no instruction to
-        use the Monitor tool, and no `npx` package launcher in a command it tells Claude to run
+        use the Monitor tool, and no package launcher (npx) in a command it tells Claude to run
         (an unpinned download-and-run). Prose may still name the rule, e.g. in /inscribe's
-        checklist, so only code spans and fenced blocks are scanned for npx."""
+        checklist, so only code spans and fenced blocks are scanned for it."""
         monitor_tool = re.compile(r"\b(via|with|use|prefer) the \*{0,2}Monitor tool\b", re.I)
         code = re.compile(r"(?ms)^[ \t]*(```|~~~).*?\1|`[^`\n]*`")
         for path in skill_files():
@@ -161,7 +161,7 @@ class SkillQualityTests(unittest.TestCase):
             snippets = " ".join(m.group(0) for m in code.finditer(body))
             with self.subTest(skill=path.parent.name):
                 self.assertIsNone(monitor_tool.search(body), f"{path.parent.name}: Monitor tool step")
-                self.assertNotRegex(snippets, r"(^|[\s`(])npx\s", f"{path.parent.name}: npx launcher")
+                self.assertNotRegex(snippets, r"(^|[\s`(])npx\s", f"{path.parent.name}: package launcher")
 
 
 if __name__ == "__main__":

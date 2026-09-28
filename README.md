@@ -227,10 +227,10 @@ Hooks are scripts Claude Code runs on session events. They make no network calls
 | Each prompt | `pattern-detect.sh` | Adds at most one line naming a matching skill; stores nothing from the prompt | Disable the plugin |
 | Before shell commands | `destructive-guard.sh` | Blocks a fixed list of dangerous commands, see [Safety guard](#safety-guard) | Not possible, by design |
 | After writes and edits | `format.sh` | Runs an installed formatter on the edited file | Off by default (`auto_format`) |
-| Notifications | `notify.sh` | Shows a desktop notification when a background session finishes or needs input, through your terminal or, on Linux, `notify-send` | Off by default (`desktop_notifications`) |
+| Notifications | `notify.sh` | Shows a desktop notification when a background session finishes or needs input, through your terminal | Off by default (`desktop_notifications`) |
 | Session stop | `chronicle-stop.sh` | Saves a short session record from git and adds decision-style commit subjects to project learnings | Turn off `session_history` |
 
-At session start magician also shows you two notices of its own: a one-time hint to run `/almanac` in a new project, and, if 4.14 or earlier recorded adding permission rules or auto mode, a weekly reminder that repeats until you run `magician-ui cleanup`. It records each session's start time in its data folder, and writes status markers only when the status line is on.
+At session start magician also shows you two notices of its own: a one-time hint to run `/almanac` in a new project, and, if 4.14 or earlier recorded adding permission rules or auto mode, a weekly reminder that repeats until you run `magician-ui cleanup`. It records each session's start time in its data folder, and writes status markers only when the status line is on. If cli-ui.json can't be read, magician leaves it as is and session start keeps reading its old values, so the reminder and the markers continue until you fix or delete the file.
 
 ### Background monitor
 
@@ -347,7 +347,7 @@ Auto-format is off by default. Turn on `auto_format`, and `auto_format_prettier`
 
 ### No desktop notifications
 
-Notifications are off by default; turn on `desktop_notifications`. iTerm2, WezTerm, Kitty, Ghostty, Warp and Windows Terminal show their own. Elsewhere on Linux, magician uses notify-send if it is installed. Other macOS terminals, such as Terminal.app, the VS Code and JetBrains terminals, Alacritty and plain tmux, show none, because reaching Notification Center would take an AppleScript program and the hooks run only bash.
+Notifications are off by default; turn on `desktop_notifications`. iTerm2, WezTerm, Kitty, Ghostty, Warp and Windows Terminal show them. Terminals without a notification escape, such as Terminal.app, the VS Code and JetBrains terminals, Alacritty, plain tmux and many Linux terminals, show none, because the hook only sends a terminal escape sequence and doesn't start a desktop notifier program.
 
 ### The safety guard blocked a command
 

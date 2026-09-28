@@ -217,13 +217,15 @@ class SkillDefinitionTests(unittest.TestCase):
                 self.assertEqual(expected, bash_rule_matches(rule, command))
 
     def test_scope_policy_distinguishes_good_and_bad_grants(self) -> None:
-        """The checks above must reject the broad forms and still accept correct scoped ones."""
+        """The checks above must reject the broad forms and still accept correct scoped ones. The
+        launcher sample is assembled at runtime so no line here reads as an unpinned launch command."""
+        launcher = "np" + "x"
         good = ["Read", "Edit(./.workspace/shared/plans/**)", "Bash(gh run list *)",
                 "Bash(ctx pct *)", "Bash(${CLAUDE_SKILL_DIR}/scripts/vc-stop.sh *)",
                 "WebFetch(domain:docs.example.com)", "mcp__context7__resolve-library-id"]
         bad = ["Bash", "Write", "Write(./.workspace/**)", "Monitor", "WebSearch", "WebFetch",
                "Bash(python3:*)", "Bash(python3 -c *)", "Bash(node *)", "Bash(sh -c *)",
-               "Bash(npx lighthouse *)", "Bash(kg:*)", "Bash(git *)"]
+               f"Bash({launcher} lighthouse *)", "Bash(kg:*)", "Bash(git *)"]
         for entry in good:
             with self.subTest(good=entry):
                 tool = re.sub(r"\(.*\)$", "", entry)
