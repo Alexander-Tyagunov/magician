@@ -132,8 +132,8 @@ def api(method, path, body=None, timeout=None):
             return cached
     else:
         shutil.rmtree(CACHE_DIR, ignore_errors=True)  # a write invalidates cached reads
-    # Shell out to curl so the system trust store is used (Python's urllib may not see the same
-    # roots). The auth header goes on stdin (-H @-) so it never shows in the process list.
+    # Run curl so the system trust store is used (the standard library HTTP client may not see the
+    # same roots). The auth header goes on stdin (-H @-) so it never shows in the process list.
     headers = "Authorization: " + _auth() + "\nAccept: application/json\n"
     cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
            "-X", method, "-H", "@-"]
