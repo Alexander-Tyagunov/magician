@@ -13,6 +13,6 @@ HikariCP defaults (ms): maximumPoolSize 10, minimumIdle=max, connectionTimeout 3
 
 Version: JDBC lives in the `java.sql` module (Java 9+). ORM above it — Hibernate 6.x → `jakarta.persistence.*` (Jakarta EE 9+, Java 11/17+); Hibernate 5.x → `javax.persistence.*` (Java 8).
 
-Deep dive when writing non-trivial jdbc — read lore/jdbc/{sql-safety,connections-and-pooling,transactions,performance-and-batching}.md
+Deep dive when writing non-trivial jdbc — read lore/deep/jdbc.md#{sql-safety,connections-and-pooling,transactions,performance-and-batching}
 
 Sources: docs.oracle.com/javase/tutorial/jdbc • docs.oracle.com/en/java/javase/25/docs/api/java.sql/module-summary.html • github.com/brettwooldridge/HikariCP

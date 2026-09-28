@@ -16,7 +16,7 @@ DON'T trust `req.query/params/body` unvalidated; DON'T ship secrets to the clien
 
 Commands: `npm i express helmet express-rate-limit` · `npm audit` · `NODE_ENV=production node app.js`
 
-Deep dive when writing non-trivial express — read lore/express/{middleware-and-routing,errors-and-async,security-and-validation}.md
+Deep dive when writing non-trivial express — read lore/deep/express.md#{middleware-and-routing,errors-and-async,security-and-validation}
 
 ## Sources
 expressjs.com/en/guide/{routing,error-handling}.html · expressjs.com/en/advanced/best-practice-security.html

@@ -14,5 +14,5 @@ DON'T pin stale model IDs — check docs for current (Claude `claude-opus-4-*`, 
 
 Commands: `pip install anthropic openai`
 
-Deep dive when writing non-trivial llm-sdks — read lore/llm-sdks/{tooluse-structured-rag}.md
+Deep dive when writing non-trivial llm-sdks — read lore/deep/llm-sdks.md#{tooluse-structured-rag}
 Sources: platform.claude.com/docs/en/api · developers.openai.com/api/reference · SDK READMEs (github anthropics/anthropic-sdk-python, openai/openai-python)

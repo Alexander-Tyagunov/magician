@@ -13,5 +13,5 @@ Version: Apollo Server 4+ ships no HTTP server — use startStandaloneServer or 
 
 Commands: `npm i @apollo/server graphql dataloader` · `npx graphql-codegen` · `npx get-graphql-schema URL > schema.graphql`
 
-Deep dive when writing non-trivial graphql — read lore/graphql/{schema-design,resolvers-and-dataloader,server-and-security}.md
+Deep dive when writing non-trivial graphql — read lore/deep/graphql.md#{schema-design,resolvers-and-dataloader,server-and-security}
 Sources: graphql.org/learn · apollographql.com/docs/apollo-server · github.com/graphql/dataloader

@@ -1,17 +1,17 @@
 # Jira REST reference (direct HTTP)
 
-Loaded on demand from [SKILL.md](SKILL.md). All calls are `curl` to the Jira REST API — no MCP. Keep each call's timeout sane (reads ~10s; writes ~30–60s).
+Loaded on demand from [SKILL.md](SKILL.md). The `jira` CLI sends each call to the Jira REST API with `curl`. Keep each call's timeout sane (reads ~10s; writes ~30–60s).
 
 ## Auth & the CLI
 
-The bundled **`jira` CLI** handles auth and the base URL from the environment — **do not build `curl` by hand**. It reads `JIRA_BASE_URL`, a token (`JIRA_API_TOKEN` / `JIRA_PAT` / `JIRA_PROD_PAT`), and `JIRA_EMAIL`. With `JIRA_EMAIL` set → Cloud (Basic auth, API v3); otherwise → Server/DC (Bearer, API v2). Override the version with `JIRA_API_VERSION`. Verify with `jira myself`; `401` = bad/rotated token, connection failure = base URL / VPN.
+The bundled **`jira` CLI** handles auth and the base URL, so there's no need to build `curl` calls by hand. It reads its connection settings (base URL, account email, token) from magician's plugin configuration (`/plugin configure magician`; see [setup.md](setup.md)). With an email set → Cloud (Basic auth, API v3); without → Server/DC (Bearer PAT, API v2). Override the version with `JIRA_API_VERSION`. The base URL must be `https://`, and redirects aren't followed. Verify with `jira myself`; `401` = bad/rotated token (or an email set against Server/DC), connection failure = base URL / VPN.
 
 The REST paths below are exactly what **`jira raw <METHOD> <path> [json-body]`** expects (the path is appended to `<base>/`). Use the named CLI commands (`get`, `search`, `transitions`, `url`) for the common reads; use `jira raw` for boards/sprints, links, and all writes. So "`GET issue/{key}`" below means `jira raw GET rest/api/2/issue/{key}` — or just `jira get {key}`.
 
 ## Reads & JQL
 
 - **Single issue**: `jira get <KEY>` returns metadata **plus the full description** (ADF or wiki, rendered to readable text; cap with `JIRA_DESC_MAX`). **Comments**: `jira comments <KEY>` paginates the dedicated `issue/{key}/comment` endpoint so it returns **all** comments with full bodies (cap each with `JIRA_COMMENT_MAX`) — better than the embedded `comment` field, which can omit older comments on long threads. Raw form: `GET issue/{key}?fields=*all`.
-- **Search (JQL)**: `GET search?jql=<urlencoded>&maxResults=50&fields=summary,status,assignee,updated`. Always pass `maxResults` and an `ORDER BY`. URL-encode the JQL (`--data-urlencode` with `-G`).
+- **Search (JQL)**: `jira search "<JQL>" --max N` (default 50). Raw form: `GET search?jql=<urlencoded>&maxResults=50&fields=summary,status,assignee,updated`. Always pass `maxResults` and an `ORDER BY`, and URL-encode the JQL.
   - My open work — `assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`
   - Recent in a project — `project = <KEY> AND updated >= -7d ORDER BY updated DESC`
   - Text — `project = <KEY> AND text ~ "<term>" ORDER BY updated DESC`
@@ -80,5 +80,5 @@ Report MR URL(s), state, source→target branch, and whether any are open. If no
 ## Error handling
 
 - **Hang / connection refused** → network/VPN or wrong base URL. Stop and surface it; never wait minutes.
-- **401 / 403** → token bad, rotated, or lacking permission. Re-run setup ([setup.md](setup.md)) or check scope.
+- **401 / 403** → token bad, rotated, or lacking permission. Re-enter it with `/plugin configure magician`, start a new session ([setup.md](setup.md)), or check scope.
 - **Cloud user-by-email** lookups differ from Server/DC (`name` vs `accountId`) — pull identity from issue objects when in doubt.

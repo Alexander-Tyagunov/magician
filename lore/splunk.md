@@ -12,7 +12,7 @@ DON'T write SQL/KQL/LogQL — SPL pipes `search | stats`; `=`/`!=` string, `<`/`
 DON'T scan `index=*` or leave time open — bound index + earliest/latest.
 DON'T send secrets/PII in events — HEC indexes them verbatim.
 
-Deep dive when writing non-trivial Splunk — read lore/splunk/{spl-search-and-stats,ingestion-sourcetypes-indexes,dashboards-and-alerts}.md
+Deep dive when writing non-trivial Splunk — read lore/deep/splunk.md#{spl-search-and-stats,ingestion-sourcetypes-indexes,dashboards-and-alerts}
 
 ## Sources
 help.splunk.com — SearchReference/{Stats,Search}, Data/{UsetheHTTPEventCollector,FormateventsforHTTPEventCollector}, Enterprise 10.4 release notes

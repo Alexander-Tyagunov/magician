@@ -1,13 +1,13 @@
 ---
 name: knowledge-graph
 description: Local code knowledge-graph + cache for fast, cheap, targeted retrieval — "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of <file>", "what depends on <file/symbol>", "find the code for <thing>". A per-repo SQLite graph of symbols + relationships at ~/.claude/magician/knowledge-graph; query it for ranked file:line instead of grepping and reading whole files. No MCP, no network, stdlib by default.
-allowed-tools: Bash(kg:*), Read, AskUserQuestion, mcp__visualize__show_widget
-argument-hint: [status · init · refresh · reset · query "<text>" · blast <file>]
+allowed-tools: Read, AskUserQuestion, mcp__visualize__show_widget, Bash(kg check), Bash(kg status *), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Bash(kg stale), Bash(kg refresh), Bash(kg cache stats)
+argument-hint: "[status · init · refresh · reset · query \"<text>\" · blast <file>]"
 ---
 
 # /knowledge-graph — code graph + cache via the bundled `kg` CLI (no MCP)
 
-A per-repo **knowledge graph** of symbols and their relationships, plus a content-addressed cache, so agents retrieve a ranked set of `file:line` ranges instead of grepping and reading whole files — fewer tokens, faster search, a durable shared map that survives hand-offs between agents/pipelines/teams with **zero context loss**. Driven by the plugin's **`kg` helper** (on PATH when magician is enabled); it is pure-stdlib by default and uses native accelerators only if already installed. **Always use the `kg` CLI; never hand-write graph queries.** One clean command per call means a single `Bash(kg:*)` grant (this skill's `allowed-tools`) covers everything — no per-request prompts.
+A per-repo **knowledge graph** of symbols and their relationships, plus a content-addressed cache, so agents retrieve a ranked set of `file:line` ranges instead of grepping and reading whole files — fewer tokens, faster search, a durable shared map that survives hand-offs between agents/pipelines/teams with **zero context loss**. Driven by the plugin's **`kg` helper** (on PATH when magician is enabled); it is pure-stdlib by default and uses native accelerators only if already installed. **Always use the `kg` CLI; never hand-write graph queries.** Run one clean command per call: this skill's `allowed-tools` pre-approve the read and refresh commands (`check`, `status`, `query`, `neighbors`, `blast`, `stale`, `refresh`, `cache stats`), while `init`, `reset`, `cache clear` and `daemon` go through the normal permission prompt because they build or delete a store or start a process.
 
 - **What the graph/cache are, on-disk layout, the honest caching story, performance tiers** → [references/architecture.md](references/architecture.md)
 - **Building & keeping it fresh (init / refresh / parser cascade / monorepos)** → [references/indexing.md](references/indexing.md)
@@ -18,7 +18,7 @@ A per-repo **knowledge graph** of symbols and their relationships, plus a conten
 
 Run **`kg check`**. It prints one of: `indexed: N files … fresh` (proceed) · `stale: M changed …` (offer `kg refresh`) · `no index for this repo` (offer to build — see below).
 
-**Opt-out (respect it):** if the user opted out of the knowledge graph ([lore/integration-prefs.md](../../lore/integration-prefs.md), key `knowledge-graph`) and this run came from a *proactive* suggestion, stay silent. A **direct** request ("index this repo", `/knowledge-graph`) overrides and clears the opt-out. If the user declines with "don't ask again", record the opt-out.
+**Opt-out (respect it):** if the user opted out of the knowledge graph ([lore/integration-prefs.md](../../lore/integration-prefs.md), key `knowledge-graph`) and this run is not a direct request from them, don't offer a build. A **direct** request ("index this repo", `/knowledge-graph`) overrides and clears the opt-out. If the user declines with "don't ask again", record the opt-out.
 
 ## Commands (use the CLI)
 
@@ -39,7 +39,7 @@ Run **`kg check`**. It prints one of: `indexed: N files … fresh` (proceed) · 
 ## Build / reset — gate the side-effecting ones
 
 <HARD-GATE>
-`kg init` (first build on a large repo) and `kg reset` (destroys the index + cache) are side-effecting: state the repo and, for a build, the rough file count first, and get an explicit "yes". Reads (`check`, `status`, `query`, `neighbors`, `blast`, `stale`) need no confirmation. A build never touches the user's code — only the global store under `~/.claude/magician/knowledge-graph/`.
+`kg init` (builds an index) and `kg reset` (destroys the index + cache) are side-effecting: state the repo and, for a build, the rough file count first, and run them only on the user's explicit "yes". The same goes for `kg cache clear` and `kg daemon start`. Reads (`check`, `status`, `query`, `neighbors`, `blast`, `stale`) need no confirmation. A build never touches the user's code — only the local store under `~/.claude/magician/knowledge-graph/` (or `$MAGICIAN_HOME/knowledge-graph/`).
 </HARD-GATE>
 
 - **No index + real work ahead** → offer once: *"No code graph for this repo — building one (~Ns) makes search cheaper and faster. Build it?"* Respect a no (record opt-out if they say don't ask again).

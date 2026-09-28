@@ -12,6 +12,6 @@ DON'T train with `no_grad`/`inference_mode` on; DON'T skip `zero_grad` (grads ac
 
 Commands: `pytest tests/`; `ruff check .`; `python -c "import torch;print(torch.__version__,torch.cuda.is_available())"`.
 
-Deep dive when writing non-trivial pytorch — read lore/pytorch/{training-and-autograd}.md
+Deep dive when writing non-trivial pytorch — read lore/deep/pytorch.md#{training-and-autograd}
 
 Sources: https://docs.pytorch.org/docs/stable/ (2.13: torch.compile, amp, inference_mode, autograd)

@@ -21,7 +21,7 @@ DON'T
 
 Commands: none (library). Config via SetConfigName/AddConfigPath + ReadInConfig; env via AutomaticEnv/SetEnvPrefix; flags via BindPFlags.
 
-Deep dive when writing non-trivial viper — read lore/viper/{config-and-precedence}.md
+Deep dive when writing non-trivial viper — read lore/deep/viper.md#{config-and-precedence}
 
 ## Sources
 github.com/spf13/viper (README, releases v1.21.0), pkg.go.dev/github.com/spf13/viper

@@ -7,8 +7,10 @@
     {
       "name": "magician",
       "source": {
-        "source": "local",
-        "path": "./plugins/magician"
+        "source": "git-subdir",
+        "url": "https://github.com/Alexander-Tyagunov/magician.git",
+        "path": "./plugins/magician",
+        "ref": "codex-plugin"
       },
       "policy": {
         "installation": "AVAILABLE",

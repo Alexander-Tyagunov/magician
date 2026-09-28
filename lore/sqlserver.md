@@ -14,7 +14,7 @@ DON'T use MERGE under concurrency (deadlock/bug-prone); upsert with HOLDLOCK+UPD
 DON'T call scalar UDFs row-by-row pre-2019 (no inlining) or table vars for big sets → temp tables.
 DON'T hold a tx across app/network round-trips: blocking + version growth.
 
-Deep dive when writing non-trivial SQL Server — read lore/sqlserver/{connection-and-pooling,tsql-and-types,execution-plans-and-indexing,performance}.md
+Deep dive when writing non-trivial SQL Server — read lore/deep/sqlserver.md#{connection-and-pooling,tsql-and-types,execution-plans-and-indexing,performance,transactions-and-isolation}
 
 ## Sources
 learn.microsoft.com/sql · query-store, isolation, what's-new 2022/2025

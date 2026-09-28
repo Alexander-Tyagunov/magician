@@ -11,7 +11,7 @@ DON'T let supernodes sit on hot paths — split via intermediate nodes / typed e
 DON'T leave depth unbounded or write disconnected FORs (cartesian blowup).
 DON'T span multi-doc ACID across shards; single-doc writes atomic.
 
-Deep dive — read lore/arangodb/{aql-and-modeling,indexes-and-graph-traversal,performance}.md
+Deep dive — read lore/deep/arangodb.md#{aql-and-modeling,indexes-and-graph-traversal,performance}
 
 ## Sources
 docs.arango.ai/arangodb/3.12 · github.com/arangodb/arangodb

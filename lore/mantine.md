@@ -16,7 +16,7 @@ Version cue: v9 (React 19.2, defaultRadius md) ← v8 (date strings) ← v7 (Emo
 
 Commands: `npm i @mantine/core @mantine/hooks` + `npm i -D postcss postcss-preset-mantine postcss-simple-vars`.
 
-Deep dive when writing non-trivial mantine — read lore/mantine/{styling-and-core}.md
+Deep dive when writing non-trivial mantine — read lore/deep/mantine.md#{styling-and-core}
 
 ## Sources
 mantine.dev/getting-started, /styles/css-modules, /styles/postcss-preset, /changelog/{7,8,9}-0-0

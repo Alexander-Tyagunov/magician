@@ -4,10 +4,12 @@
 // Magician Visual Companion — local design studio server (HTTP + WebSocket, zero deps).
 // Serves versioned mockups, injects helper.js, hot-reloads the browser, and acts as the
 // two-way EVENT HUB between the rendered prototype and the Claude session:
-//   • inbound  (browser → session): selection/click/chat land in state/events.jsonl (append-only)
+//   • inbound  (browser → session): selection/click/chat land in <state>/events.jsonl (append-only)
 //   • pull     (session): GET /magician/<p>/v<n>/events.json?since=<cursor>
-//   • outbound (session → browser): append to state/outbox.jsonl → broadcast chat_reply/toast
+//   • outbound (session → browser): append to <state>/outbox.jsonl → broadcast chat_reply/toast
 //   • frames   (session → browser): write .html into screens/v<n>/ → WS reload
+// <state> is argv[4] (vc-start.sh passes a folder under .workspace/local/, which stays out of git);
+// without it, it falls back to <design-dir>/state. Listens on 127.0.0.1 only.
 
 const http  = require("http");
 const fs    = require("fs");
@@ -17,10 +19,10 @@ const crypto = require("crypto");
 const DESIGN_DIR   = process.argv[2];
 const PROJECT_NAME = process.argv[3] || "project";
 
-if (!DESIGN_DIR) { console.error("Usage: server.cjs <design-dir> <project-name>"); process.exit(1); }
+if (!DESIGN_DIR) { console.error("Usage: server.cjs <design-dir> <project-name> [state-dir]"); process.exit(1); }
 
 const SCREENS_DIR = path.join(DESIGN_DIR, "screens");
-const STATE_DIR   = path.join(DESIGN_DIR, "state");
+const STATE_DIR   = process.argv[4] || path.join(DESIGN_DIR, "state");
 const SCRIPT_DIR  = __dirname;
 const EVENTS_FILE = path.join(STATE_DIR, "events.jsonl");   // append-only inbound log (never wiped)
 const OUTBOX_FILE = path.join(STATE_DIR, "outbox.jsonl");   // session → browser messages
@@ -91,7 +93,7 @@ function serve404(res, msg) {
   res.end(`<html><body style="font:14px monospace;padding:2rem;background:#0a0a0f;color:#64748b">${msg}</body></html>`);
 }
 
-// Companion chat is opt-in: the /conjure skill writes state/companion.json {"chat":true}
+// Companion chat is opt-in: the /conjure skill writes <state>/companion.json {"chat":true}
 // only after the user agrees. Off by default → no chat bubble is rendered.
 function companionChatEnabled() {
   try { return !!JSON.parse(fs.readFileSync(path.join(STATE_DIR, "companion.json"), "utf8")).chat; } catch { return false; }
@@ -321,7 +323,7 @@ function start(candidatePort) {
 start(Math.floor(Math.random() * 16383) + 49152);
 
 // Auto-exit only when truly idle AND no browser is connected — so a long live design
-// session (with a viewer open, or a monitor/loop attached) is never killed mid-flow.
+// session (with a viewer open, or a /loop attached) is never killed mid-flow.
 setInterval(() => {
   if (wsClients.size === 0 && Date.now() - lastActivity > 90 * 60 * 1000) process.exit(0);
 }, 60_000);

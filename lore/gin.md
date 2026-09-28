@@ -10,6 +10,6 @@ SECURITY: run behind `http.Server{Handler:r, ReadTimeout, WriteTimeout, IdleTime
 
 Commands: `go get github.com/gin-gonic/gin@latest`; `GIN_MODE=release go run .`; `go test ./...`.
 
-Deep dive when writing non-trivial gin — read lore/gin/{routing-middleware-binding}.md
+Deep dive when writing non-trivial gin — read lore/deep/gin.md#{routing-middleware-binding}
 
 Sources: gin-gonic.com/docs · pkg.go.dev/github.com/gin-gonic/gin · github.com/gin-gonic/gin/releases

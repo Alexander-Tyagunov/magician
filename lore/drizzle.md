@@ -18,7 +18,7 @@ DON'T
 
 Commands: drizzle-kit generate | migrate | push | pull | studio | check | up
 
-Deep dive when writing non-trivial drizzle — read lore/drizzle/{schema-and-queries,migrations-and-pitfalls}.md
+Deep dive when writing non-trivial drizzle — read lore/deep/drizzle.md#{schema-and-queries,migrations-and-pitfalls}
 
 ## Sources
 orm.drizzle.team/docs/{overview,sql,rqb,kit-overview}; context7 drizzle-orm-docs; npm drizzle-orm/drizzle-kit

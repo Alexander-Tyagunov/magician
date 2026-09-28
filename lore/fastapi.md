@@ -13,6 +13,6 @@ DO `async def` only when awaiting async I/O; plain `def` runs in a threadpool �
 
 Commands: `pip install "fastapi[standard]"`; `fastapi dev` (reload) / `fastapi run` (prod, uvicorn).
 
-Deep dive when writing non-trivial fastapi — read lore/fastapi/{async-and-di,pydantic-v1-vs-v2}.md
+Deep dive when writing non-trivial fastapi — read lore/deep/fastapi.md#{async-and-di,pydantic-v1-vs-v2}
 
 Sources: fastapi.tiangolo.com (dependencies, events, cors, /); pydantic.dev migration guide.

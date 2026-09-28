@@ -49,7 +49,7 @@ Three requirements ride on ONE architecture — a two-tier design-token system:
 
 ## 2. Variation — seeded, multi-archetype (ask #2)
 
-1. **Seed** each run: `SEED=$(openssl rand -hex 4)` (or `date +%s`); record it in `.workspace/shared/brand.md` so a run is reproducible/regenerable ("re-roll" = new seed).
+1. **Seed** each run: run `openssl rand -hex 4` (or `date +%s`) and record the printed value in `.workspace/shared/brand.md` so a run is reproducible/regenerable ("re-roll" = new seed).
 2. **Archetype pool** — pick directions that differ on **≥2 axes simultaneously** (font FAMILY, layout SKELETON, density, base personality, motion). Don't reuse the same two fonts + purple every time. Seed → distinct pool selection. A non-exhaustive pool:
    - *Editorial* — serif display, generous whitespace, asymmetric grid, restrained accent.
    - *Neo-brutalist* — mono/grotesk, hard borders, high contrast, flat blocks, no shadow.

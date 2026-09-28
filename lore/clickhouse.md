@@ -13,7 +13,7 @@ DON'T over-partition (high-cardinality key) → part explosion, too many parts.
 DON'T run frequent ALTER TABLE UPDATE/DELETE mutations — they rewrite whole columns.
 DON'T assume FINAL/dedup is cheap or skip-indexes help on unsorted data.
 
-Deep dive when writing non-trivial ClickHouse — read lore/clickhouse/{mergetree-and-schema,ingestion-and-inserts,materialized-views-and-query-perf,sharding-and-replication,performance}.md
+Deep dive when writing non-trivial ClickHouse — read lore/deep/clickhouse.md#{mergetree-and-schema,ingestion-and-inserts,materialized-views-and-query-perf,sharding-and-replication,performance}
 
 ## Sources
 clickhouse.com/docs — mergetree-family/mergetree · optimize/asynchronous-inserts · statements/update

@@ -16,6 +16,6 @@ DON'T
 
 Commands: `pip install -U polars`; `pl.show_versions()`.
 
-Deep dive when writing non-trivial polars — read lore/polars/{lazy-and-expressions}.md
+Deep dive when writing non-trivial polars — read lore/deep/polars.md#{lazy-and-expressions}
 
 Sources: docs.pola.rs — concepts/lazy-api, expressions-and-contexts, streaming, user-defined-python-functions, releases/upgrade/1

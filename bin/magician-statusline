@@ -3,7 +3,17 @@
 
 Reads Claude Code's statusLine JSON on stdin and prints a compact, single-line
 status bar (context %, rot warning, token-flow sparkline, model/git/cost, active
-skill/workflow/loop). Which parts show is driven by the user's config.
+skill/workflow/loop, effort, lore, voice). Which parts show is driven by the user's config.
+Runs only while the user has pointed `statusLine` at it (`magician-ui enable`).
+
+WHAT IT READS AND WRITES:
+  * Reads: the stdin JSON (token counts and context % come from its `context_window`
+    numbers; it never opens the session transcript), ~/.claude/magician/cli-ui.json,
+    and the per-session markers in ~/.claude/magician/status/ ($MAGICIAN_HOME overrides).
+  * Runs `git rev-parse --abbrev-ref HEAD` in the session's directory (cached 5 s).
+  * Writes only under status/: <session>.spark (last 12 context % values) and
+    gitbranch-<hash> (the branch cache). At most once an hour it deletes status files
+    older than 7 days, so the folder stays small.
 
 SAFETY CONTRACT (do not weaken):
   * NEVER raises to the terminal — the whole body is wrapped; any error prints an
@@ -16,6 +26,9 @@ import sys, os, json, subprocess, time, re
 HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
 CFG = os.path.join(HOME, "cli-ui.json")
 STATUS_DIR = os.path.join(HOME, "status")
+PRUNE_MARKER = os.path.join(STATUS_DIR, ".pruned")   # mtime = last prune pass
+PRUNE_EVERY = 3600          # seconds between prune passes
+PRUNE_AGE = 7 * 86400       # status files untouched this long are deleted
 ALL_COMPONENTS = ["context", "rot", "spark", "meta", "skill", "effort", "lore", "voice"]
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
@@ -257,6 +270,35 @@ def _voice(sid):
         return "", ""
 
 
+def _prune_status():
+    """Delete status files (per-session *.json / *.spark markers, gitbranch-* caches) not modified for
+    7 days. Cheap on the render path: one stat of the marker per call; the folder scan runs at most
+    once per PRUNE_EVERY. Other names in the folder are never touched."""
+    try:
+        now = time.time()
+        try:
+            if now - os.path.getmtime(PRUNE_MARKER) < PRUNE_EVERY:
+                return
+        except OSError:
+            if not os.path.isdir(STATUS_DIR):
+                return
+        with open(PRUNE_MARKER, "w"):
+            pass                      # (re)stamp first so a slow or interrupted pass isn't retried at once
+        cutoff = now - PRUNE_AGE
+        with os.scandir(STATUS_DIR) as it:
+            for e in it:
+                n = e.name
+                if not (n.endswith((".json", ".spark")) or n.startswith("gitbranch-")):
+                    continue
+                try:
+                    if e.is_file(follow_symlinks=False) and e.stat(follow_symlinks=False).st_mtime < cutoff:
+                        os.remove(e.path)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+
+
 def _vlen(s):
     return len(_ANSI.sub("", s))
 
@@ -356,4 +398,9 @@ if __name__ == "__main__":
             print("")
         except Exception:
             pass
+    try:
+        sys.stdout.flush()   # the bar is out before any housekeeping
+    except Exception:
+        pass
+    _prune_status()
     sys.exit(0)

@@ -13,7 +13,7 @@ DON'T use print/console, hide context in a message string, or let logging throw/
 
 Match the platform — shape logs for it, query in ITS language; the Observability note names it (ask+record if unknown): lore/{dynatrace,grafana,splunk,gcp-logging,cloudwatch,azure-monitor}.md.
 
-Deep-dive: lore/logging/{levels-and-environments,what-to-log-and-where,structured-and-correlation,errors-and-exceptions,security-and-pii,sampling-and-performance}.md
+Deep-dive: lore/deep/logging.md#{levels-and-environments,what-to-log-and-where,structured-and-correlation,errors-and-exceptions,security-and-pii,sampling-and-performance}
 
 ## Sources
 opentelemetry.io logs/data-model + signals/logs; 12factor.net/logs

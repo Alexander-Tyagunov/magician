@@ -19,6 +19,6 @@ DON'T
 
 Commands: prisma init · generate · migrate dev --name x · migrate deploy · db push · db pull · studio · migrate reset
 
-Deep dive when writing non-trivial prisma — read lore/prisma/{schema-and-migrations,client-queries-and-pitfalls}.md
+Deep dive when writing non-trivial prisma — read lore/deep/prisma.md#{schema-and-migrations,client-queries-and-pitfalls}
 
 Sources: prisma.io/docs/orm/prisma-client/using-raw-sql/raw-queries · /reference/prisma-cli-reference · /more/upgrade-guides/upgrading-versions/upgrading-to-prisma-6

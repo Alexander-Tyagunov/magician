@@ -17,7 +17,7 @@ DON'T
 
 Commands: `manage.py runserver|migrate|makemigrations|createsuperuser|check --deploy|test`; `django-admin startproject`.
 
-Deep dive when writing non-trivial django — read lore/django/{orm-and-migrations,views-drf-and-async}.md
+Deep dive when writing non-trivial django — read lore/deep/django.md#{orm-and-migrations,views-drf-and-async}
 
 ## Sources
 docs.djangoproject.com/en/stable/{releases,topics/security,topics/async}; django-rest-framework.org

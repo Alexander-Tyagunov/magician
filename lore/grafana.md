@@ -12,7 +12,7 @@ DON'T make labels from high-cardinality values (user/request id, IP, timestamp) 
 DON'T assume line regex `|~`/`!~` is anchored (it isn't); label `=~`/`!~` is fully anchored.
 DON'T scan without a stream selector or over huge time ranges — narrow labels + window first.
 
-Deep dive for non-trivial Grafana/Loki: read lore/grafana/{loki-and-logql,labels-and-cardinality,explore-dashboards-and-alerting}.md
+Deep dive for non-trivial Grafana/Loki: read lore/deep/grafana.md#{loki-and-logql,labels-and-cardinality,explore-dashboards-and-alerting}
 
 ## Sources
 grafana.com/docs/loki/latest/query/{log_queries,metric_queries} · get-started/labels · alert · grafana.com/docs/grafana/latest/explore

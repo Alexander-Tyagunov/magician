@@ -14,6 +14,6 @@ DON'T fine-tune without a held-out eval split (leakage).
 
 Commands: `pip install -U transformers accelerate`; `hf auth login`; `hf download org/model`.
 
-Deep dive when writing non-trivial transformers — read lore/transformers/{pipelines-and-finetuning}.md
+Deep dive when writing non-trivial transformers — read lore/deep/transformers.md#{pipelines-and-finetuning}
 
 Sources: https://huggingface.co/docs/transformers (index, pipeline_tutorial, main_classes/trainer)

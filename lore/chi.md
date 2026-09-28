@@ -13,7 +13,7 @@ DON'T leak internals — set a custom error responder; never echo panic/error te
 
 Commands: `go get github.com/go-chi/chi/v5 github.com/go-chi/cors` · `go run .`
 
-Deep dive when writing non-trivial chi — read lore/chi/{routing-and-middleware}.md
+Deep dive when writing non-trivial chi — read lore/deep/chi.md#{routing-and-middleware}
 
 ## Sources
 github.com/go-chi/chi · pkg.go.dev/github.com/go-chi/chi/v5 · go-chi.io

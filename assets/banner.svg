@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="bt">
+  <title id="bt">magician: plan, build, verify, and ship software with Claude Code</title>
+  <g transform="translate(64 64)">
+    <rect width="192" height="192" rx="48" fill="#6960FC"/>
+    <path d="M57 135V93a19.5 19.5 0 0 1 39 0v42M96 93a19.5 19.5 0 0 1 39 0v42" fill="none" stroke="#FFFFFF" stroke-width="21" stroke-linejoin="round"/>
+    <path d="M147 33l4.9 13.1 13.1 4.9-13.1 4.9L147 69l-4.9-13.1L129 51l13.1-4.9z" fill="#E3DFFF"/>
+  </g>
+  <text x="304" y="170" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Roboto, Helvetica, Arial, sans-serif" font-size="112" font-weight="600" letter-spacing="-1" fill="#6960FC">magician</text>
+  <text x="308" y="240" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Roboto, Helvetica, Arial, sans-serif" font-size="40" font-weight="400" fill="#777587">Plan, build, verify, and ship with Claude Code</text>
+</svg>

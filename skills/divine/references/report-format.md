@@ -58,15 +58,15 @@ Only after the explicit Phase 5 gate (publishing on the user's behalf).
 
 **Step 0 — verify the account before any write** (mirror change-context.md): check the active `gh`/`glab` account against the repo's org, switch if it's wrong (e.g. the work account for a work-org repo), and restore afterward. The write commands below assume this check has passed — do not skip it just because you jumped to the snippet.
 
-**Summary review (body only):** write the report to a temp file, then:
+**Summary review (body only):** write the report to `.workspace/local/divine-review.md` (gitignored scratch space), then:
 ```bash
 # GitHub — choose ONE event. Prefer COMMENT unless the user asks to approve/request-changes.
-gh pr review <N|url> --comment --body-file /tmp/divine-review.md
-# gh pr review <N|url> --request-changes --body-file /tmp/divine-review.md   # only if user says so
+gh pr review <N|url> --comment --body-file .workspace/local/divine-review.md
+# gh pr review <N|url> --request-changes --body-file .workspace/local/divine-review.md   # only if user says so
 ```
 ```bash
-# GitLab
-glab mr note <N|url> --message "$(cat /tmp/divine-review.md)"
+# GitLab — pass the report text itself as the message value
+glab mr note <N|url> --message "<report text>"
 ```
 
 **Inline comments** (one per finding, anchored to `file:line`) — GitHub, via the reviews API, batched into one pending review:

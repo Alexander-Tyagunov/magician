@@ -11,7 +11,7 @@ DON'T drip tiny INSERTs/loads or legacy insertAll when batch fits — cost + quo
 DON'T make thousands of micro-partitions (<~10 GB): metadata overhead; cluster instead.
 DON'T rely on legacy SQL or per-row transactions — snapshot isolation, table-level DML limits.
 
-Deep dive — read lore/bigquery/{cost-and-slots,partitioning-and-clustering,loading-and-streaming,sql-and-features,performance}.md
+Deep dive — read lore/deep/bigquery.md#{cost-and-slots,partitioning-and-clustering,loading-and-streaming,sql-and-features,performance}
 
 ## Sources
 cloud.google.com/bigquery/pricing · docs/partitioned-tables · docs/loading-data · docs/introduction-sql

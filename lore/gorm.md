@@ -16,6 +16,6 @@ DON'T
 
 Commands: `go get gorm.io/gorm` · `go get gorm.io/driver/postgres`
 
-Deep dive when writing non-trivial gorm — read lore/gorm/{queries-associations-migrations}.md
+Deep dive when writing non-trivial gorm — read lore/deep/gorm.md#{queries-associations-migrations}
 
 Sources: gorm.io/docs/{index,query,migration,security}.html · pkg.go.dev/gorm.io/gorm

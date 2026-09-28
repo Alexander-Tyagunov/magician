@@ -12,7 +12,7 @@ DON'T block the event loop in async; don't rely on the GIL for safety on 3.13t b
 
 Commands: `uv sync` / `uv add pkg` / `uv run pytest -q`; `uvx ruff check --fix && uvx ruff format`; `uvx mypy .`.
 
-Deep dive when writing non-trivial Python — read lore/python/{language-and-idioms,typing,asyncio,errors-and-resources,performance-and-concurrency,packaging-and-envs,testing-and-tooling}.md
+Deep dive when writing non-trivial Python — read lore/deep/python.md#{language-and-idioms,typing,asyncio,errors-and-resources,performance-and-concurrency,packaging-and-envs,testing-and-tooling}
 
 ## Sources
 docs.python.org/3/whatsnew (3.10–3.14); peps.python.org (585,604,634,654,680,695,701,703,744); docs.astral.sh/{uv,ruff}; docs.pytest.org; mypy.readthedocs.io

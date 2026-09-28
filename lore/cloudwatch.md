@@ -15,7 +15,7 @@ DON'T make EMF dimensions high-cardinality (e.g. requestId) — one metric per v
 DON'T leak SPL/KQL/LogQL syntax into QL, or invent operators.
 DON'T print per-line in hot loops.
 
-Deep dive when writing non-trivial CloudWatch — read lore/cloudwatch/{logs-insights-queries,log-groups-and-structure,emf-metrics-and-alarms}.md
+Deep dive when writing non-trivial CloudWatch — read lore/deep/cloudwatch.md#{logs-insights-queries,log-groups-and-structure,emf-metrics-and-alarms}
 
 ## Sources
 docs.aws.amazon.com: CWL_AnalyzeLogData_Languages, CWL_Insights-Sample-Queries, Embedded_Metric_Format_Specification; prescriptive-guidance/logging-monitoring-for-application-owners

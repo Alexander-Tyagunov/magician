@@ -17,7 +17,7 @@ Scale agent count to depth and diff size, not a fixed number: a 3-file PR at Dee
 
 ## Grounding via /magic
 
-Review against **external truth**, not assumptions — the difference between "this looks off" and "this violates the documented contract / spec for this interface". Invoke `/magic` (or do focused `context7`/web lookups inline) when the change involves:
+Review against **external truth**, not assumptions — the difference between "this looks off" and "this violates the documented contract / spec for this interface". Invoke `/magic` (or do focused `context7`/web lookups inline — `context7` is pre-approved when installed; a web search or page fetch shows Claude Code's normal permission prompt) when the change involves:
 
 - an unfamiliar **framework / library / API** (resolve version-correct behavior — `context7`),
 - a **protocol, spec, or domain** you can't review from first principles (payments, auth, addressing, crypto, GraphQL federation…),

@@ -1,7 +1,7 @@
 ---
 name: almanac
-description: One-time workspace setup — creates .workspace/ structure, .gitignore entries, a lean CLAUDE.md, a permissions allowlist, and suggests relevant MCPs. Run once per project.
-allowed-tools: Bash(mkdir:*), Bash(git add:*), Bash(git commit:*), Bash(python3:*), Read, Write, AskUserQuestion
+description: One-time workspace setup — creates the .workspace/ structure, .gitignore entries and a lean CLAUDE.md, then suggests relevant MCPs and permission rules you can add yourself with /permissions. Writes no Claude Code settings. Run once per project.
+allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git commit -m *)
 disable-model-invocation: true
 ---
 
@@ -24,9 +24,13 @@ Set up the magician workspace for this project. Run once per project.
     └── session.md    last session state
 ```
 
+Almanac never edits Claude Code settings files (`.claude/settings*.json` or `~/.claude/settings.json`) and never changes the permission mode. Permission rules are only suggested in chat (step 6) for the user to add with `/permissions`.
+
 ## Process
 
 ### 1. Workspace Mode Decision
+
+If `${CLAUDE_PLUGIN_DATA}/workspace-strategy.json` exists (written by step 8 of an earlier run on this machine), Read it first and put the mode it records first in the options, labelled "(last used)".
 
 Use the `AskUserQuestion` tool with the **Workspace Mode** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
 
@@ -94,40 +98,28 @@ If no CLAUDE.md exists, create a lean one:
 ```
 Do not write generic best practices. CLAUDE.md should only contain rules specific to this project.
 
-### 6. Permissions Allowlist
+### 6. Permission Suggestions (guidance only)
 
-Build the suggested list based on detected stack. Then use the `AskUserQuestion` tool with the **Permissions** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
+Use the `AskUserQuestion` tool with the **Permission suggestions** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
 
-**Wait for reply before writing to settings.json.**
+If **Show suggestions**: print a short list in chat, built from the detected stack, and write nothing:
+- **Allow** — the project's own test, lint and build commands, each named with its subcommand (for example `Bash(npm test *)`, `Bash(npm run lint *)`, `Bash(pytest *)`, `Bash(go test *)`). Never suggest a whole CLI (`Bash(git *)`, `Bash(npm *)`), an interpreter, or a package launcher.
+- **Deny** — files that should stay off-limits to Claude (for example `Read(./.env)`, `Read(./.env.*)`, `Read(./secrets/**)`, plus any credential files you noticed while inspecting the project).
 
-If **Add all**: first ask about Playwright access using the **Playwright** configurations in [references/setup-questions.md](references/setup-questions.md), then write the full set to `.claude/settings.json` using the script in [references/settings-writer.md](references/settings-writer.md).
-
-If **Choose** or **Skip**: follow the guidance in [references/setup-questions.md](references/setup-questions.md).
+Then tell the user they can add any of these with `/permissions` (or by editing their own settings). If **Skip**: continue.
 
 ### 7. MCP Suggestions
-Based on detected archetype, suggest relevant MCPs:
+Based on detected archetype, mention MCP servers that could help:
 - web: browser automation MCP for UI testing
 - data: notebook MCP for Jupyter integration
 - devops: cloud provider CLI MCPs
 
-Ask: "Want me to set up any of these MCPs? If so, which ones?" **End your turn. Wait for their reply before proceeding to step 8.**
+Adding an MCP server changes Claude Code's configuration, so almanac does not install one. If the user wants one, point them to that server's install instructions (a `/plugin` entry or the `claude mcp add …` command for them to run).
 
 ### 8. Save Strategy
-Record the workspace mode chosen in step 1. Set `WS_MODE` to that choice (`shared` or `private`) by replacing the placeholder below before running — don't leave the example value:
-```bash
-# WS_MODE is "shared" or "private" from the step 1 answer.
-WS_MODE=shared   # ← REPLACE with the step-1 choice: shared or private
-python3 -c "
-import json, os, sys
-mode = sys.argv[1]
-# SHARED: only .workspace/local/ is gitignored. PRIVATE: whole .workspace/ is gitignored.
-data = {'mode': mode, 'ignored': 'false' if mode == 'shared' else 'true'}
-path = os.path.expanduser('~/.local/share/magician/workspace-strategy.json')
-os.makedirs(os.path.dirname(path), exist_ok=True)
-json.dump(data, open(path,'w'))
-print('Strategy saved:', data)
-" "$WS_MODE"
-```
+Record the workspace mode chosen in step 1 in `${CLAUDE_PLUGIN_DATA}/workspace-strategy.json` — the magician plugin data folder; step 1 of a later run reads it. No hook reads it. Read the file first if it exists, then write it with exactly one of:
+- Shared mode (only `.workspace/local/` is gitignored): `{"mode": "shared", "ignored": "false"}`
+- Private mode (the whole `.workspace/` is gitignored): `{"mode": "private", "ignored": "true"}`
 
 ### 9. Commit (if shared mode)
 ```bash

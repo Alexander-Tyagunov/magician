@@ -13,7 +13,7 @@ DON'T bake level/format into committed config — read them from env.
 
 Commands: `go vet ./...` (slog analyzer) · `go doc log/slog`
 
-Deep dive when writing non-trivial slog — read lore/slog/{structured-logging}.md
+Deep dive when writing non-trivial slog — read lore/deep/slog.md#{structured-logging}
 
 ## Sources
 pkg.go.dev/log/slog · go.dev/blog/slog · github.com/uber-go/zap

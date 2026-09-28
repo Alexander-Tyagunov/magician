@@ -2,14 +2,14 @@
 name: manifest
 description: Full autonomous SDLC — design, plan, implement, review, and ship with 4 human approval gates
 disable-model-invocation: true
-argument-hint: [one-sentence feature description]
+argument-hint: "[one-sentence feature description]"
 ---
 
 # /manifest — Full Autonomous SDLC
 
 The complete end-to-end development flow. Four human gates. Everything else runs autonomously.
 
-**Autonomy is the point: gather → plan → memorize → execute.** The human approves the gates below, **not each file read.** Ground via `kg` (not broad grep), memorize the plan + requirements + `kg` pointers + standards to `.workspace/`, and execute the whole plan without prompting per read/search — reads/searches/read-only git are auto-approved (`magician-ui allow`); only writes/commit/push/PR/ticket/destructive ops gate. If you're bombarding the owner with "can I read this?" the run is broken. See [lore/autonomy.md](../../lore/autonomy.md).
+**Autonomy is the point: gather → plan → memorize → execute.** The human approves the gates below, **not each file read.** Ground via `kg` (not broad grep), memorize the plan + requirements + `kg` pointers + standards to `.workspace/`, and execute the whole plan without stopping to ask about individual reads/searches — Claude Code's built-in read-only commands never prompt, and anything else prompts once unless the user runs in auto mode or approves it. The gates you stop on are writes/commit/push/PR/ticket/destructive ops. If you're bombarding the owner with "can I read this?" the run is broken. See [lore/autonomy.md](../../lore/autonomy.md).
 
 `/manifest` is the **greenfield** entry (build something new). For **brownfield** work — recreate an *existing* feature in another app, or change one in place (swap the vendor behind the scenes, redesign, add a capability) — use **`/transmute`**, which comprehends the existing feature first and then drives the same delivery spine (conjure → blueprint → weave → gateways → seal) behind a parity contract.
 
@@ -61,7 +61,7 @@ GATE 4: PR title and final go-ahead (before /seal)
 ### Phase 7: Ship [GATE 4]
 16. Run /certify again — clean state after review fixes
 17. Present the proposed PR title, then gate with **AskUserQuestion** — options: **Approve & create PR** (proceed to /seal with this title), **Revise title** (edit it first), **Cancel** (stop before shipping). **End your turn at the call; wait for the choice.** Treat a free-form "approved / ship it" as Approve; proceed to /seal only on Approve.
-18. Run /seal — simplify, commit, PR, monitor CI, merge
+18. Run /seal — simplify, commit, PR, watch CI, merge
 
 ## Autonomous Continuation
 
@@ -83,4 +83,4 @@ See [lore/obstacles.md](../../lore/obstacles.md).
 
 ## Completion Signal
 
-"Manifest complete. Feature shipped. Chronicle will record this session at stop."
+"Manifest complete. Feature shipped. Chronicle records this session at stop (unless session history is turned off)."

@@ -19,6 +19,6 @@ DON'T
 
 Commands: `npm i -D sass`; CLI `sass in.scss out.css --watch`.
 
-Deep dive when writing non-trivial sass — read lore/sass/{modules-and-migration}.md
+Deep dive when writing non-trivial sass — read lore/deep/sass.md#{modules-and-migration}
 
 Sources: sass-lang.com/documentation {at-rules/use, modules, breaking-changes/import, breaking-changes/color-functions}

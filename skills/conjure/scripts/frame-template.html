@@ -4,9 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>✦ {{PROJECT}} · {{VERSION}}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- Mermaid renders architecture diagrams. Exact version pin (10.9.3): the browser fetches this one
+       file from cdn.jsdelivr.net, and only while a companion page is open. The integrity hash matches
+       dist/mermaid.min.js in the npm registry tarball for 10.9.3, so the browser refuses any other
+       file. Offline, the diagram source stays readable as plain text. The frame uses local system
+       fonts, so it makes no other third-party requests. -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js" integrity="sha384-R63zfMfSwJF4xCR11wXii+QUsbiBIdiDzDbtxia72oGWfkT7WHJfmD/I/eeHPJyT" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg:        #080810;
@@ -26,7 +29,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Space Grotesk', system-ui, sans-serif;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100dvh;
@@ -61,7 +64,7 @@
 
     .hd-project {
       font-size: 13px; font-weight: 600; color: var(--dim);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
     .hd-version {
@@ -83,7 +86,7 @@
 
     #__vc_selection {
       font-size: 12px; color: var(--muted);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       margin-left: 8px;
       transition: color 0.25s;
     }
@@ -213,7 +216,7 @@
     .mock-url {
       flex: 1; margin: 0 14px;
       background: rgba(255,255,255,0.04); border-radius: 7px;
-      padding: 4px 12px; font-family: 'JetBrains Mono', monospace;
+      padding: 4px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 11px; color: var(--muted);
     }
     .mockup-body { min-height: 380px; }

@@ -15,7 +15,7 @@ DON'T concatenate user input into any raw SQL string.
 
 Commands: `npm i kysely <pg|mysql2|better-sqlite3>`; migrate/seed via `kysely-ctl`; generate DB types via `kysely-codegen` (both separate packages).
 
-Deep dive when writing non-trivial kysely — read lore/kysely/{query-builder-and-types}.md
+Deep dive when writing non-trivial kysely — read lore/deep/kysely.md#{query-builder-and-types}
 
 ## Sources
 kysely.dev/docs/{intro,getting-started,recipes/raw-sql,migrations}; context7 /kysely-org/kysely (0.28.3)

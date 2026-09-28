@@ -14,7 +14,7 @@ DON'T search before collection loaded + indexed.
 DON'T change dimension or metric after creation — recreate.
 DON'T assume Strong reads — default Bounded staleness.
 
-Deep dive when writing non-trivial Milvus — read lore/milvus/{collections-and-index-types,search-and-consistency,scaling-and-architecture,performance}.md
+Deep dive when writing non-trivial Milvus — read lore/deep/milvus.md#{collections-and-index-types,search-and-consistency,scaling-and-architecture,performance}
 
 ## Sources
 milvus.io/docs (index · metric · consistency · release_notes) · zilliz.com/cloud

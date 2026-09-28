@@ -1,8 +1,8 @@
 ---
 name: portal
 description: Creates a git worktree for isolated feature work (and documents cleanup post-merge); respects the disableGit preference. Use to isolate a feature on its own branch/worktree.
-allowed-tools: Bash(git worktree:*), Bash(git branch:*), Bash(mkdir:*), Read
-argument-hint: [feature-name]
+allowed-tools: Read, Bash(git worktree add *)
+argument-hint: "[feature-name]"
 ---
 
 # /portal — Git Worktree Isolation
@@ -16,12 +16,11 @@ Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git op
 ## Process (git mode)
 
 1. **Get branch name** — if `$ARGUMENTS` is non-empty, use it as the feature name directly. Otherwise ask: "What's this feature called? (I'll use it as the branch/worktree name.)" **End your turn. Wait for their answer before creating anything.**
-2. **Create worktree**:
+2. **Create worktree** (one plain command, so it matches this skill's pre-approval):
    ```bash
-   BRANCH="feature/<name>"
-   git worktree add ../<repo-name>-<name> -b "$BRANCH"
+   git worktree add ../<repo-name>-<name> -b feature/<name>
    ```
-3. **Workspace context propagates automatically** via `worktree-init.sh` hook
+3. **Workspace files** — tracked files (`.workspace/shared/`) come with the branch; gitignored ones such as `.workspace/local/prefs.md` don't. Worktrees that Claude Code creates itself (`claude --worktree`, subagent worktree isolation) copy the gitignored files listed in a `.worktreeinclude` file at the repo root, so listing `.workspace/local/prefs.md` there is a useful tip for the user. For this plain `git worktree add`, copy any local file the new worktree needs (that copy goes through the normal permission prompt).
 4. **Confirm** the new worktree path to the user
 5. Say: "Worktree created at `../<path>`. Work there for isolation. Run /seal when ready to merge."
 
@@ -35,7 +34,7 @@ Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git op
 
 Worktrees isolate the files, not the consequences: a rename, a signature change, or a shared-dependency bump made here breaks whatever a sibling session is building on. When Claude Code's cross-session messaging is available, tell the affected session yourself instead of letting it discover the breakage — `ListAgents` finds the sessions working the other worktrees, `SendMessage` delivers one self-contained sentence about what landed.
 
-Feature-detect it: no `ListAgents`, or no peer listed, means carry on exactly as before and note the change in your own summary. It is unavailable on Windows and on Bedrock/Google Cloud/Foundry, and a session inside a container can't see one on the host. See [lore/cross-session.md](../../lore/cross-session.md).
+Feature-detect it: no `ListAgents`, or no peer listed, means carry on exactly as before and note the change in your own summary. It isn't available in every environment, and a session inside a container can't see one on the host. See [lore/cross-session.md](../../lore/cross-session.md).
 
 ## Cleanup After Merge
 

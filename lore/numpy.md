@@ -18,6 +18,6 @@ DON'T
 
 Commands: `ruff check . --select NPY201` (2.0 autofix); `np.__version__`; `np.lib.NumpyVersion(np.__version__) >= '2.0.0'` for version gates.
 
-Deep dive when writing non-trivial numpy — read lore/numpy/{arrays-and-vectorization}.md
+Deep dive when writing non-trivial numpy — read lore/deep/numpy.md#{arrays-and-vectorization}
 
 Sources: numpy.org/doc/stable/ + /numpy_2_0_migration_guide.html

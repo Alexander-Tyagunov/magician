@@ -14,7 +14,7 @@ DON'T change a vector's size/distance after creation; recreate instead.
 DON'T enable memmap/quantization without measuring recall.
 DON'T trust defaults (m=16, ef_construct=100) at scale or high recall.
 
-Deep dive for non-trivial Qdrant — read lore/qdrant/{collections-and-indexing,filtering-and-payloads,search-and-quantization,performance}.md
+Deep dive for non-trivial Qdrant — read lore/deep/qdrant.md#{collections-and-indexing,filtering-and-payloads,search-and-quantization,performance}
 
 ## Sources
 qdrant.tech/docs (indexing · quantization · collections) · github.com/qdrant/qdrant/releases

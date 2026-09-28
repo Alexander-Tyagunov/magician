@@ -16,7 +16,7 @@ DON'T
 
 Commands (sequelize-cli): `sequelize db:migrate` · `db:migrate:undo` · `model:generate` · `migration:generate` · `seed:generate` · `db:seed:all`.
 
-Deep dive when writing non-trivial sequelize — read lore/sequelize/{models-and-queries,migrations-and-pitfalls}.md
+Deep dive when writing non-trivial sequelize — read lore/deep/sequelize.md#{models-and-queries,migrations-and-pitfalls}
 
 ## Sources
 sequelize.org/docs/v6/core-concepts/raw-queries · /model-querying-basics · sequelize.org/docs/v7 · github.com/sequelize/cli

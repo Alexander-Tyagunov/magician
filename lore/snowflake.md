@@ -12,7 +12,7 @@ DON'T SELECT * on wide tables or run row-at-a-time DML — batch every write.
 DON'T add a clustering key by reflex — only multi-TB tables, then rely on automatic clustering.
 DON'T leave warehouses idle, or treat Fail-safe (7 days, Snowflake-only) as backup.
 
-Deep dive — read lore/snowflake/{performance,warehouses-and-cost,storage-clustering-and-pruning,loading-and-streaming,query-features-and-time-travel}.md
+Deep dive — read lore/deep/snowflake.md#{performance,warehouses-and-cost,storage-clustering-and-pruning,loading-and-streaming,query-features-and-time-travel}
 
 ## Sources
 docs.snowflake.com: warehouses-overview · tables-clustering-micropartitions · data-load-overview · data-time-travel · intro-editions

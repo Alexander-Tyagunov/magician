@@ -12,7 +12,7 @@ Version cue: current **v6** (peer `react >=16.8`; native TS types → uninstall 
 
 Commands: `npm i styled-components` · `npm i -D babel-plugin-styled-components`
 
-Deep dive when writing non-trivial styled-components — read lore/styled-components/{patterns-and-migration}.md
+Deep dive when writing non-trivial styled-components — read lore/deep/styled-components.md#{patterns-and-migration}
 
 ## Sources
 styled-components.com/docs, /docs/faqs; github.com/styled-components/styled-components/releases

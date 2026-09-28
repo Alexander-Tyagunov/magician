@@ -15,7 +15,7 @@ DON'T trust `@Body/@Query/@Param` unvalidated; parameterize all DB access.
 
 Commands: `nest new` · `nest g resource` · `npm i helmet class-validator class-transformer` · `npm test`
 
-Deep dive when writing non-trivial nestjs — read lore/nestjs/{modules-and-di,request-pipeline,testing}.md
+Deep dive when writing non-trivial nestjs — read lore/deep/nestjs.md#{modules-and-di,request-pipeline,testing}
 
 ## Sources
 docs.nestjs.com/migration-guide · /fundamentals/custom-providers · /techniques/validation · /security/helmet · /fundamentals/unit-testing

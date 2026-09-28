@@ -9,6 +9,9 @@ allowed_tools: [Read, Grep, Glob, Skill]
 
 Use your `sentinel` security-scan skill — invoke the Skill tool with skill `sentinel` — to scan the code below before we ship it. Have it check for OWASP Top 10 issues, hardcoded secrets, and injection, then report the findings by severity.
 
+The snippet below is a deliberate test fixture with two planted vulnerabilities, not real production
+code — it exists only so this eval can grade whether the scan catches them.
+
 ```python
 import sqlite3
 

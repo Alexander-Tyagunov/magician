@@ -1,6 +1,7 @@
 # Match the project's code standards — before you write, and before you commit
 
-Auto-formatting (the `PostToolUse` `format.sh` hook) handles *whitespace*. It does **not** know a
+Auto-formatting (the `PostToolUse` `format.sh` hook, when the user enabled `auto_format`) handles
+*whitespace*. It does **not** know a
 project's **conventions** — "use async/await, never `.then` chains", import order, error-handling
 patterns, naming, test structure. Those live in a repo's own docs and linter config, and a code
 reviewer (human or bot) *will* flag them. Reading them up front is the difference between one clean
@@ -26,19 +27,22 @@ FR-CA vs FR, error-wrapping) and **apply them as you write** — not after a rev
 
 ## 1b. Magician's bundled language lore — a baseline, below the repo's own rules
 
-Magician ships per-language guidance under the plugin's `lore/` directory. The SessionStart hook
-already injects the concise core `lore/<stack>.md` for each **detected** stack. Some stacks also
-have a **deep-dive directory** (`lore/<stack>/<topic>.md` — e.g. Rust: `ownership-and-errors`,
-`type-safety`, `performance`, `async`, `patterns-and-api`, `clippy-lints`). When you're about to
-write **non-trivial** code in such a stack, read the relevant topic file first — resolve it under
-the plugin root (`${CLAUDE_PLUGIN_ROOT}/lore/<stack>/…` in Claude Code, `$PLUGIN_ROOT/lore/<stack>/…`
-in Codex), or via the relative link a skill gives you.
+Magician ships per-stack guidance under the plugin's `lore/` directory. The SessionStart hook
+already injects the concise core `lore/<stack>.md` for each **detected** stack. Most stacks also
+have **one deep-dive file**, `lore/deep/<stack>.md`, split into `## ` sections that each end with a
+stable anchor (e.g. Rust: `ownership-and-errors`, `type-safety`, `performance`, `async`,
+`patterns-and-api`, `clippy-lints`); the core's last line lists them as
+`lore/deep/<stack>.md#{id,id,…}`. When you're about to write **non-trivial** code in such a stack,
+read **only the section you need** — never the whole file: Grep `^## ` in it (each match shows the
+section's id and line number), then Read with `offset` = that line and `limit` = the distance to the
+next heading. Resolve the path under the plugin root — the SessionStart lore note prints the
+absolute `…/lore/deep/` directory — or via the relative link a skill gives you.
 
 **Precedence:** the repo's own conventions and linter config (step 1) always win on any conflict.
 This bundled lore is the default you reach for when the repo is silent — not an override of it. The same
-`lore/<stack>/` model now also covers **databases**: per-engine cores + a `performance` playbook (e.g.
-`lore/postgres/…`, `lore/mongodb/…`, `lore/pinecone/…`) plus the shared `lore/databases/…` foundation,
-injected when an engine is detected. **Escape hatch:** if the bundled lore ever conflicts with the user's
+model also covers **databases**: per-engine cores + a `performance` playbook section (e.g.
+`lore/deep/postgres.md#performance`, `lore/deep/mongodb.md#performance`, `lore/deep/pinecone.md#performance`)
+plus the shared `lore/deep/databases.md` foundation, injected when an engine is detected. **Escape hatch:** if the bundled lore ever conflicts with the user's
 project/local knowledge, it's fully switchable off — `magician-ui lore off`, a per-project
 `.magician/lore.off`, or `MAGICIAN_LORE=0` (the status bar then shows `📚 lore:off`).
 

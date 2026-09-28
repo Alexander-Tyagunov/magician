@@ -1,8 +1,8 @@
 ---
 name: seal
 description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
-allowed-tools: Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr checks:*), Bash(gh pr merge:*), Bash(gh pr view:*), Bash(gh run view:*), Read, Edit, Task, Monitor, AskUserQuestion
-argument-hint: [pr-title]
+allowed-tools: Read, Task, AskUserQuestion, Edit(./CLAUDE.md), Edit(./README.md), Bash(git add -A), Bash(git commit -m *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh pr checks *), Bash(gh pr view *), Bash(gh pr merge --squash --delete-branch), Bash(gh run view *)
+argument-hint: "[pr-title]"
 ---
 
 # /seal — Ship to Production
@@ -17,7 +17,7 @@ Take a certified feature branch through to a merged PR. This skill performs irre
 
 ## Autonomy — approve the plan, then run
 
-Once Pre-flight is confirmed (/certify passed, /scrutinize + remediation complete or explicitly skipped), the ship sequence runs **autonomously**: the Simplifier Pass, Final Certify, Update Documentation, and Commit steps proceed without pausing — reading, searching, `kg query`/`blast`, and read-only git NEVER prompt for permission. Re-gate **only** on outward side effects — `git push`, `gh pr create`, `gh pr merge` — surfaced once through the consolidated ship-summary gate below, not per command. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+Once Pre-flight is confirmed (/certify passed, /scrutinize + remediation complete or explicitly skipped), the ship sequence runs **autonomously**: the Simplifier Pass, Final Certify, Update Documentation, and Commit steps proceed without stopping to ask the owner. Claude Code's built-in read-only commands (including read-only git) don't prompt; this skill pre-approves the exact commit, push, PR, CI-check and merge commands shown below and edits to `CLAUDE.md`/`README.md`; any other edit or command goes through the normal permission prompt unless the user runs in auto mode. Re-gate **only** on outward side effects — `git push`, `gh pr create`, `gh pr merge` — surfaced once through the consolidated ship-summary gate below, not per command. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Process
 
@@ -53,15 +53,15 @@ Steps 1–4 ran autonomously. Before the first outward command (`git push`), pre
 - **Merge strategy** — e.g. `--squash --delete-branch` (step 9)
 
 Ask **"Ship this branch?"** with these options:
-- **Ship it** — run Push, Create PR, and Merge without further per-command prompts
+- **Ship it** — run Push, Create PR, and Merge without asking again
 - **Revise** — adjust the commit, PR, or scope first; re-present the summary afterward
 - **Cancel** — stop here; do not push, open a PR, or merge
 
-Treat a free-form "yes / approved / looks good" as **Ship it**. On **Ship it**, run Push (step 5), Create PR (step 6), and Merge (step 9) without further per-command prompts.
+Treat a free-form "yes / approved / looks good" as **Ship it**. On **Ship it**, run Push (step 5), Create PR (step 6), and Merge (step 9) without asking the owner again.
 
 ### 5. Push
 ```bash
-git push -u origin <branch>
+git push -u origin HEAD
 ```
 
 ### 6. Create PR
@@ -82,18 +82,18 @@ Built with magician + Claude Code
 EOF
 )"
 ```
+The `$(…)` body can keep this command from matching the `gh pr create` pre-approval; if Claude Code asks to confirm it, that is its own permission check, separate from the ship-summary gate.
 
-### 7. Monitor CI (evaluator-optimizer loop)
-Prefer the **Monitor tool**: run the checks watcher in the background so CI status/failure events stream into the session and you react the instant a check fails — no blocking watch holding the turn open.
+### 7. Watch CI (evaluator-optimizer loop)
+Run the checks watcher with the Bash tool's background option, so the turn isn't held open; you're notified when it exits, then read its output:
 ```bash
-gh pr checks <pr> --watch    # run via the Monitor tool; each status line returns as an event
+gh pr checks <pr> --watch
 ```
-Fallback when the Monitor tool is unavailable (pre-v2.1.98): call `gh pr checks --watch` directly (blocking).
 
-Then loop: **on a failing check → `gh run view <id> --log-failed` → fix → push → the watcher reports the next run → repeat until every check is green.** For a long or unattended wait, pair with **`/goal`** ("PR checks green, then merged") so Claude keeps driving across turns; on a schedule, `/loop check CI on my PR` (self-paces when you omit the interval; fixed-interval on Bedrock/Vertex).
+Then loop: **on a failing check → `gh run view <id> --log-failed` → fix → commit → `git push -u origin HEAD` → start the watcher again → repeat until every check is green.** For a long or unattended wait, pair with **`/goal`** ("PR checks green, then merged") so Claude keeps driving across turns; on a schedule, `/loop check CI on my PR` (self-paces when you omit the interval).
 
 ### 8. Review Comments
-If reviewers add comments: use /scrutinize to process and remediate them, then /certify, then push.
+If reviewers add comments: use /scrutinize to process and remediate them, then /certify, then `git push -u origin HEAD`.
 
 ### 9. Merge (if auto-merge not enabled)
 ```bash

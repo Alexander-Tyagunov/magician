@@ -32,7 +32,7 @@ Don't send narration, progress for its own sake, or anything the other session w
 
 ## Availability — feature-detect, never require
 
-Requires Claude Code **v2.1.224+** (v2.1.225+ to *start* a conversation with a session on another machine), runs on **macOS and Linux only**, and is **not available on Bedrock, Google Cloud, or Microsoft Foundry**. It also stays off when feature-flag evaluation is disabled (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `DISABLE_GROWTHBOOK`), and an admin can deny `SendMessage`/`ListAgents` outright.
+Requires Claude Code **v2.1.224+** (v2.1.225+ to *start* a conversation with a session on another machine), and runs on **macOS and Linux only**. It isn't offered with every API provider, it stays off when feature-flag evaluation is disabled (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `DISABLE_GROWTHBOOK`), and permission rules can deny `SendMessage`/`ListAgents` outright.
 
 **So no magician workflow may depend on it.** If `ListAgents` isn't there, or lists no peer, carry on exactly as before and surface the finding in your own summary. Never block a wave, never retry in a loop, and never tell the owner to enable something — mention it once, at most, if the coordination would clearly have helped.
 

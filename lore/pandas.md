@@ -18,7 +18,7 @@ DON'T
 
 Commands: test `pytest`; lint `ruff check .`.
 
-Deep dive when writing non-trivial pandas — read lore/pandas/{idioms-and-performance}.md
+Deep dive when writing non-trivial pandas — read lore/deep/pandas.md#{idioms-and-performance}
 
 ## Sources
 pandas.pydata.org/docs/user_guide/copy_on_write.html; /docs/whatsnew/v3.0.0.html; /docs/whatsnew/index.html

@@ -102,7 +102,6 @@ DB_PATH = os.path.join(REPO_DIR, "graph.db")
 META_PATH = os.path.join(REPO_DIR, "meta.json")
 CACHE_DIR = os.path.join(REPO_DIR, "cache")
 SOCK_PATH = os.path.join(REPO_DIR, "daemon.sock")
-SUGGEST_PATH = os.path.join(REPO_DIR, "suggest.json")
 
 
 def load_meta():

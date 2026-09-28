@@ -9,6 +9,6 @@ DO slice tests (`@WebMvcTest`, `@DataJpaTest`); `@SpringBootTest` loads full con
 Version: Boot 4.x current (Spring Framework 7, Java 17+, `jakarta.*`); prior 3.x (Framework 6, Java 17+, `jakarta.*`). Boot 2.x = Java 8+, `javax.*` — `javax.*` imports break on 3+.
 Commands: run `./mvnw spring-boot:run` / `./gradlew bootRun`; build `./mvnw package` / `./gradlew bootJar`; test `./mvnw test` / `./gradlew test`.
 
-Deep dive when writing non-trivial spring — read lore/spring/{di-config-and-boot,web-mvc-vs-webflux,data-access,security-and-actuator,testing}.md
+Deep dive when writing non-trivial spring — read lore/deep/spring.md#{di-config-and-boot,web-mvc-vs-webflux,data-access,security-and-actuator,testing}
 
 Sources: docs.spring.io/spring-boot, docs.spring.io/spring-framework, spring.io/projects/spring-boot, github.com/spring-projects/spring-boot

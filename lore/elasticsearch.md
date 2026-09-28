@@ -12,7 +12,7 @@ DON'T use ES as system of record — it's a secondary search/analytics store.
 DON'T allow unbounded dynamic fields / high-cardinality text — blowups + OOM aggs.
 DON'T leave the default 1 shard on big indices, nor over-shard small ones.
 
-Deep dive when writing non-trivial Elasticsearch — read lore/elasticsearch/{mapping-and-indexing,query-vs-filter-and-search,aggregations-and-scale,performance}.md
+Deep dive when writing non-trivial Elasticsearch — read lore/deep/elasticsearch.md#{mapping-and-indexing,query-vs-filter-and-search,aggregations-and-scale,performance}
 
 ## Sources
 - elastic.co/docs/reference/elasticsearch/mapping-reference/

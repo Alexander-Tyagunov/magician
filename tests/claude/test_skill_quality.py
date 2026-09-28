@@ -57,8 +57,9 @@ SUBAGENT_BLOCKED_TOOLS = {
 # ':' (reserved for plugin scoping, `magician:<name>`).
 AGENT_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 
-# Valid boolean literals Claude Code accepts for boolean frontmatter flags.
-BOOL_LITERALS = {"true", "false", "yes", "no", "on", "off", "1", "0"}
+# Boolean literals for boolean frontmatter flags. Only lowercase true/false: a YAML 1.2 parser
+# reads yes/no/on/off as strings (and 1/0 as integers), so those would not be booleans everywhere.
+BOOL_LITERALS = {"true", "false"}
 
 
 def skill_files() -> list[Path]:
@@ -145,8 +146,22 @@ class SkillQualityTests(unittest.TestCase):
             if val is None:
                 continue
             with self.subTest(skill=path.parent.name):
-                self.assertIn(val.lower(), BOOL_LITERALS,
+                self.assertIn(val, BOOL_LITERALS,
                               f"{path.parent.name}: disable-model-invocation={val!r} is not a boolean")
+
+    def test_skill_bodies_have_no_monitor_or_npx_steps(self) -> None:
+        """A skill body must not steer toward the grants `allowed-tools` forbids: no instruction to
+        use the Monitor tool, and no `npx` package launcher in a command it tells Claude to run
+        (an unpinned download-and-run). Prose may still name the rule, e.g. in /inscribe's
+        checklist, so only code spans and fenced blocks are scanned for npx."""
+        monitor_tool = re.compile(r"\b(via|with|use|prefer) the \*{0,2}Monitor tool\b", re.I)
+        code = re.compile(r"(?ms)^[ \t]*(```|~~~).*?\1|`[^`\n]*`")
+        for path in skill_files():
+            _, body = read_frontmatter(path)
+            snippets = " ".join(m.group(0) for m in code.finditer(body))
+            with self.subTest(skill=path.parent.name):
+                self.assertIsNone(monitor_tool.search(body), f"{path.parent.name}: Monitor tool step")
+                self.assertNotRegex(snippets, r"(^|[\s`(])npx\s", f"{path.parent.name}: npx launcher")
 
 
 if __name__ == "__main__":

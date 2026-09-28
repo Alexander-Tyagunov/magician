@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "magician",
-      "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, and parallel agent orchestration",
+      "description": "Skills and agents for the software lifecycle in Claude Code: research, design, planning, test-first building, code review, security checks and release. Includes a local code index, per-project workspace notes, stack-specific guidance at session start, and optional Jira and Confluence access.",
       "source": "./",
       "author": {
         "name": "Alexander Tyagunov",

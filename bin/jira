@@ -1,24 +1,37 @@
 #!/usr/bin/env python3
-"""magician jira helper — direct Jira REST over HTTPS, no MCP.
+"""magician jira helper — Jira REST over HTTPS, one command per call.
 
-Config via env: JIRA_BASE_URL, a token (JIRA_API_TOKEN | JIRA_PAT | JIRA_PROD_PAT),
-and JIRA_EMAIL for Cloud (Basic auth + API v3). Server/Data-Center uses Bearer + API v2.
-One clean command per call so a single `Bash(jira:*)` allow rule covers everything.
+Connection settings (base URL, token, and the account email for Cloud) are resolved in the
+connection-config block below. With an email → Cloud (Basic auth + API v3); without →
+Server/Data-Center (Bearer PAT + API v2).
 
-Resilient by design — ALWAYS use this CLI, never hand-roll urllib/python HTTP (urllib
-fails on corporate CAs that curl trusts) and never use any litellm/MCP jira endpoint:
+Built for bulk work, so loops over many tickets stay safe:
   * 429/503 → bounded exponential backoff (JIRA_RETRIES), then a clear STOP message —
     so bulk loops don't hammer Jira; do not retry a failed call in a tight loop.
   * GET responses cached briefly (JIRA_CACHE_TTL=30s; cleared on any write) so repeated
     identical queries are free; writes always see fresh data.
   * Bulk loops self-pace (JIRA_MIN_INTERVAL_MS=120) across separate `jira` calls.
   * connect-timeout + JIRA_TIMEOUT so a throttled endpoint can't hang the session.
+  * Requests go through curl (system trust store); the auth header is passed on stdin, never
+    in the process arguments, and redirects are not followed.
+  * List commands take `--max N` (default 50) to cap how many issues come back.
 """
 import os, sys, json, re, base64, subprocess, urllib.parse, time, hashlib, shutil
 
-BASE = (os.environ.get("JIRA_BASE_URL") or "").rstrip("/")
-TOKEN = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_PAT") or os.environ.get("JIRA_PROD_PAT") or ""
-EMAIL = os.environ.get("JIRA_EMAIL") or ""
+# ---- magician:connection-config begin (the Codex build replaces this whole block) ----
+# Values come from magician's userConfig (`/plugin configure magician`). Claude Code keeps the token in
+# the system credential store and exports CLAUDE_PLUGIN_OPTION_<KEY> to hook processes only, so the
+# SessionStart hook scripts/userconfig-env.sh copies them into this session's Bash environment and sets
+# MAGICIAN_USERCONFIG_BRIDGE=1 to show it ran.
+BASE = (os.environ.get("CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL") or "").strip().rstrip("/")
+TOKEN = (os.environ.get("CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN") or "").strip()
+EMAIL = (os.environ.get("CLAUDE_PLUGIN_OPTION_JIRA_EMAIL") or "").strip()
+CONFIG_LOADED = os.environ.get("MAGICIAN_USERCONFIG_BRIDGE") == "1"
+SETUP_HINT = ("run `/plugin configure magician` (skip if already done), fill in the Jira fields "
+              "(the token is kept in your system credential store), then start a new session; "
+              "settings load at session start")
+BASE_URL_HINT = "the Jira base URL (/plugin configure magician)"
+# ---- magician:connection-config end ----
 V = os.environ.get("JIRA_API_VERSION") or ("3" if EMAIL else "2")
 
 # Resilience knobs (env-overridable) — added after a bulk epic/story/link session hit
@@ -27,7 +40,10 @@ TIMEOUT = int(os.environ.get("JIRA_TIMEOUT", "45"))            # per-request sec
 RETRIES = int(os.environ.get("JIRA_RETRIES", "3"))             # on 429/503, with backoff
 CACHE_TTL = int(os.environ.get("JIRA_CACHE_TTL", "30"))        # GET cache seconds (0 = off)
 MIN_INTERVAL = float(os.environ.get("JIRA_MIN_INTERVAL_MS", "120")) / 1000.0  # bulk-loop pacing floor
+# Cache/pacing dir: MAGICIAN_DATA (the plugin data dir, which the SessionStart hook exports into the
+# Bash environment), then CLAUDE_PLUGIN_DATA, then ~/.local/share/magician.
 PLUGIN_DATA = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(os.path.expanduser("~"), ".local", "share", "magician")
+PLUGIN_DATA = os.environ.get("MAGICIAN_DATA") or PLUGIN_DATA
 CACHE_DIR = os.path.join(PLUGIN_DATA, "jira-cache")
 PACE_FILE = os.path.join(PLUGIN_DATA, "jira-last-call")
 
@@ -35,6 +51,26 @@ PACE_FILE = os.path.join(PLUGIN_DATA, "jira-last-call")
 def die(msg, code=1):
     print(f"jira: {msg}", file=sys.stderr)
     sys.exit(code)
+
+
+def _take_max(a, default):
+    """Split `--max N` / `--max=N` out of a command's arguments → (remaining args, N)."""
+    rest, n, i = [], default, 0
+    while i < len(a):
+        if a[i] == "--max":
+            if i + 1 >= len(a):
+                die("--max needs a number, e.g. --max 20")
+            n, i = a[i + 1], i + 2
+            continue
+        if a[i].startswith("--max="):
+            n, i = a[i][len("--max="):], i + 1
+            continue
+        rest.append(a[i])
+        i += 1
+    n = str(n).strip()
+    if not n.isdigit() or int(n) < 1:
+        die(f"--max needs a positive whole number, got {n!r}")
+    return rest, int(n)
 
 
 def _auth():
@@ -87,10 +123,13 @@ def _pace():
 
 
 def api(method, path, body=None, timeout=None):
-    if not BASE:
-        die("JIRA_BASE_URL not set — run the jira skill setup (setup.md).")
-    if not TOKEN:
-        die("no token (set JIRA_API_TOKEN / JIRA_PAT / JIRA_PROD_PAT) — run setup.")
+    if not BASE or not TOKEN:
+        if not CONFIG_LOADED:
+            die(f"Jira settings aren't loaded in this session: {SETUP_HINT}.")
+        die(f"no Jira {'base URL' if not BASE else 'API token'} configured: {SETUP_HINT}.")
+    if not BASE.lower().startswith("https://") and \
+            urllib.parse.urlsplit(BASE).hostname not in ("localhost", "127.0.0.1", "::1"):
+        die(f"{BASE_URL_HINT} must start with https:// so the token isn't sent in clear text.")
     method = method.upper()
     timeout = timeout or TIMEOUT
     if method == "GET":
@@ -99,8 +138,8 @@ def api(method, path, body=None, timeout=None):
             return cached
     else:
         shutil.rmtree(CACHE_DIR, ignore_errors=True)  # a write invalidates cached reads
-    # Shell out to curl so the system/corporate CA trust (keychain) is used — Python's
-    # urllib doesn't trust corporate roots that curl does (do NOT hand-roll urllib).
+    # Shell out to curl so the system trust store is used (Python's urllib may not see the same
+    # roots). The auth header goes on stdin (-H @-) so it never shows in the process list.
     headers = "Authorization: " + _auth() + "\nAccept: application/json\n"
     cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
            "-X", method, "-H", "@-"]
@@ -116,7 +155,7 @@ def api(method, path, body=None, timeout=None):
         except subprocess.TimeoutExpired:
             die(f"request timed out after {timeout}s — check VPN / base URL (raise JIRA_TIMEOUT if needed).")
         if p.returncode != 0:
-            die(f"connection failed — {p.stderr.strip()[:200]} (check JIRA_BASE_URL and VPN).")
+            die(f"connection failed — {p.stderr.strip()[:200]} (check {BASE_URL_HINT} and VPN).")
         out = p.stdout
         nl = out.rfind("\n")
         code, payload = out[nl + 1:].strip(), out[:nl]
@@ -131,6 +170,8 @@ def api(method, path, body=None, timeout=None):
             die("HTTP 429 — Jira is rate-limiting and retries are exhausted. STOP: do not retry in a tight "
                 "loop. Wait ~60s, shrink the batch, and pace requests (JIRA_MIN_INTERVAL_MS=300+). "
                 f"Body: {payload[:160]}")
+        if 300 <= code < 400:
+            die(f"HTTP {code} redirect on {method} {path} — redirects aren't followed; check {BASE_URL_HINT}.")
         if code >= 400:
             die(f"HTTP {code} on {method} {path} — {payload[:400]}")
         val = json.loads(payload) if payload.strip() else {}
@@ -221,10 +262,11 @@ def c_get(a):
 
 
 def c_search(a):
+    a, limit = _take_max(a, os.environ.get("JIRA_MAX", "50"))
     if not a:
-        die("usage: jira search <JQL>")
+        die("usage: jira search <JQL> [--max N]")
     q = urllib.parse.urlencode({"jql": " ".join(a),
-                                "maxResults": os.environ.get("JIRA_MAX", "50"),
+                                "maxResults": limit,
                                 "fields": "summary,status,assignee,issuetype"})
     d = api("GET", f"rest/api/{V}/search?{q}")
     print(f'total: {d.get("total")}')
@@ -261,7 +303,7 @@ def c_url(a):
 
 def c_mine(a):
     # my open work — one predefined query, no JQL to compose
-    c_search(["assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"])
+    c_search(["assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"] + a)
 
 
 def c_board(a):
@@ -275,9 +317,10 @@ def c_board(a):
 
 def c_sprint(a):
     # active sprint of a board + MY not-done issues in it — both REST calls in ONE invocation
+    a, limit = _take_max(a, os.environ.get("JIRA_MAX", "50"))
     board = a[0] if a else os.environ.get("JIRA_BOARD", "")
     if not board:
-        die("usage: jira sprint <boardId>  (find it: jira board <name>; or set JIRA_BOARD)")
+        die("usage: jira sprint <boardId> [--max N]  (find it: jira board <name>; or set JIRA_BOARD)")
     vals = api("GET", f"rest/agile/1.0/board/{board}/sprint?state=active").get("values", [])
     if not vals:
         die(f"no active sprint on board {board}")
@@ -285,7 +328,7 @@ def c_sprint(a):
     print(f'active sprint: {sp.get("id")} — {sp.get("name")}')
     q = urllib.parse.urlencode({
         "jql": f'sprint = {sp.get("id")} AND assignee = currentUser() AND statusCategory != Done ORDER BY status ASC',
-        "maxResults": os.environ.get("JIRA_MAX", "50"),
+        "maxResults": limit,
         "fields": "summary,status,issuetype"})
     d = api("GET", f"rest/api/{V}/search?{q}")
     print(f'my pending: {d.get("total")}')
@@ -322,7 +365,7 @@ def c_create(a):
     # jira create '<fields-json>'  → one create via the CLI (throttle-aware), prints the new key.
     # Accepts either a full {"fields":{...}} body or a bare {...} treated as fields.
     if not a:
-        die('usage: jira create \'{"fields":{"project":{"key":"GIM"},"summary":"...","issuetype":{"name":"Story"}}}\'')
+        die('usage: jira create \'{"fields":{"project":{"key":"PROJ"},"summary":"...","issuetype":{"name":"Story"}}}\'')
     try:
         body = json.loads(a[0])
     except Exception as e:
@@ -354,8 +397,8 @@ def main():
     av = sys.argv[1:]
     if not av or av[0] in ("help", "-h", "--help"):
         print(__doc__)
-        print("commands: myself | mine | sprint <boardId> | get <KEY> | comments <KEY> | "
-              "search <JQL> | transitions <KEY> | board <name> | url <KEY> | "
+        print("commands: myself | mine [--max N] | sprint <boardId> [--max N] | get <KEY> | comments <KEY> | "
+              "search <JQL> [--max N] | transitions <KEY> | board <name> | url <KEY> | "
               "create '<fields-json>' | link <inwardKey> \"<Type>\" <outwardKey> | "
               "raw <METHOD> <rest/path> [json-body]", file=sys.stderr)
         return

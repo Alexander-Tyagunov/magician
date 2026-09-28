@@ -14,7 +14,7 @@ DON'T log secrets/PII/tokens; jsonPayload is indexed + queryable.
 DON'T lowercase and/or/not — they parse as search terms.
 DON'T set level from `message`; only top-level `severity` controls it.
 
-Deep dive when writing non-trivial Google Cloud Logging — read lore/gcp-logging/{logging-query-language,structured-logging-and-severity,sinks-metrics-and-alerts}.md
+Deep dive when writing non-trivial Google Cloud Logging — read lore/deep/gcp-logging.md#{logging-query-language,structured-logging-and-severity,sinks-metrics-and-alerts}
 
 ## Sources
 docs.cloud.google.com/logging/docs/view/logging-query-language · /structured-logging · /logs-based-metrics

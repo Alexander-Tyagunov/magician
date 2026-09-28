@@ -1,5 +1,5 @@
 # pgvector — core digest
-Version: 0.8.x stable (0.8.5); a PostgreSQL EXTENSION (PG 13+) — inherits lore/postgres. Types: vector (index ≤2000 dims), halfvec (≤4000), sparsevec (≤1000 nnz), bit. Indexes: HNSW, IVFFlat. Ops: `<->` L2, `<#>` inner-prod, `<=>` cosine, `<+>` L1.
+Version: 0.8.x stable (0.8.5); a PostgreSQL EXTENSION (PG 13+) — inherits lore/postgres.md. Types: vector (index ≤2000 dims), halfvec (≤4000), sparsevec (≤1000 nnz), bit. Indexes: HNSW, IVFFlat. Ops: `<->` L2, `<#>` inner-prod, `<=>` cosine, `<+>` L1.
 
 DO pick the operator + opclass matching how the model was trained; `l2_normalize()` for unit vectors.
 DO prefer HNSW (m=16, ef_construction=64) for recall/latency; raise `hnsw.ef_search` (default 40) per query to buy recall.
@@ -13,7 +13,7 @@ DON'T insert one vector per request or rebuild the index each write.
 DON'T post-filter HNSW without `iterative_scan` (strict/relaxed_order): over-filtering collapses recall.
 DON'T assume zero/NULL vectors are indexed (cosine skips zeros).
 
-Deep dive when writing non-trivial pgvector — read lore/pgvector/{index-types-and-build,query-and-tuning,performance}.md
+Deep dive when writing non-trivial pgvector — read lore/deep/pgvector.md#{index-types-and-build,query-and-tuning,performance}
 
 ## Sources
 github.com/pgvector/pgvector (0.8.5 README) · postgresql.org/docs

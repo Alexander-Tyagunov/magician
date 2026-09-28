@@ -18,6 +18,6 @@ DON'T
 
 Commands: `npm i @emotion/react @emotion/styled`; SSR `@emotion/server`; agnostic `@emotion/css`.
 
-Deep dive when writing non-trivial emotion — read lore/emotion/{patterns-and-ssr}.md
+Deep dive when writing non-trivial emotion — read lore/deep/emotion.md#{patterns-and-ssr}
 
 Sources: emotion.sh/docs {css-prop, emotion-11, ssr}

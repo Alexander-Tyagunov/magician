@@ -1,44 +1,78 @@
 #!/usr/bin/env python3
-"""magician-ui — manage the Magician Claude CLI status line ("Magician Claude CLI UI").
+"""magician-ui — manage the Magician CLI status line and magician's stored preferences.
+
+Runs only when you (or the /statusline skill, on your request) invoke it; no hook calls it. The one
+Claude Code settings file it edits is ~/.claude/settings.json ($MAGICIAN_SETTINGS overrides), and only
+the `statusLine` key, plus — for `cleanup` — the permission entries on the fixed list earlier magician
+versions used, when cli-ui.json records that they added them.
 
 Subcommands:
-  status                     Show whether the bar is enabled, its components, and settings state.
-  enable [--all|--only a,b]  Install the renderer to a stable path + add a statusLine to
-                             ~/.claude/settings.json (safe, backed-up, validated). Records prefs.
-  set <a,b,c>                Change which components show (no settings.json change needed).
-  disable                    Remove magician's statusLine (only if it's ours) + record opt-out.
-  reconcile                  Called by SessionStart: suggest ONCE if never asked; if enabled,
-                             keep the installed script fresh + re-add the entry only if none exists.
+  status                     Show the bar's state and components, whether settings.json runs it, and
+                             any permission entries or data files left over from earlier versions.
+  enable [--all|--only a,b]  Copy the renderer to ~/.claude/magician/statusline.py and point
+                             `statusLine` in settings.json at it. Records the chosen components;
+                             with no flag or component list it keeps the saved ones (all, the first
+                             time).
+  set <a,b,c>                Change which components show (cli-ui.json only; settings.json untouched).
+  default                    Same as `enable --all`.
+  disable [--purge [--force]]
+                             Remove magician's `statusLine` (only if it runs magician; a status line of
+                             your own is left alone). --purge also deletes the renderer copy, the
+                             status/ marker folder and cli-ui.json (run it before uninstalling, after
+                             `cleanup`: cleanup needs cli-ui.json's record of what 4.14 and earlier
+                             added, so --purge refuses while cleanup still has recorded entries to
+                             remove; --force deletes the record anyway and leaves those entries).
+  cleanup                    Remove what magician 4.14 and earlier wrote on its own: its
+                             permissions.allow rules and `permissions.defaultMode: "auto"`, each only
+                             when cli-ui.json records magician added it, the unused
+                             CLAUDE_CODE_ENABLE_AUTO_MODE env key, and obsolete data files. Keeps the
+                             newest 3 settings backups (mode 0600) and clears the record.
+  lore [on|off|status]       Turn the bundled lore on or off (cli-ui.json only).
+  voice [warrior|scribe|bard|status]
+                             Set the output-brevity level (cli-ui.json only).
+  allow --off                Same as `cleanup`.
+  automode --off             Same as `cleanup`.
+  reconcile                  No longer used; prints a pointer to `cleanup`.
 
-SAFETY: all settings.json edits go through _edit_settings() — read, json.load, mutate a copy,
-serialize+re-validate, timestamped backup, atomic os.replace. Any failure aborts without
-touching the live file. Never leaves settings.json partial or invalid.
+A subcommand given an argument it doesn't take, and `enable` or `set` given no known component, stops
+without changing anything; -h or --help after any subcommand prints this text.
+
+magician no longer adds permission rules or sets the permission mode, so `allow` and `automode`
+without --off change nothing. Add rules with /permissions; pick a mode with Shift+Tab or
+`claude --permission-mode <mode>`.
+
+SAFETY: settings.json edits go through _edit_settings() — read, json.load, mutate a copy,
+serialize+re-validate, back up (mode 0600, newest 3 kept), atomic os.replace. Any failure aborts without
+touching the live file; an edit that changes nothing writes nothing.
 
 Components: context (bar+%+tokens) · rot (⚠/🔴 glyph) · spark (token-flow sparkline) ·
             meta (model·git·cost) · skill (active skill/workflow/loop) ·
             effort (🧠 live reasoning effort — low/medium/high/xhigh/max — or the magician
-                    mode you set, e.g. ultracode; from Claude Code's effort.level on stdin).
+                    mode you set, e.g. ultracode; from Claude Code's effort.level on stdin) ·
+            lore (📚 bundled-lore state) · voice (🗣 output-brevity level).
 """
-import sys, os, json, shutil, time
+import sys, os, json, shutil, time, glob, stat, re, copy
 
 HOME = os.environ.get("MAGICIAN_HOME") or os.path.expanduser("~/.claude/magician")
 CFG = os.path.join(HOME, "cli-ui.json")
 SETTINGS = os.environ.get("MAGICIAN_SETTINGS") or os.path.expanduser("~/.claude/settings.json")
 INSTALLED = os.path.join(HOME, "statusline.py")   # stable path, version-independent
+STATUS_DIR = os.path.join(HOME, "status")         # per-session markers read by the renderer
 ALL = ["context", "rot", "spark", "meta", "skill", "effort", "lore", "voice"]
 MARK = "magician"   # substring used to recognise our own statusLine entry
+BACKUP_TAG = ".bak-magician-ui-"   # settings.json.bak-magician-ui-<YYYYmmdd-HHMMSS>[-n]
+KEEP_BACKUPS = 3
 
 # Output-brevity levels (least → most wordy). warrior = leanest but complete,
 # scribe = the default (leaner than usual), bard = standard/native verbosity.
-# SessionStart injects a brevity directive for warrior/scribe (none for bard).
+# SessionStart adds a brevity note for warrior/scribe (none for bard).
 VOICE_LEVELS = ["warrior", "scribe", "bard"]
 VOICE_DEFAULT = "scribe"
 
-# Read-only surface magician auto-approves so autonomous runs don't prompt per file/search.
-# ONLY safe read-only tools + commands — NEVER writes/commit/push/PR/delete (those stay gated).
-# Native read tools (no redirection/flag risk) + read-only git subcommands + the plugin's own
-# one-command-per-call CLIs + gh read verbs. Raw Bash grep/cat/find are deliberately NOT here
-# (redirection / `find -delete` could write) — kg-first steers agents to the allowed Grep/kg tools.
+# Every permissions.allow rule magician 4.2 to 4.14 merged into ~/.claude/settings.json (this list is
+# the union of all versions). Nothing adds these any more; they are kept only so `cleanup` can remove
+# them. Each merge also wrote "allow": "on" to cli-ui.json, and `cleanup` removes these rules only while
+# that record is there. A matching rule the user also wrote can't be told apart from magician's then.
 READONLY_ALLOW = [
     "Read", "Grep", "Glob", "LS", "TaskOutput",
     "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
@@ -48,13 +82,10 @@ READONLY_ALLOW = [
     "Bash(git cat-file:*)", "Bash(git merge-base:*)", "Bash(git name-rev:*)", "Bash(git worktree list:*)",
     "Bash(git stash list:*)",
     "Bash(kg:*)", "Bash(ctx:*)", "Bash(magician-scan:*)",
-    # Jira/Confluence: READ subcommands auto-approve; WRITES (create/comment/transition/link/update)
-    # are intentionally NOT here so they gate in every mode. `raw GET` reads; `raw POST/PUT/DELETE` gate.
     "Bash(jira get:*)", "Bash(jira search:*)", "Bash(jira myself:*)", "Bash(jira mine:*)",
     "Bash(jira sprint:*)", "Bash(jira comments:*)", "Bash(jira board:*)", "Bash(jira transitions:*)",
     "Bash(jira url:*)", "Bash(jira raw GET:*)",
     "Bash(confluence whoami:*)", "Bash(confluence get:*)", "Bash(confluence search:*)", "Bash(confluence raw GET:*)",
-    # Test / typecheck / lint / build runners (the /certify + /ward loop) — no source mutation.
     "Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run lint:*)", "Bash(npm run typecheck:*)",
     "Bash(npm run build:*)", "Bash(npx tsc:*)", "Bash(yarn test:*)", "Bash(yarn lint:*)",
     "Bash(pnpm test:*)", "Bash(pnpm lint:*)", "Bash(jest:*)", "Bash(vitest:*)", "Bash(pytest:*)",
@@ -64,75 +95,28 @@ READONLY_ALLOW = [
     "Bash(gh search:*)",
 ]
 
-# Broad grants magician shipped in earlier versions that we now REPLACE with narrower rules — stripped
-# from settings on merge so jira/confluence writes stop being blanket-approved.
+# Broader grants 4.2 and 4.3 added. From 4.4.0 every merge stripped them, so when the record names
+# 4.4.0 or later, one of these in settings.json was added by the user and `cleanup` keeps it.
 STALE_ALLOW = ["Bash(jira:*)", "Bash(confluence:*)"]
 
+OURS = frozenset(READONLY_ALLOW) | frozenset(STALE_ALLOW)
 
-def _merge_readonly_allow(d):
-    """Add magician's read-only allow entries to permissions.allow (dedup; never remove user rules).
-    Also strips STALE_ALLOW broad grants magician itself shipped earlier (e.g. Bash(jira:*)) so writes
-    stop being blanket-approved."""
-    perms = d.setdefault("permissions", {})
-    if not isinstance(perms, dict):
-        return
-    allow = perms.get("allow")
-    if not isinstance(allow, list):
-        allow = []
-    stale = set(STALE_ALLOW)
-    allow = [r for r in allow if r not in stale]
-    have = set(allow)
-    for r in READONLY_ALLOW:
-        if r not in have:
-            allow.append(r)
-            have.add(r)
-    perms["allow"] = allow
-
-
-# ---------------- auto mode (Claude Code classifier-gated autonomy) ----------------
-# Auto mode is the real "reads/aligned actions proceed, writes/deploys/force-push/destructive gate"
-# mechanism (a classifier reviews each action; honors 'don't push'-style boundaries you state). It is
-# available by default on every provider, and became the default permission mode for Pro/Max/Team on
-# 2026-08-14 — so all that's left to configure is the STARTING mode.
-# A plugin CANNOT switch the permission mode itself — it can only set this up; the user restarts into it.
-#
-# `defaultMode: "auto"` is honored only from ~/.claude/settings.json (and managed settings): Claude Code
-# ignores `auto` from project/local settings so a repo cannot grant itself auto mode. _edit_settings
-# already targets the user-scope file.
-#
-# CLAUDE_CODE_ENABLE_AUTO_MODE was the Vertex/Bedrock/Foundry opt-in in Claude Code v2.1.158–2.1.206.
-# It has had NO effect since v2.1.207, so we no longer write it — but we still remove one a previous
-# magician version left behind.
+# Env key magician 4.x once wrote to settings.json; Claude Code has ignored it since v2.1.207.
 AUTOMODE_ENV_KEY = "CLAUDE_CODE_ENABLE_AUTO_MODE"
 
-
-def _drop_stale_automode_env(d):
-    """Remove the obsolete opt-in env var if an older magician wrote it. No-op otherwise."""
-    env = d.get("env")
-    if isinstance(env, dict):
-        env.pop(AUTOMODE_ENV_KEY, None)
-
-
-def _set_default_auto(d):
-    _drop_stale_automode_env(d)
-    perms = d.setdefault("permissions", {})
-    if isinstance(perms, dict):
-        perms["defaultMode"] = "auto"
-
-
-def _clear_automode(d):
-    _drop_stale_automode_env(d)
-    perms = d.get("permissions")
-    if isinstance(perms, dict) and perms.get("defaultMode") == "auto":
-        perms["defaultMode"] = "acceptEdits"
-
-
-def _remove_readonly_allow(d):
-    """Remove exactly magician's read-only entries (leave any the user added themselves)."""
-    perms = d.get("permissions")
-    if isinstance(perms, dict) and isinstance(perms.get("allow"), list):
-        ours = set(READONLY_ALLOW)
-        perms["allow"] = [r for r in perms["allow"] if r not in ours]
+# Data files only removed features wrote (read tracker, prompt fingerprints, the old global start stamp,
+# transcript-derived compaction capsules, per-session nudge flags). `cleanup` deletes these exact names
+# under each plugin data folder and nothing else.
+LEGACY_DATA = [
+    "access-patterns.json",
+    "patterns.json",
+    "session-start-time.txt",
+    "projects/*/capsule.md",
+    "projects/*/capsule.json",
+    "ctx/*.resume",
+    "ctx/*.kgnudge",
+    "ctx/*mcpnudge*",
+]
 
 
 def die(msg):
@@ -140,10 +124,14 @@ def die(msg):
     sys.exit(1)
 
 
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
 # ---------------- config ----------------
 def load_cfg():
     try:
-        with open(CFG) as f:
+        with open(CFG, encoding="utf-8") as f:
             d = json.load(f)
         return d if isinstance(d, dict) else {}
     except Exception:
@@ -154,14 +142,15 @@ def save_cfg(d):
     try:
         os.makedirs(HOME, exist_ok=True)
         tmp = CFG + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(d, f, indent=2)
         os.replace(tmp, CFG)
     except Exception as e:
         die(f"could not write config {CFG}: {e}")
 
 
-def parse_components(args, default=None):
+def parse_components(args):
+    """Components named by --all, --only a,b or a bare list; [] when none of the names is a component."""
     only, allf = None, False
     for a in args:
         if a == "--all":
@@ -170,17 +159,20 @@ def parse_components(args, default=None):
             if "=" in a:
                 only = a.split("=", 1)[1]
         elif only is None and not a.startswith("-"):
-            only = a  # bare comma-list, e.g. `set context,rot`
+            only = a  # bare comma-list, e.g. `set context,rot` or `--only context,rot`
     if allf:
         return list(ALL)
-    if only:
-        picked = [c.strip() for c in only.replace(" ", ",").split(",") if c.strip()]
-        picked = [c for c in picked if c in ALL]
-        return picked or (default if default is not None else list(ALL))
-    return default if default is not None else list(ALL)
+    picked = [c.strip() for c in (only or "").replace(" ", ",").split(",") if c.strip()]
+    return [c for c in picked if c in ALL]
 
 
 # --------------- renderer install ---------------
+def _version_key(path):
+    """Sort key for .../magician/<version>/bin/magician-statusline — numeric, so 4.15 sorts after 4.9."""
+    ver = os.path.basename(os.path.dirname(os.path.dirname(path)))
+    return [int(x) if x.isdigit() else -1 for x in re.split(r"[.+-]", ver)]
+
+
 def _find_renderer():
     # sibling of this CLI in the plugin bin/ (works when invoked via PATH)
     here = os.path.dirname(os.path.realpath(sys.argv[0] or __file__))
@@ -188,10 +180,9 @@ def _find_renderer():
     if os.path.isfile(cand):
         return cand
     # fallback: newest version in the plugin cache
-    import glob
     hits = glob.glob(os.path.expanduser(
         "~/.claude/plugins/cache/*/magician/*/bin/magician-statusline"))
-    hits.sort()
+    hits.sort(key=_version_key)
     return hits[-1] if hits else None
 
 
@@ -207,56 +198,117 @@ def install_renderer():
     return src
 
 
-def renderer_stale():
-    """True if the installed copy is missing or differs from the plugin source."""
-    src = _find_renderer()
-    if not src or not os.path.exists(INSTALLED):
-        return True
-    try:
-        with open(src) as a, open(INSTALLED) as b:
-            return a.read() != b.read()
-    except Exception:
-        return True
-
-
 def _plugin_version():
     """Version from the plugin.json next to this CLI (installPath/.claude-plugin/plugin.json)."""
     try:
         root = os.path.dirname(os.path.dirname(os.path.realpath(sys.argv[0] or __file__)))
-        with open(os.path.join(root, ".claude-plugin", "plugin.json")) as f:
+        with open(os.path.join(root, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             return str((json.load(f) or {}).get("version", "") or "")
     except Exception:
         return ""
 
 
-# --------------- safe settings.json edit ---------------
-def _edit_settings(mutate):
+# --------------- settings.json: read, backups, safe edit ---------------
+def _read_settings():
+    """settings.json as a dict, or {} when missing/unreadable (read-only callers only)."""
     try:
-        with open(SETTINGS) as f:
+        with open(SETTINGS, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _is_regular(path):
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
+def _backups():
+    """Existing settings backups made by this CLI, oldest first."""
+    prefix = SETTINGS + BACKUP_TAG
+
+    def key(p):
+        parts = p[len(prefix):].split("-")
+        n = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+        return ("-".join(parts[:2]), n, p)
+
+    return sorted((p for p in glob.glob(glob.escape(prefix) + "*") if _is_regular(p)), key=key)
+
+
+def _backup_settings():
+    """Copy settings.json to a new mode-0600 backup next to it; returns the backup path."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    bak, n = SETTINGS + BACKUP_TAG + stamp, 1
+    while os.path.lexists(bak):
+        bak, n = f"{SETTINGS}{BACKUP_TAG}{stamp}-{n}", n + 1
+    with open(SETTINGS, "rb") as src:
+        raw = src.read()
+    fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(raw)
+    os.chmod(bak, 0o600)
+    return bak
+
+
+def _prune_backups(keep=KEEP_BACKUPS):
+    """Keep the newest `keep` settings backups (each chmod 0600); delete the rest. Returns #deleted."""
+    baks = _backups()
+    cut = max(0, len(baks) - keep)
+    removed = 0
+    for p in baks[:cut]:
+        try:
+            os.remove(p)
+            removed += 1
+        except OSError:
+            pass
+    for p in baks[cut:]:
+        try:
+            os.chmod(p, 0o600)
+        except OSError:
+            pass
+    return removed
+
+
+def _edit_settings(mutate):
+    """Apply `mutate` to a copy of settings.json and write it back safely. Returns True if the file was
+    rewritten, False if the mutation changed nothing (then nothing is written or backed up)."""
+    exists = True
+    try:
+        with open(SETTINGS, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        data = {}
+        data, exists = {}, False
     except Exception as e:
-        die(f"~/.claude/settings.json is not valid JSON ({e}); refusing to modify it")
+        die(f"{SETTINGS} is not valid JSON ({e}); refusing to modify it")
     if not isinstance(data, dict):
-        die("~/.claude/settings.json is not a JSON object; refusing to modify it")
+        die(f"{SETTINGS} is not a JSON object; refusing to modify it")
 
-    import copy
     new = copy.deepcopy(data)
     mutate(new)
-    text = json.dumps(new, indent=2)
+    if new == data:
+        return False
+    text = json.dumps(new, indent=2, ensure_ascii=False)
     json.loads(text)  # re-validate before writing anything
 
-    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
-    if os.path.exists(SETTINGS):
-        bak = SETTINGS + ".bak-magician-ui-" + time.strftime("%Y%m%d-%H%M%S")
-        shutil.copy2(SETTINGS, bak)
-    tmp = SETTINGS + ".tmp-magician-ui"
-    with open(tmp, "w") as f:
+    target = os.path.realpath(SETTINGS)   # write through a symlinked settings.json, don't replace the link
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    mode = 0o600
+    if exists:
+        mode = stat.S_IMODE(os.stat(target).st_mode)
+        _backup_settings()
+    tmp = target + ".tmp-magician-ui"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text + "\n")
-    with open(tmp) as f:
+    os.chmod(tmp, mode)
+    with open(tmp, encoding="utf-8") as f:
         json.load(f)  # validate the temp file on disk
-    os.replace(tmp, SETTINGS)
+    os.replace(tmp, target)
+    _prune_backups()
+    return True
 
 
 def _statusline_cmd():
@@ -264,7 +316,7 @@ def _statusline_cmd():
 
 
 def _our_statusline(d):
-    sl = d.get("statusLine")
+    sl = d.get("statusLine") if isinstance(d, dict) else None
     if not isinstance(sl, dict):
         return False
     cmd = str(sl.get("command", ""))
@@ -272,168 +324,288 @@ def _our_statusline(d):
 
 
 def _has_any_statusline(d):
-    return isinstance(d.get("statusLine"), dict) and d.get("statusLine")
+    return isinstance(d, dict) and isinstance(d.get("statusLine"), dict) and bool(d.get("statusLine"))
+
+
+# --------------- leftovers from earlier versions ---------------
+def _matching_allow_rules(d):
+    """permissions.allow entries in settings `d` that match a rule earlier magician versions added."""
+    perms = d.get("permissions") if isinstance(d, dict) else None
+    allow = perms.get("allow") if isinstance(perms, dict) else None
+    if not isinstance(allow, list):
+        return []
+    return [r for r in allow if isinstance(r, str) and r in OURS]
+
+
+def _allow_is_ours(cfg):
+    """True only if cli-ui.json records that magician merged its allow list (4.2 to 4.14 wrote "on")."""
+    return cfg.get("allow") == "on"
+
+
+def _allow_rules_split(d, cfg):
+    """(removed, kept): the matching allow entries `cleanup` removes and the ones it keeps."""
+    match = _matching_allow_rules(d)
+    if not _allow_is_ours(cfg):
+        return [], match
+    m = re.match(r"(\d+)\.(\d+)", str(cfg.get("allowVersion", "")))
+    stripped_stale = bool(m) and (int(m.group(1)), int(m.group(2))) >= (4, 4)
+    kept = [r for r in match if stripped_stale and r in STALE_ALLOW]
+    return [r for r in match if r not in kept], kept
+
+
+def _auto_mode_is_ours(d, cfg):
+    """True only if defaultMode is "auto" AND cli-ui.json records that magician set it."""
+    perms = d.get("permissions") if isinstance(d, dict) else None
+    return cfg.get("automode") == "on" and isinstance(perms, dict) and perms.get("defaultMode") == "auto"
+
+
+def _has_automode_env(d):
+    env = d.get("env") if isinstance(d, dict) else None
+    return isinstance(env, dict) and AUTOMODE_ENV_KEY in env
+
+
+def _permission_leftovers(d, cfg):
+    """Human-readable list of the settings entries `cleanup` would remove."""
+    out = []
+    n = len(_allow_rules_split(d, cfg)[0])
+    if n:
+        out.append(f"{n} allow rule(s)")
+    if _auto_mode_is_ours(d, cfg):
+        out.append('defaultMode "auto"')
+    if _has_automode_env(d):
+        out.append(f"env {AUTOMODE_ENV_KEY}")
+    return out
+
+
+def _data_dirs():
+    """Plugin data folders that may hold files from earlier versions: $MAGICIAN_DATA, $CLAUDE_PLUGIN_DATA
+    and the legacy ~/.local/share/magician — each listed once, and only if it exists."""
+    seen, out = set(), []
+    for d in (os.environ.get("MAGICIAN_DATA"), os.environ.get("CLAUDE_PLUGIN_DATA"),
+              os.path.expanduser("~/.local/share/magician")):
+        if not d or not os.path.isdir(d):
+            continue
+        real = os.path.realpath(d)
+        if real not in seen:
+            seen.add(real)
+            out.append(d)
+    return out
+
+
+def _legacy_files():
+    """Obsolete data files (exact LEGACY_DATA names) present in the plugin data folders."""
+    seen, hits = set(), []
+    for base in _data_dirs():
+        for pat in LEGACY_DATA:
+            for p in sorted(glob.glob(os.path.join(glob.escape(base), *pat.split("/")))):
+                try:
+                    mode = os.lstat(p).st_mode
+                except OSError:
+                    continue
+                key = (os.path.realpath(os.path.dirname(p)), os.path.basename(p))
+                if (stat.S_ISREG(mode) or stat.S_ISLNK(mode)) and key not in seen:
+                    seen.add(key)
+                    hits.append(p)
+    return hits
 
 
 # --------------- commands ---------------
 def cmd_status(_args):
     cfg = load_cfg()
-    st = cfg.get("state", "ask")
-    comps = cfg.get("components") or ALL
-    try:
-        with open(SETTINGS) as f:
-            s = json.load(f)
-    except Exception:
-        s = {}
-    wired = _our_statusline(s) if isinstance(s, dict) else False
+    st = cfg.get("state")
+    st = st if st in ("enabled", "disabled") else "not enabled"
+    comps = cfg.get("components")
+    comps = comps if isinstance(comps, list) and comps else ALL
+    s = _read_settings()
+    wired = _our_statusline(s)
     print(f"state:       {st}")
-    print(f"components:  {', '.join(comps)}")
-    print(f"installed:   {INSTALLED} {'(present)' if os.path.exists(INSTALLED) else '(missing)'}")
-    print(f"settings:    statusLine {'wired to magician' if wired else 'not wired to magician'}")
-    print(f"read-only allow: {cfg.get('allow', 'not set')} (auto-approve reads/searches/read-only git + jira·confluence reads + tests)")
-    print(f"auto mode:   {cfg.get('automode', 'not set')} (Claude Code classifier: reads/aligned actions auto, writes/deploys/force-push gate — `magician-ui automode`)")
+    print(f"components:  {', '.join(str(c) for c in comps)}")
+    print(f"renderer:    {INSTALLED} {'(present)' if os.path.exists(INSTALLED) else '(missing)'}")
+    print(f"settings:    {SETTINGS} — statusLine {'runs magician' if wired else 'does not run magician'}")
+    print(f"lore:        {'disabled' if cfg.get('lore') == 'disabled' else 'enabled'} (`magician-ui lore on|off`)")
     print(f"voice:       {cfg.get('voice', VOICE_DEFAULT)} (output brevity: warrior<scribe<bard; default scribe — `magician-ui voice <level>`)")
+    left = _permission_leftovers(s, cfg)
+    kept = _allow_rules_split(s, cfg)[1]
+    if left:
+        print(f"permissions: {', '.join(left)} added by an earlier magician version — `magician-ui cleanup` removes them")
+    elif not kept:
+        print("permissions: no entries from earlier magician versions")
+    if kept:
+        print(f"{'             ' if left else 'permissions: '}{len(kept)} allow rule(s) match magician's old list, "
+              "but magician has no record of adding them — `magician-ui cleanup` leaves them")
+    old = _legacy_files()
+    if old:
+        print(f"old data:    {len(old)} obsolete file(s) from earlier versions — `magician-ui cleanup` removes them")
+
+
+def _saved_components(cfg):
+    """Valid components recorded in cli-ui.json, or ALL when none are saved."""
+    comps = cfg.get("components")
+    comps = [c for c in comps if c in ALL] if isinstance(comps, list) else []
+    return comps or list(ALL)
 
 
 def cmd_enable(args):
-    comps = parse_components(args, default=list(ALL))
+    cfg = load_cfg()
+    # A plain `enable` (the refresh step after an update) keeps the components chosen earlier with
+    # `enable --only` or `set`. --all, --only or a bare list chooses them again.
+    chosen = any(a == "--all" or a.startswith("--only") or not a.startswith("-") for a in args)
+    comps = parse_components(args) if chosen else _saved_components(cfg)
+    if not comps:  # `enable help`, a typo, a bare --only: stop rather than reset to every component
+        die(f"no component named in '{' '.join(args)}'; choose from: {', '.join(ALL)}. Nothing was changed.")
     src = install_renderer()
     _edit_settings(lambda d: d.__setitem__(
         "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
-    cfg = load_cfg()
     cfg.update({"state": "enabled", "components": comps, "installedFrom": src,
-                "version": _plugin_version(), "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
+                "version": _plugin_version(), "enabledAt": _now(), "updatedAt": _now()})
     save_cfg(cfg)
     print(f"Magician CLI UI enabled — components: {', '.join(comps)}.")
+    print(f"Renderer copied to {INSTALLED}; `statusLine` in {SETTINGS} now runs it.")
     print("The bar appears within a message or two (settings hot-reload). "
-          "Change parts with `magician-ui set <list>`, turn off with `magician-ui disable`.")
+          "Change parts with `magician-ui set <list>` and turn off with `magician-ui disable`. Before "
+          "uninstalling magician, run `magician-ui cleanup`, then `magician-ui disable --purge`.")
 
 
 def cmd_set(args):
-    comps = parse_components(args, default=None)
+    comps = parse_components(args)
     if not comps:
-        die(f"nothing valid to set; choose from: {', '.join(ALL)}")
+        die(f"nothing valid to set; choose from: {', '.join(ALL)}. Nothing was changed.")
     cfg = load_cfg()
     cfg["components"] = comps
-    cfg.setdefault("state", "enabled")
-    cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    cfg["updatedAt"] = _now()
     save_cfg(cfg)
     print(f"Status-line components set to: {', '.join(comps)}.")
 
 
-def cmd_disable(_args):
+def _purge_files():
+    """Delete the renderer copy, the status/ marker folder and cli-ui.json. Returns what was removed."""
+    removed = []
+    for p in (INSTALLED, INSTALLED + ".tmp", CFG, CFG + ".tmp"):
+        if os.path.lexists(p) and not os.path.isdir(p):
+            try:
+                os.remove(p)
+                removed.append(p)
+            except OSError as e:
+                sys.stderr.write(f"magician-ui: could not remove {p}: {e}\n")
+    if os.path.islink(STATUS_DIR):
+        try:
+            os.remove(STATUS_DIR)
+            removed.append(STATUS_DIR)
+        except OSError as e:
+            sys.stderr.write(f"magician-ui: could not remove {STATUS_DIR}: {e}\n")
+    elif os.path.isdir(STATUS_DIR):
+        shutil.rmtree(STATUS_DIR, ignore_errors=True)
+        if not os.path.exists(STATUS_DIR):
+            removed.append(STATUS_DIR + "/")
+        else:
+            sys.stderr.write(f"magician-ui: could not fully remove {STATUS_DIR}\n")
+    return removed
+
+
+def cmd_disable(args):
+    purge = any(a in ("--purge", "purge") for a in args)
+    force = "--force" in args
+    if force and not purge:
+        die("--force only goes with --purge; nothing was changed.")
+
     def rm(d):
         if _our_statusline(d):
             d.pop("statusLine", None)
-    try:
-        with open(SETTINGS) as f:
-            cur = json.load(f)
-        if _has_any_statusline(cur) and not _our_statusline(cur):
-            print("Note: your settings.json has a non-magician statusLine — leaving it untouched.")
-    except Exception:
-        pass
-    _edit_settings(rm)
+
+    cur = _read_settings()
     cfg = load_cfg()
+    # cleanup finds these only through cli-ui.json, so deleting it first would strand them. The env key
+    # is found without the record, so it doesn't count.
+    if purge and not force and (_allow_rules_split(cur, cfg)[0] or _auto_mode_is_ours(cur, cfg)):
+        die("cli-ui.json records permission entries an earlier magician version added to settings.json "
+            "(`magician-ui status` lists them), and `magician-ui cleanup` needs that record to remove them. "
+            "Run `magician-ui cleanup`, then `magician-ui disable --purge`. To delete the record and keep "
+            "the entries, run `magician-ui disable --purge --force`. Nothing was changed.")
+    if _has_any_statusline(cur) and not _our_statusline(cur):
+        print("Note: your settings.json has a statusLine that does not run magician — leaving it untouched.")
+    _edit_settings(rm)
+    if purge:
+        removed = _purge_files()
+        print("Magician CLI UI disabled and its files removed." if removed
+              else "Magician CLI UI disabled; no renderer copy, status markers or cli-ui.json were present.")
+        for p in removed:
+            print(f"  removed {p}")
+        print("Re-enable anytime with `magician-ui enable` (lore and voice return to their defaults).")
+        return
     cfg["state"] = "disabled"
-    cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    cfg["updatedAt"] = _now()
     save_cfg(cfg)
-    print("Magician CLI UI disabled. It won't be suggested again; re-enable anytime with "
-          "`magician-ui enable`.")
+    print("Magician CLI UI disabled. Re-enable anytime with `magician-ui enable`. "
+          f"`magician-ui disable --purge` also deletes {INSTALLED}, {STATUS_DIR}/ and {CFG}; before "
+          "uninstalling magician, run `magician-ui cleanup` first, then the purge.")
+
+
+def cmd_cleanup(_args):
+    """Remove what magician 4.14 and earlier wrote without being asked each time: its allow rules (only
+    when cli-ui.json records magician merged them), defaultMode "auto" (only when cli-ui.json records
+    magician set it — never replaced with another mode), the unused auto-mode env key, obsolete data
+    files; then prune settings backups to the newest 3."""
+    cfg = load_cfg()
+    found = {"rules": [], "kept": [], "mode": False, "env": False}
+
+    def mut(d):
+        found["rules"], found["kept"] = _allow_rules_split(d, cfg)
+        if found["rules"]:
+            gone = set(found["rules"])
+            d["permissions"]["allow"] = [r for r in d["permissions"]["allow"]
+                                         if not (isinstance(r, str) and r in gone)]
+        if _auto_mode_is_ours(d, cfg):
+            found["mode"] = True
+            del d["permissions"]["defaultMode"]
+        if _has_automode_env(d):
+            found["env"] = True
+            d["env"].pop(AUTOMODE_ENV_KEY, None)
+
+    wrote = _edit_settings(mut)
+    if wrote:
+        print(f"Updated {SETTINGS} (previous version backed up next to it):")
+        if found["rules"]:
+            print(f"  removed {len(found['rules'])} allow rule(s): {', '.join(found['rules'])}")
+        if found["mode"]:
+            print('  removed permissions.defaultMode "auto" (Claude Code falls back to its default mode)')
+        if found["env"]:
+            print(f"  removed env {AUTOMODE_ENV_KEY}")
+    elif not found["kept"]:
+        print(f"{SETTINGS}: no entries from earlier magician versions; not modified.")
+    if found["kept"]:
+        print(f"Kept {len(found['kept'])} allow rule(s) that match magician's old list "
+              f"({', '.join(found['kept'])}): magician has no record of adding them. "
+              "Remove any you don't want with /permissions.")
+
+    # Clearing the records also stops the SessionStart upgrade notice, which reads the same keys.
+    if os.path.exists(CFG):
+        for k in [k for k in cfg if k.startswith(("allow", "automode"))]:
+            cfg.pop(k, None)
+        cfg["permissionsCleanedAt"] = _now()
+        save_cfg(cfg)
+
+    removed = []
+    for p in _legacy_files():
+        try:
+            os.remove(p)
+            removed.append(p)
+        except OSError as e:
+            sys.stderr.write(f"magician-ui: could not remove {p}: {e}\n")
+    if removed:
+        print(f"Removed {len(removed)} obsolete data file(s):")
+        for p in removed:
+            print(f"  {p}")
+    else:
+        print("No obsolete data files found.")
+
+    pruned = _prune_backups()
+    if pruned:
+        print(f"Deleted {pruned} older settings backup(s); kept the newest {KEEP_BACKUPS} (mode 0600).")
 
 
 def cmd_reconcile(_args):
-    """Always-on state check (SessionStart), OPT-OUT model: on first run AUTO-ENABLE the status
-    bar (safe settings.json edit) so it's guaranteed visible — a hook can't force Claude to pop
-    an interactive prompt, so we just turn it on and let the user reconfigure/disable. Thereafter
-    keep an enabled bar healthy; stay silent once the user has disabled it. Never fails."""
-    try:
-        cfg = load_cfg()
-        st = cfg.get("state", "ask")
-        ver = _plugin_version()
-        # Autonomous read-only allow-list: apply once per version unless the user opted out. Runs
-        # regardless of the status-line state so autonomous pipelines stop prompting per read.
-        try:
-            if cfg.get("allow") != "off" and cfg.get("allowVersion") != ver:
-                _edit_settings(_merge_readonly_allow)
-                cfg["allow"] = "on"; cfg["allowVersion"] = ver
-                save_cfg(cfg)
-                print("[MAGICIAN] Enabled read-only auto-approve (Read/Grep/Glob/LS + read-only git + kg/ctx + "
-                      "jira/confluence READS + test/lint/build runners + gh reads) so autonomous runs don't prompt "
-                      "per file — jira/confluence writes, commit/push, PRs, and deletes still ask. Off: `magician-ui allow --off`.")
-        except Exception:
-            pass
-        # Auto mode is available by default on every provider now, so there is nothing to enable — only a
-        # STARTING mode to choose. Do NOT flip defaultMode automatically; that stays opt-in via
-        # `magician-ui automode`. Re-assert an existing "on" choice, and clean up the obsolete env var.
-        try:
-            am = cfg.get("automode")
-            if am != "off" and cfg.get("automodeVersion") != ver:
-                if am == "on":
-                    _edit_settings(_set_default_auto)
-                else:
-                    _edit_settings(_drop_stale_automode_env)
-                    cfg["automode"] = "available"
-                cfg["automodeVersion"] = ver
-                save_cfg(cfg)
-                print("[MAGICIAN] Claude Code AUTO mode is available (Shift+Tab to it): a classifier auto-approves "
-                      "reads + request-aligned actions and gates writes/deploys/force-push/destructive ops — the real "
-                      "'reads proceed, writes gate' autonomy this plugin is built around. It is the default for new "
-                      "Pro/Max/Team sessions as of 2026-08-14; to make it your starting mode everywhere, run "
-                      "`magician-ui automode`, then RESTART. Off: `magician-ui automode --off`.")
-        except Exception:
-            pass
-        if st == "disabled":
-            return  # user opted out → never re-enable (even on upgrade); `magician-ui default` re-enables
-        if st == "enabled":
-            upgraded = bool(ver) and cfg.get("version") != ver
-            # keep the installed renderer fresh across plugin updates
-            if renderer_stale():
-                try:
-                    install_renderer()
-                except Exception:
-                    pass
-            if upgraded:
-                cfg["components"] = list(ALL)   # on version upgrade, reset to the full default set
-                cfg["version"] = ver
-                save_cfg(cfg)
-            # if the user has NO statusLine at all, restore ours; never clobber a different one.
-            try:
-                with open(SETTINGS) as f:
-                    cur = json.load(f)
-            except Exception:
-                cur = {}
-            if isinstance(cur, dict) and not _has_any_statusline(cur):
-                _edit_settings(lambda d: d.__setitem__(
-                    "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
-            return
-        # st == "ask" (first run): ENABLE by default (opt-out). Only auto-enable if the user has
-        # no statusLine of their own — never clobber a custom bar. Then record state=enabled.
-        try:
-            with open(SETTINGS) as f:
-                cur = json.load(f)
-        except Exception:
-            cur = {}
-        if isinstance(cur, dict) and _has_any_statusline(cur) and not _our_statusline(cur):
-            # user already runs their own status line — don't touch it; just mark decided.
-            cfg["state"] = "asked"
-            save_cfg(cfg)
-            return
-        install_renderer()
-        _edit_settings(lambda d: d.__setitem__(
-            "statusLine", {"type": "command", "command": _statusline_cmd(), "padding": 0}))
-        cfg["state"] = "enabled"
-        cfg["components"] = list(ALL)
-        cfg["version"] = ver
-        cfg["enabledAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        save_cfg(cfg)
-        print("[MAGICIAN] Enabled the Magician CLI UI status line by default (opt-out): a live context "
-              "bar + %, a rot warning, a token-flow sparkline, model/git/cost, the active skill, and the "
-              "reasoning effort/mode (🧠) — it renders locally and costs zero tokens. Tell the user it's "
-              "on; they can choose which parts "
-              "show with `magician-ui set context,rot,…` (or the /statusline skill), or turn it off with "
-              "`magician-ui disable`.")
-    except Exception:
-        pass  # reconcile must never break SessionStart
+    """Retired: no hook calls magician-ui any more. Kept so an old caller exits cleanly; writes nothing."""
+    print("magician-ui reconcile: no longer used; see `magician-ui cleanup`.")
 
 
 def cmd_default(_args):
@@ -441,68 +613,43 @@ def cmd_default(_args):
     cmd_enable(["--all"])
 
 
+OFF_WORDS = ("--off", "off", "disable", "remove")
+LORE_ON = ("on", "--on", "enable", "yes", "true", "1")
+LORE_OFF = ("off", "--off", "disable", "no", "false", "0")
+
+
+def _wants_off(args):
+    return any(a in OFF_WORDS for a in args)
+
+
 def cmd_allow(args):
-    """Auto-approve the read-only surface so autonomous runs don't prompt per file/search.
-    `magician-ui allow` enables it; `magician-ui allow --off` removes magician's entries."""
-    off = any(a in ("--off", "off", "disable", "remove") for a in args)
-    cfg = load_cfg()
-    if off:
-        _edit_settings(_remove_readonly_allow)
-        cfg["allow"] = "off"; cfg["allowVersion"] = _plugin_version()
-        save_cfg(cfg)
-        print("Read-only auto-approve removed — magician will prompt per read again. Re-enable: `magician-ui allow`.")
-    else:
-        _edit_settings(_merge_readonly_allow)
-        cfg["allow"] = "on"; cfg["allowVersion"] = _plugin_version()
-        save_cfg(cfg)
-        print("Read-only auto-approve ON: Read/Grep/Glob/LS + read-only git + kg/ctx + jira/confluence READS "
-              "+ test/lint/build runners + gh reads no longer prompt. Jira/Confluence writes, commit/push, PRs, "
-              "and deletes still ask. Off: `magician-ui allow --off`.")
+    """`allow --off` is an alias for `cleanup`. Without --off nothing changes: magician no longer adds
+    permission rules."""
+    if _wants_off(args):
+        cmd_cleanup([])
+        return
+    print("magician no longer adds permission rules; nothing was changed. `magician-ui allow --off` "
+          "(same as `magician-ui cleanup`) removes the rules earlier versions added. To pre-approve a "
+          "command yourself, use /permissions or choose \"don't ask again\" at a permission prompt.")
 
 
 def cmd_automode(args):
-    """Make Claude Code AUTO mode your STARTING mode — the real 'reads/aligned actions proceed, writes/
-    deploys/force-push/destructive gate' autonomy (a classifier reviews each action and honors 'don't push'-
-    style boundaries you state in chat). Sets permissions.defaultMode=auto in your USER settings so NEW
-    sessions start in auto mode. Auto mode itself needs no enabling — it is available on every provider, and
-    is the default for new Pro/Max/Team sessions as of 2026-08-14. `--available` only clears magician's
-    obsolete opt-in leftovers and leaves your starting mode alone. `--off` reverts defaultMode→acceptEdits.
-    NOTE: a plugin can't switch the mode of a running session — restart Claude Code for it to take effect."""
-    off = any(a in ("--off", "off", "disable", "remove") for a in args)
-    env_only = any(a in ("--available", "--env-only", "available") for a in args)
-    cfg = load_cfg()
-    if off:
-        _edit_settings(_clear_automode)
-        cfg["automode"] = "off"; cfg["automodeVersion"] = _plugin_version()
-        save_cfg(cfg)
-        print("Auto mode is no longer magician's starting mode — defaultMode reset to acceptEdits. Auto is still "
-              "reachable with Shift+Tab, and Claude Code may still start new sessions there on Pro/Max/Team. "
-              "Re-enable: `magician-ui automode`.")
+    """`automode --off` is an alias for `cleanup`. Without --off nothing changes: magician no longer sets
+    the permission mode."""
+    if _wants_off(args):
+        cmd_cleanup([])
         return
-    if env_only:
-        _edit_settings(_drop_stale_automode_env)
-        cfg["automode"] = "available"; cfg["automodeVersion"] = _plugin_version()
-        save_cfg(cfg)
-        print("Left your starting mode as-is. Auto mode is available on every provider — Shift+Tab to it in any "
-              "session. Make it the default with `magician-ui automode` (then restart).")
-        return
-    _edit_settings(_set_default_auto)
-    cfg["automode"] = "on"; cfg["automodeVersion"] = _plugin_version()
-    save_cfg(cfg)
-    print("Auto mode set as your starting mode (permissions.defaultMode=auto in your user settings). RESTART "
-          "Claude Code to enter it. Then reads/fetches/tests/skills run without prompts and the classifier gates "
-          "writes/deploys/force-push/destructive ops — say 'don't push' to add a boundary. Needs a supported model "
-          "(Opus 4.6+/Sonnet 4.6+/Fable 5; on Bedrock/Vertex/Foundry: Sonnet 5, Opus 4.7+, or Fable 5 — Haiku and "
-          "the 4.5 generation are unsupported everywhere). If the mode reads 'Manual' after restart, either your "
-          "model doesn't support it or an admin set permissions.disableAutoMode — run `magician-ui automode --off` "
-          "to return to acceptEdits.")
+    print("magician no longer sets the permission mode; nothing was changed. `magician-ui automode --off` "
+          "(same as `magician-ui cleanup`) removes a defaultMode \"auto\" an earlier version set. To pick "
+          "a mode yourself: Shift+Tab in a session, `claude --permission-mode <mode>`, or "
+          "`permissions.defaultMode` in your own settings.")
 
 
 def cmd_lore(args):
     """Enable/disable magician's bundled language & database lore (default ENABLED).
     Lore is a baseline BELOW the repo's own rules — turn it off if it conflicts with your local/project
     knowledge or gives wrong judgment. `magician-ui lore` / `lore on` enables; `lore off` disables (the
-    SessionStart hook then injects NO lore); `lore status` prints the state. Per-project override: create
+    SessionStart hook then adds NO lore); `lore status` prints the state. Per-project override: create
     `.magician/lore.off` in a repo (disables lore there only). Env override: MAGICIAN_LORE=0. The bundled
     on/off state lives in cli-ui.json; the status bar's `lore` chip shows it live. Takes effect next session."""
     cfg = load_cfg()
@@ -513,14 +660,13 @@ def cmd_lore(args):
         print(f"status-bar chip: {'shown' if shown else 'hidden'}  (toggle via `magician-ui set ...,lore`)")
         print("overrides:       per-project `.magician/lore.off` · env `MAGICIAN_LORE=0`")
         return
-    off = any(a in ("off", "--off", "disable", "no", "false", "0") for a in args)
-    if off:
+    if args and args[0] in LORE_OFF:
         cfg["lore"] = "disabled"; save_cfg(cfg)
-        print("Magician lore DISABLED — SessionStart will not inject language/DB lore; your project/local "
+        print("Magician lore DISABLED — SessionStart will not add language/DB lore; your project/local "
               "knowledge stands alone. Re-enable: `magician-ui lore on`. Takes effect next session start.")
     else:
         cfg["lore"] = "enabled"; save_cfg(cfg)
-        print("Magician lore ENABLED (default) — SessionStart injects the detected stack's concise cores "
+        print("Magician lore ENABLED (default) — SessionStart adds the detected stack's concise cores "
               "(deep-dives stay on-demand, and repo rules always win). Disable: `magician-ui lore off`.")
 
 
@@ -528,8 +674,8 @@ def cmd_voice(args):
     """Set magician's output-brevity 'voice' — how wordy responses are, to lower output-token
     cost with no quality loss (output tokens cost several times more than input). Three levels,
     least → most wordy: `warrior` (minimal but complete), `scribe` (the default — leaner than
-    usual), `bard` (standard/native verbosity, nothing injected). SessionStart injects a brevity
-    directive for warrior/scribe that cuts filler (preambles, recaps, restating the request) while
+    usual), `bard` (standard/native verbosity, nothing added). SessionStart adds a brevity
+    note for warrior/scribe that cuts filler (preambles, recaps, restating the request) while
     keeping ALL substance and code/commands/errors verbatim — it never compresses prose into
     fragments or jargon. `magician-ui voice <level>` sets it; `voice status` prints the state.
     Resolution (first match wins): env MAGICIAN_VOICE → per-project `.magician/voice` → this
@@ -546,32 +692,56 @@ def cmd_voice(args):
     if lvl not in VOICE_LEVELS:
         die(f"unknown voice '{args[0]}'; choose from: {', '.join(VOICE_LEVELS)}")
     cfg["voice"] = lvl
-    cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    cfg["updatedAt"] = _now()
     save_cfg(cfg)
     blurb = {
         "warrior": "minimal but complete — the shortest fully-correct answer; no preamble, examples, or recaps.",
         "scribe":  "leaner than usual (default) — necessary explanation only, filler and restatements trimmed.",
-        "bard":    "standard/native verbosity — no brevity directive injected.",
+        "bard":    "standard/native verbosity — no brevity note added.",
     }[lvl]
     print(f"Voice set to {lvl}: {blurb}")
     print("Substance, code, commands, paths, and errors are always kept verbatim. Takes effect next session start.")
 
 
 CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
-        "disable": cmd_disable, "reconcile": cmd_reconcile, "allow": cmd_allow,
-        "automode": cmd_automode, "lore": cmd_lore, "voice": cmd_voice}
+        "disable": cmd_disable, "cleanup": cmd_cleanup, "lore": cmd_lore, "voice": cmd_voice,
+        "allow": cmd_allow, "automode": cmd_automode, "reconcile": cmd_reconcile}
+
+
+def _bad_arg(cmd, args):
+    """The first argument `cmd` doesn't take, or None. Checked before a subcommand changes anything."""
+    if cmd in ("enable", "set"):
+        bad = [a for a in args if a.startswith("-") and a not in ("--all", "--only")
+               and not a.startswith("--only=")]
+    elif cmd == "disable":
+        bad = [a for a in args if a not in ("--purge", "purge", "--force")]
+    elif cmd in ("allow", "automode"):
+        # Without --off they change nothing, so an old enable form (`allow on`) just gets the pointer.
+        bad = [a for a in args if a not in OFF_WORDS] if _wants_off(args) else []
+    elif cmd == "lore":
+        bad = args[1:] if args and args[0] in LORE_ON + LORE_OFF + ("status", "--status") else args
+    elif cmd == "voice":
+        bad = args[1:]   # cmd_voice checks the level itself
+    else:                # status, default, cleanup, reconcile
+        bad = args
+    return bad[0] if bad else None
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
-        print("usage: magician-ui {status|enable [--all|--only a,b]|set <a,b>|default|disable|reconcile|allow [--off]|automode [--off|--available]|lore [on|off|status]|voice [warrior|scribe|bard|status]}")
-        print(f"components: {', '.join(ALL)}")
+        print(__doc__.strip())
         return
-    cmd = sys.argv[1]
+    cmd, args = sys.argv[1], sys.argv[2:]
     fn = CMDS.get(cmd)
     if not fn:
         die(f"unknown command '{cmd}' (try: {', '.join(CMDS)})")
-    fn(sys.argv[2:])
+    if any(a in ("-h", "--help") for a in args):
+        print(__doc__.strip())
+        return
+    bad = _bad_arg(cmd, args)
+    if bad is not None:
+        die(f"`{cmd}` doesn't take '{bad}'; nothing was changed (see `magician-ui --help`).")
+    fn(args)
 
 
 if __name__ == "__main__":

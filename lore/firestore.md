@@ -12,7 +12,7 @@ DON'T exceed operator caps: in/array-contains-any ≤30 values, not-in ≤10, OR
 DON'T hammer one doc: ~1 sustained write/s before contention — shard counters.
 DON'T ignore per-op billing: reads/writes/deletes + index-entries + storage + egress; min 1 read/query on 0 results.
 
-Deep dive when writing non-trivial Firestore — read lore/firestore/{data-model-and-documents,queries-and-indexes,realtime-and-security,performance}.md
+Deep dive when writing non-trivial Firestore — read lore/deep/firestore.md#{data-model-and-documents,queries-and-indexes,realtime-and-security,performance}
 
 ## Sources
 firebase.google.com/docs/firestore · /query-data · /best-practices · /pricing

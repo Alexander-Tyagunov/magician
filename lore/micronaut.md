@@ -9,6 +9,6 @@ DO use Micronaut Data `@Repository` (compile-time queries). DO test with `@Micro
 Version: Micronaut 5.x current (Java 25, Groovy 5, Kotlin 2.3, GraalVM 25; JSpecify nullability); prior 4.x (Java 17). Both use `jakarta.*` + `jakarta.inject`.
 Commands: scaffold `mn create-app`; run `./gradlew run` / `./mvnw mn:run`; build `./gradlew assemble` / `./mvnw package`; native `./gradlew nativeCompile` / `./mvnw package -Dpackaging=native-image`; test `./gradlew test`.
 
-Deep dive when writing non-trivial micronaut — read lore/micronaut/{di-and-aot,http-server-and-clients,data-and-reactive,native-and-testing}.md
+Deep dive when writing non-trivial micronaut — read lore/deep/micronaut.md#{di-and-aot,http-server-and-clients,data-and-reactive,native-and-testing}
 
 Sources: docs.micronaut.io/latest/guide, guides.micronaut.io, github.com/micronaut-projects/micronaut-core

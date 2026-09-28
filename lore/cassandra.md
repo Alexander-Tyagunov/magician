@@ -14,7 +14,7 @@ DON'T use multi-partition or UNLOGGED batches for throughput; batches aren't tra
 DON'T lean on LWT (Paxos/SERIAL) or delete-heavy queue patterns (tombstones) on hot paths.
 DON'T run SimpleStrategy in production.
 
-Deep dive when writing non-trivial Cassandra — read lore/cassandra/{data-modeling-and-partitions,consistency-and-replication,queries-and-secondary-indexes,compaction-and-storage,performance}.md
+Deep dive when writing non-trivial Cassandra — read lore/deep/cassandra.md#{data-modeling-and-partitions,consistency-and-replication,queries-and-secondary-indexes,compaction-and-storage,performance}
 
 ## Sources
 cassandra.apache.org/doc/latest · architecture/dynamo · operating/compaction

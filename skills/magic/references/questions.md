@@ -1,7 +1,7 @@
 # /magic — AskUserQuestion configurations
 
 Read this when you reach **Phase 0 (source selection)** or **Phase 3 (output format)**.
-Every block below MUST be delivered via the AskUserQuestion tool — never in plain prose.
+Each block below is an AskUserQuestion configuration; ask it through that tool rather than as plain prose, so the user gets clickable options.
 
 ---
 
@@ -249,13 +249,13 @@ If the user selects "Visual design via /conjure" in either config: invoke `/conj
 {
   "questions": [
     {
-      "question": "context7 MCP is not installed. It enables searching official library and framework documentation. Install it?",
-      "header": "Install context7?",
+      "question": "The context7 MCP server isn't available in this session. It searches official library and framework documentation (queries go to mcp.context7.com). Want the command to add it yourself?",
+      "header": "Add context7?",
       "multiSelect": false,
       "options": [
         {
-          "label": "Yes — install context7",
-          "description": "Adds context7 to Claude Code: claude mcp add --transport http context7 https://mcp.context7.com/mcp"
+          "label": "Show me the command",
+          "description": "Prints the one-line command for you to run; this run continues without context7"
         },
         {
           "label": "Skip for now",
@@ -267,7 +267,13 @@ If the user selects "Visual design via /conjure" in either config: invoke `/conj
 }
 ```
 
-If "Yes", run `claude mcp add --transport http context7 https://mcp.context7.com/mcp`, then confirm: "context7 installed — library docs now available." If "Skip", continue without context7 and note the limitation in findings.
+If "Show me the command", print it for the user to run in their own terminal — don't run it yourself, because it changes Claude Code's MCP configuration:
+
+```bash
+claude mcp add --transport http context7 https://mcp.context7.com/mcp
+```
+
+Tell them it takes effect in a new session, then continue this run without context7. In either case, note the limitation in findings.
 
 ---
 
@@ -315,7 +321,7 @@ Wait for file paths if the user chose the first option; extract paths from the n
         },
         {
           "label": "Save to file",
-          "description": "Write findings to a markdown file in the current directory"
+          "description": "Write findings to a markdown file (in .workspace/shared/research/ when a magician workspace exists, otherwise the current directory)"
         },
         {
           "label": "Save and commit to git",
@@ -362,3 +368,5 @@ git commit -m "{confirmed message}
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
+
+Stage only the file you just saved, wherever it was saved. Claude Code asks before the `git add` (only the commit is pre-approved); if the user declines it, stop without committing.

@@ -15,5 +15,5 @@ DO auth via `handle`+`event.locals`; `handleError` never throws.
 
 Commands: `npx sv create` · `vite dev` · `vite build` · `vite preview` · `sv check`
 
-Deep dive when writing non-trivial sveltekit — read lore/sveltekit/{routing-and-load,forms-and-server}.md
+Deep dive when writing non-trivial sveltekit — read lore/deep/sveltekit.md#{routing-and-load,forms-and-server}
 Sources: svelte.dev/docs/kit {routing,load,form-actions,hooks,migrating-to-sveltekit-2}

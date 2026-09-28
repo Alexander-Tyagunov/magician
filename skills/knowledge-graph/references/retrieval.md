@@ -43,7 +43,7 @@ At Deep/Exhaustive depth (or whenever change impact matters), `/divine` runs `kg
 
 ## Multi-repo (cross-repo work)
 
-kg is **per-repo**, keyed on the cwd's git root (`repos/<sha256(realpath root)[:12]>/`). For a task spanning several repos — parity/comparison across services, a cross-repo migration — index and query **each** one where it lives: `cd <repo> && kg init` once, then `cd <repo> && kg query "<terms>"` / `kg blast <file>`. Do **not** grep across sibling repo trees from a single cwd — that's exactly the slow, prompt-heavy path kg exists to replace. If cwd isn't the code under study (e.g. you're running from a tools/plugin dir), point the work at each target repo's directory so kg indexes the right tree.
+kg is **per-repo**, keyed on the cwd's git root (`repos/<sha256(realpath root)[:12]>/`). For a task spanning several repos — parity/comparison across services, a cross-repo migration — index and query **each** one where it lives: `kg init` once in each repo (on the user's yes — a build is gated like any other), then `kg query "<terms>"` / `kg blast <file>` from that repo's directory. Do **not** grep across sibling repo trees from a single cwd — that's exactly the slow, prompt-heavy path kg exists to replace. If cwd isn't the code under study (e.g. you're running from a tools/plugin dir), point the work at each target repo's directory so kg indexes the right tree.
 
 ## Tier-2 speed
 

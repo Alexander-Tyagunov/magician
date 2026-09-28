@@ -1,8 +1,8 @@
 ---
 name: scrutinize
 description: Multi-agent code review AND remediation — dispatches correctness, security, and simplification reviewers in parallel, consolidates findings, then fixes criticals/highs. Use when reviewing a diff or PR before shipping.
-allowed-tools: Bash(git diff:*), Bash(git status:*), Read, Edit, Task, AskUserQuestion
-argument-hint: [base-ref, e.g. main]
+allowed-tools: Read, Grep, Glob, Task, AskUserQuestion, Bash(kg query *), Bash(kg blast *), Edit(./.workspace/shared/diffs/**)
+argument-hint: "[base-ref, e.g. main]"
 ---
 
 # /scrutinize — Multi-Agent Review & Remediation
@@ -15,16 +15,16 @@ Scale review depth to the change size: a tiny diff needs little; a large changes
 
 ## Autonomy — approve the plan, then run
 
-Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches in one message; reads, searches, `kg query`/`blast`, and read-only `git diff`/`status` NEVER pause for permission. The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate — end your turn there and wait. Once approved, Phase 2 runs the Critical/High fix batch and the re-review loop without gating on intermediate reads, re-gating **only** on real side effects: the fix `Edit`s and the decline-a-finding decision (never decline Critical/High without sign-off). See [lore/autonomy.md](../../lore/autonomy.md).
+Phase 1 runs autonomously: batch the diff write and all three `Task` dispatches in one message, and don't stop to ask the owner before reads, searches, `kg query`/`blast`, or read-only `git diff`/`status`. Claude Code's built-in read-only commands don't prompt, and this skill pre-approves `kg query`/`blast` and the patch write under `.workspace/shared/diffs/`; the fix edits in Phase 2 go through the normal permission prompt unless the user runs in auto mode. The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate — end your turn there and wait. Once approved, Phase 2 runs the Critical/High fix batch and the re-review loop without gating on intermediate reads, re-gating **only** on real side effects: the fix `Edit`s and the decline-a-finding decision (never decline Critical/High without sign-off). See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Phase 1 — Review
 
-1. **Collect review scope and write the diff once** — files changed since the branch diverged (base defaults to `main`, or `$ARGUMENTS`). Write the diff to a single patch artifact so it isn't duplicated across agent prompts:
+1. **Collect review scope and write the diff once** — files changed since the branch diverged. `<base>` is `$ARGUMENTS` when given, otherwise `main`. Write the diff to a single patch artifact so it isn't duplicated across agent prompts. Run each as its own plain command so it matches the pre-approval:
    ```bash
-   git diff main...HEAD --name-only
-   DIFF=".workspace/shared/diffs/review.patch"; [ -d .workspace ] || DIFF="$(git rev-parse --git-dir)/magician-review.patch"
-   mkdir -p "$(dirname "$DIFF")"; git diff main...HEAD > "$DIFF"; echo "$DIFF"
+   git diff <base>...HEAD --name-only
+   git diff <base>...HEAD > .workspace/shared/diffs/review.patch
    ```
+   If `.workspace/` exists but `.workspace/shared/diffs/` doesn't, create that directory first (the `mkdir` goes through the normal permission prompt). If the repo has no `.workspace/` at all, don't create one just for this: run `git rev-parse --git-dir` and write the patch to `<git-dir>/magician-review.patch` instead (outside the tracked tree; that write also prompts). Either way, note the patch path for step 2.
 2. **Dispatch the specialist agents simultaneously** — in ONE message, make the `Task` calls using these subagent types (do NOT read agent files by path; the plugin registers them):
    - `magician:reviewer` — correctness and edge cases
    - `magician:sentinel` — security vulnerabilities (OWASP, secrets, injection into app code)

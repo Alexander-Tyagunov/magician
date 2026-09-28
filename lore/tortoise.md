@@ -16,7 +16,7 @@ VERSION CUE: v1.0 shipped the built-in migration CLI `tortoise`; **aerich is now
 
 Commands: `tortoise init` · `tortoise makemigrations` · `tortoise migrate` (alias `upgrade`) · `tortoise downgrade` · `tortoise history` · `tortoise heads` · `tortoise sqlmigrate`.
 
-Deep dive when writing non-trivial tortoise — read lore/tortoise/{patterns}.md
+Deep dive when writing non-trivial tortoise — read lore/deep/tortoise.md#{patterns}
 
 ## Sources
 tortoise.github.io (index, getting_started, query, expressions, transactions, migration); pypi.org/project/tortoise-orm 1.1.7

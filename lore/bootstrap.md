@@ -14,6 +14,6 @@ DON'T edit `bootstrap.min.css`; override with Sass or CSS vars (`--bs-*`).
 
 Commands: `npm i bootstrap@5.3.8` (or jsDelivr CDN); import `bootstrap/dist/css/bootstrap.min.css` + `bootstrap/dist/js/bootstrap.bundle.min.js`.
 
-Deep dive when writing non-trivial bootstrap — read lore/bootstrap/{customization-and-v5}.md
+Deep dive when writing non-trivial bootstrap — read lore/deep/bootstrap.md#{customization-and-v5}
 
 Sources: getbootstrap.com/docs/5.3/getting-started/introduction, /migration

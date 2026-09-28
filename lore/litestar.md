@@ -16,6 +16,6 @@ DON'T rely on name-based DI inference — deprecated 2.24, gone in 3.0; use Name
 
 Commands: `litestar run` (needs `litestar[standard]`); target app via `--app pkg.mod:app` or `LITESTAR_APP`; `litestar --help`.
 
-Deep dive when writing non-trivial litestar — read lore/litestar/{patterns-and-di}.md
+Deep dive when writing non-trivial litestar — read lore/deep/litestar.md#{patterns-and-di}
 
 Sources: docs.litestar.dev/latest (di, handlers, middleware, security, cli, dto); pypi.org/project/litestar

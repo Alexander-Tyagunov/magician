@@ -1,7 +1,7 @@
 {
   "name": "magician",
-  "version": "4.14.0",
-  "description": "Full-stack SDLC plugin with dynamic project inspection, a local code knowledge-graph + cache, cross-session reference memory, self-learning, parallel agent orchestration, and feature comprehend→port/integrate (/transmute)",
+  "version": "4.15.0",
+  "description": "Skills and agents for the software lifecycle in Claude Code: research, design, planning, test-first building, code review, security checks and release. Includes a local code index, per-project workspace notes, stack-specific guidance at session start, and optional Jira and Confluence access.",
   "author": {
     "name": "Alexander Tyagunov",
     "email": "tyagunov.alex@gmail.com",
@@ -17,7 +17,6 @@
     "workspace",
     "knowledge-graph",
     "code-search",
-    "self-learning",
     "security",
     "mobile",
     "gamedev",
@@ -28,5 +27,69 @@
     "comprehend",
     "migrate",
     "vendor-swap"
-  ]
+  ],
+  "userConfig": {
+    "jira_base_url": {
+      "type": "string",
+      "title": "Jira base URL",
+      "description": "Optional. https://<site>.atlassian.net for Jira Cloud, or your Jira Server/Data Center URL. Leave empty if you don't use Jira.",
+      "required": false
+    },
+    "jira_email": {
+      "type": "string",
+      "title": "Jira account email (Cloud only)",
+      "description": "Jira Cloud only (Basic auth, REST v3). Leave empty for Jira Server/Data Center, which uses the token alone (Bearer, REST v2).",
+      "required": false
+    },
+    "jira_api_token": {
+      "type": "string",
+      "title": "Jira API token or personal access token",
+      "description": "Cloud: an API token from id.atlassian.com. Server/Data Center: a personal access token. Kept in your system's secure credential store, never in settings.json.",
+      "required": false,
+      "sensitive": true
+    },
+    "confluence_base_url": {
+      "type": "string",
+      "title": "Confluence base URL",
+      "description": "Optional. Cloud: https://<site>.atlassian.net/wiki (include /wiki). Server/Data Center: your Confluence URL plus any context path. Leave empty if you don't use Confluence.",
+      "required": false
+    },
+    "confluence_email": {
+      "type": "string",
+      "title": "Confluence account email (Cloud only)",
+      "description": "Confluence Cloud only (Basic auth). Leave empty for Server/Data Center (Bearer token).",
+      "required": false
+    },
+    "confluence_api_token": {
+      "type": "string",
+      "title": "Confluence API token or personal access token",
+      "description": "Cloud: the same Atlassian API token works for Jira and Confluence on one site. Server/Data Center: a Confluence personal access token. Kept in your secure credential store.",
+      "required": false,
+      "sensitive": true
+    },
+    "auto_format": {
+      "type": "boolean",
+      "title": "Auto-format files Claude edits",
+      "description": "After Claude writes or edits a file, run ruff (or black), gofmt, rustfmt or shfmt if already installed on your PATH, and tell Claude the file changed. Off by default.",
+      "default": false
+    },
+    "auto_format_prettier": {
+      "type": "boolean",
+      "title": "Also run prettier (JS/TS/JSON/CSS/HTML/Markdown)",
+      "description": "Only applies when auto-format is on. prettier loads the project's own config and plugins, which can run code from the repository. Off by default.",
+      "default": false
+    },
+    "desktop_notifications": {
+      "type": "boolean",
+      "title": "Notify when a background session finishes or needs input",
+      "description": "Sends a terminal or desktop notification for background-session completion or input requests. Off by default.",
+      "default": false
+    },
+    "session_history": {
+      "type": "boolean",
+      "title": "Keep a local session history",
+      "description": "Keep a short local record of each session (branch, commit count, changed file names). On by default.",
+      "default": true
+    }
+  }
 }

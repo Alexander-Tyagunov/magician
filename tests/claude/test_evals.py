@@ -58,7 +58,8 @@ class EvalSuiteTests(unittest.TestCase):
     def test_suite_exists_and_is_discoverable(self) -> None:
         """The runner auto-discovers evals/<case>/; there must be cases to discover. The behavioral
         tier gates what is *reliably* observable in the `claude plugin eval` sandbox — skill
-        invocation (sentinel, divine) and hook enforcement (destructive-command block). Agent
+        invocation (sentinel, divine) and that a catastrophic command never runs (the guard hook itself
+        is tested directly in test_destructive_guard.py). Agent
         dispatchability is gated structurally in test_agents.py (frontmatter, least-privilege, and
         the skill→agent wiring), because model-discretionary Task-subagent spawning is not
         reproducible enough to hang a green gate on."""

@@ -14,6 +14,6 @@ DON'T use removed 18-era APIs: `ReactDOM.render`/`hydrate`, string refs, legacy 
 
 Commands: scaffold `npm create vite@latest`; lint `eslint-plugin-react-hooks`; compiler `npm i -D babel-plugin-react-compiler@latest`.
 
-Deep dive when writing non-trivial react — read lore/react/{hooks-and-state,effects-and-refs,performance,patterns-and-pitfalls}.md
+Deep dive when writing non-trivial react — read lore/deep/react.md#{hooks-and-state,effects-and-refs,performance,patterns-and-pitfalls}
 
 Sources: react.dev/reference/{react,rules,react/forwardRef}, /blog/2025/10/01/react-19-2, /blog/2025/10/07/react-compiler-1

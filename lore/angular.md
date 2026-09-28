@@ -20,7 +20,7 @@ DON'T
 
 Commands: `ng new`, `ng generate component x`, `ng serve`, `ng build`, `ng test`, `ng update`.
 
-Deep dive when writing non-trivial angular — read lore/angular/{components-di-and-signals,rxjs-and-async,patterns-and-pitfalls}.md
+Deep dive when writing non-trivial angular — read lore/deep/angular.md#{components-di-and-signals,rxjs-and-async,patterns-and-pitfalls}
 
 ## Sources
 angular.dev/overview, /reference/versions, /reference/migrations/{outputs,inject-function}; context7 /angular/angular

@@ -15,6 +15,6 @@ DON'T
 
 Commands: `pip install "sqlalchemy>=2"`; migrate via Alembic — `alembic revision --autogenerate -m msg`, `alembic upgrade head`.
 
-Deep dive when writing non-trivial sqlalchemy — read lore/sqlalchemy/{orm-2.0-vs-1.4,sessions-and-queries}.md
+Deep dive when writing non-trivial sqlalchemy — read lore/deep/sqlalchemy.md#{orm-2-0-vs-1-4,sessions-and-queries}
 
 Sources: docs.sqlalchemy.org/en/20 (quickstart, migration_20, core/connections); alembic.sqlalchemy.org

@@ -14,7 +14,7 @@ DON'T treat local TSDB as clustered/replicated/durable — single-node DB.
 DON'T use it as an event/log/trace store or for exact per-request records.
 DON'T rate() over a range under ~4x scrape interval, or alert without `for:`.
 
-Deep dive when writing non-trivial Prometheus — read lore/prometheus/{data-model-and-scraping,promql-and-rules,performance}.md
+Deep dive when writing non-trivial Prometheus — read lore/deep/prometheus.md#{data-model-and-scraping,promql-and-rules,performance}
 
 ## Sources
 prometheus.io/docs {storage, naming, rules, querying} · GitHub prometheus/releases

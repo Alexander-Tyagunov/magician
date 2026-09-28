@@ -15,6 +15,6 @@ DON'T leak the target: use TransformedTargetRegressor for y transforms; fit enco
 
 Commands: pip install -U scikit-learn
 
-Deep dive when writing non-trivial sklearn — read lore/sklearn/{pipelines-and-estimators}.md
+Deep dive when writing non-trivial sklearn — read lore/deep/sklearn.md#{pipelines-and-estimators}
 
 Sources: scikit-learn.org/stable/modules/compose.html · /common_pitfalls.html · /whats_new/v1.9.html

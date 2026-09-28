@@ -8,4 +8,4 @@ Lint hard: `clippy::all = "deny"`; deny `unwrap_used`, `indexing_slicing`, `awai
 
 Commands: build `cargo build`, test `cargo test`, lint `cargo clippy`, format `cargo fmt`.
 
-Deep dive when writing non-trivial Rust — read lore/rust/{ownership-and-errors,type-safety,performance,async,patterns-and-api,clippy-lints}.md
+Deep dive when writing non-trivial Rust — read lore/deep/rust.md#{ownership-and-errors,type-safety,performance,async,patterns-and-api,clippy-lints}

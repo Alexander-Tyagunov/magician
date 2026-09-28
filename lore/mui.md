@@ -21,5 +21,5 @@ DON'T
 
 Commands: `npm i @mui/material @emotion/react @emotion/styled` (React 17–19). Migrate: `npx @mui/codemod@latest deprecations/all .`
 
-Deep dive when writing non-trivial mui — read lore/mui/{theming-and-styling,versions-and-md}.md
+Deep dive when writing non-trivial mui — read lore/deep/mui.md#{theming-and-styling,versions-and-md}
 Sources: mui.com/material-ui {getting-started/installation, customization/theming, migration/upgrade-to-v7, migration/upgrade-to-v9}

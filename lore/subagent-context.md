@@ -8,7 +8,7 @@ Before dispatching a subagent (or chaining to the next skill), include everythin
 
 1. **Goal** — the specific deliverable, in one or two sentences.
 2. **Scope** — exact files/paths/modules in play (and what is out of scope).
-3. **Inputs** — the spec, plan task, diff, or findings it must act on. Pass the content or an exact readable path (e.g. `.workspace/shared/specs/<feature>.md`, `.workspace/shared/plans/<plan>.md`), never "the spec we discussed". If `.workspace/local/session-state.md` exists, tell the agent to read it first for the current session capsule (goal, decisions, blockers, artifact paths).
+3. **Inputs** — the spec, plan task, diff, or findings it must act on. Pass the content or an exact readable path (e.g. `.workspace/shared/specs/<feature>.md`, `.workspace/shared/plans/<plan>.md`), never "the spec we discussed". If `.workspace/local/session-state.md` exists, tell the agent to read it first for the current session state (goal, decisions, blockers, artifact paths).
 4. **Constraints** — conventions, tech/lore in use, things it must not touch (deny rules), the definition of done.
 5. **Return contract** — the exact STATUS / output format expected back.
 6. **Model/effort** — pick the tier and effort that fit the subtask (see [models.md](models.md)).
@@ -20,17 +20,17 @@ Pipeline stages (conjure → blueprint → orchestrate → certify → scrutiniz
 ## Rule: keep context small — pointers over content
 
 Context is a finite resource; protect it for yourself and every actor downstream.
-- For locating code, **default to `kg query` / `kg blast` / `kg neighbors`** whenever the repo has an index — it returns exact `file:line` in far fewer tokens and is shared across agents. Use broad `grep` / whole-file reads only for non-code or literal-string scans. Never paste whole files into the transcript; reference code by `path:line`.
+- For locating code in a repo that has a knowledge-graph index, `kg query` / `kg blast` / `kg neighbors` return exact `file:line` in far fewer tokens and are shared across agents; broad `grep` / whole-file reads suit non-code or literal-string scans. Never paste whole files into the transcript; reference code by `path:line`.
 - Persist durable facts (decisions, user prefs, gotchas) to `.workspace/shared/decisions/` or `/chronicle learn`, not the chat.
 - Offload heavy exploration to subagents (clean context windows) and have them return a distilled summary, not raw dumps.
-- The plugin warns when context grows (60/80/92%) and captures a resume capsule before any compaction — when warned, offload to an artifact and/or `/compact` before the next big step. See [the chronicle context-mgmt reference](../skills/chronicle/references/context-mgmt.md).
+- `/chronicle status` shows how full the context window is (the status line, if the user enabled it, marks 80% and 92%); with the window filling up, offload to an artifact and/or `/compact` before the next big step. After a compaction, magician's `compact-context.sh` hook restates working-state pointers from git and `.workspace/shared/`, without reading the transcript. See [the chronicle context-mgmt reference](../skills/chronicle/references/context-mgmt.md).
 
 ## Rule: subagents run in the background — use it, don't fight it
 
 Current Claude Code runs spawned subagents in the **background by default**: you can keep working while they run, and their permission prompts now surface in *your* main session (they no longer auto-deny). So:
 - Fan out, then keep doing useful work and collect results as they land. Ask to "run in the foreground" only when the next step genuinely blocks on a subagent's output.
 - Subagents can spawn their own subagents (**nested, up to ~5 levels**) — an orchestrator-worker where a wave lead further fans out is fine; keep every level's prompt self-contained per the rules above.
-- You rarely need to pre-authorize tools now (prompts surface to you), but the plugin's global `Bash(kg:*|jira:*|confluence:*|ctx:*)` allows keep the common CLIs prompt-free anyway.
+- You rarely need to pre-authorize tools now (prompts surface to you); any allow rules are the user's own (`/permissions`), and magician adds none.
 
 ## Rule: verify the handoff
 

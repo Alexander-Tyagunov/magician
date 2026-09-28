@@ -1,6 +1,10 @@
 ---
 name: guardian
-description: AI-SDLC security guardian for an agentic change — audits the parts that classic review misses: the lethal trifecta, prompt-injection surfaces, tool/permission least-privilege, and whether every new guardrail has a test. Use when a change touches agents, hooks, tools, skills, prompts, or anything that runs on untrusted input.
+description: >-
+  AI-SDLC security guardian for an agentic change — audits the parts that classic review misses:
+  the lethal trifecta, prompt-injection surfaces, tool/permission least-privilege, and whether
+  every new guardrail has a test. Use when a change touches agents, hooks, tools, skills, prompts,
+  or anything that runs on untrusted input.
 tools: Read, Grep, Glob
 model: opus
 color: red
