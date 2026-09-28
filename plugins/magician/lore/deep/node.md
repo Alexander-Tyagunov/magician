@@ -482,7 +482,7 @@ DO
 - **Prototype pollution:** validate input against a schema (zod/ajv); use `Object.create(null)` maps, `Object.hasOwn(o,k)`, `Object.freeze(proto)`; reject `__proto__`/`constructor`/`prototype` keys; avoid unsafe recursive merge. `--disable-proto=delete` as defense-in-depth.
 
 DON'T
-- Don't pass user input into `exec`, `child_process.exec(\`cmd ${x}\`)`, or `shell:true`. Don't `eval`/`new Function` on input.
+- Don't pass user input into `exec`, `child_process.exec(\`cmd ${x}\`)`, or `shell:true`. Don't call `eval()` or `new Function` on input.
 - Don't join user paths without a containment check; don't trust `..`-stripping regexes.
 - Don't deep-merge untrusted JSON into config objects.
 

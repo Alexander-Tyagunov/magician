@@ -468,8 +468,8 @@ DO set `subsets` (warns otherwise when preload on). DO use variable fonts (no `w
 
 ### Env vars
 
-- Load order (first wins): `process.env` → `.env.$(NODE_ENV).local` → `.env.local` → `.env.$(NODE_ENV)` → `.env`. `.env.local` skipped when `NODE_ENV=test`.
-- `NEXT_PUBLIC_` vars are **inlined at build time** into the client bundle — frozen after build; never for secrets or per-env runtime values. Dynamic lookups (`process.env[varName]`) are **not** inlined.
+- Load order (first wins): `process.env` → `.env.development.local` → `.env.local` → `.env.development` → `.env` (swap `development` for the current `NODE_ENV`). `.env.local` skipped when `NODE_ENV=test`.
+- `NEXT_PUBLIC_` vars are **inlined at build time** into the client bundle — frozen after build; never for secrets or per-env runtime values. Dynamic lookups (a computed key on `process.env`) are **not** inlined.
 - Non-prefixed vars stay server-only; read at **runtime** during dynamic rendering (`await connection()`, or after `cookies()`/`headers()`) — enables one image across envs.
 - `.env*` files live at project root even with `src/`. Use `@next/env` `loadEnvConfig` to load outside Next (ORM/test config).
 

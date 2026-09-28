@@ -247,7 +247,7 @@ DO
 - **Prisma 7 (adapter):** configure the pool on the **adapter**, not the URL (`connection_limit` ignored):
 ```ts
 import { PrismaPg } from "@prisma/adapter-pg";
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL,
+const adapter = new PrismaPg({ connectionString, // from app config, never a literal
   connectionTimeoutMillis: 5000, idleTimeoutMillis: 300000 }); // pg pool `max` default 10
 export const prisma = new PrismaClient({ adapter });
 ```

@@ -428,7 +428,7 @@ DO
 app.set('trust proxy', 1);
 app.use(session({
   name: 'sid',               // rename off the default `connect.sid` (fingerprinting)
-  secret: process.env.SESSION_SECRET,
+  secret: sessionSecret,     // from your secret store, never a literal
   resave: false, saveUninitialized: false,
   cookie: { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 3600_000 },
 }));

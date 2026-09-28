@@ -102,7 +102,7 @@ const result = await db.query.users.findMany({
 
 ### Prepared statements — DO
 
-Precompile once, run many; pass values via placeholders (also the parameterization path).
+Precompile once, run many; bind values via placeholders (also the parameterization path).
 ```ts
 import { sql } from 'drizzle-orm';
 
@@ -176,7 +176,7 @@ Schema is TypeScript (`pgTable`/`mysqlTable`/`sqliteTable`). `drizzle-kit` diffs
   ```ts
   import { drizzle } from 'drizzle-orm/node-postgres';
   import { migrate } from 'drizzle-orm/node-postgres/migrator';
-  const db = drizzle(process.env.DATABASE_URL!);
+  const db = drizzle(connectionString); // from app config, never a literal
   await migrate(db, { migrationsFolder: './drizzle' });
   ```
   `migrate()` is safe on every startup — it skips already-applied migrations (tracked in
@@ -198,11 +198,12 @@ Schema is TypeScript (`pgTable`/`mysqlTable`/`sqliteTable`). `drizzle-kit` diffs
 - DON'T forget `dialect` + `schema` in `drizzle.config.ts` (both mandatory). Minimal:
   ```ts
   import { defineConfig } from 'drizzle-kit';
+  import { connectionString } from './src/config'; // app config, never a literal
   export default defineConfig({
     dialect: 'postgresql',
     schema: './src/schema.ts',
     out: './drizzle',
-    dbCredentials: { url: process.env.DATABASE_URL! },
+    dbCredentials: { url: connectionString },
   });
   ```
 
@@ -221,7 +222,7 @@ Match the driver import to your runtime; each `drizzle-orm/<driver>` entrypoint 
   session/interactive transactions.
   ```ts
   import { drizzle } from 'drizzle-orm/neon-http';
-  const db = drizzle(process.env.DATABASE_URL!);
+  const db = drizzle(connectionString);
   ```
 - **Neon WebSocket/Pool** — `drizzle-orm/neon-serverless`. Use when you need interactive
   transactions or a `pg` drop-in. In Node (no global `WebSocket`) set
@@ -230,9 +231,7 @@ Match the driver import to your runtime; each `drizzle-orm/<driver>` entrypoint 
   `@planetscale/database`. Works serverless and serverful.
   ```ts
   import { drizzle } from 'drizzle-orm/planetscale-serverless';
-  const db = drizzle({ connection: {
-    host: process.env.DATABASE_HOST, username: process.env.DATABASE_USERNAME,
-    password: process.env.DATABASE_PASSWORD } });
+  const db = drizzle({ connection: { host, username, password } }); // from app config
   ```
 
 ### DON'T — serverless pooling traps
@@ -256,7 +255,7 @@ hatch `sql.raw()` does not.
   await db.execute(sql`select * from ${users} where ${users.id} = ${id}`);
   // → select * from "users" where "users"."id" = $1  -- [id]
   ```
-- DO use `sql.placeholder('x')` + `.prepare()` for reused prepared statements; pass values
+- DO use `sql.placeholder('x')` + `.prepare()` for reused prepared statements; bind values
   at `.execute({ x })`.
 - **DON'T** `sql.raw()` with user input — it interpolates unescaped, reopening SQL injection:
   ```ts

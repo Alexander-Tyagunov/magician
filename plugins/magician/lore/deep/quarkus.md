@@ -49,7 +49,7 @@ DON'T do reflection, classpath scanning, or config parsing at runtime if an exte
 - Put config in `src/main/resources/application.properties` (tests: `src/test/resources/...`). YAML needs the `quarkus-config-yaml` extension.
 - Inject scalars: `@org.eclipse.microprofile.config.inject.ConfigProperty(name="greeting.message", defaultValue="hi") String msg;` (`@Inject` optional). Use `Optional<T>` for truly optional values.
 - Prefer type-safe groups: `@io.smallrye.config.ConfigMapping(prefix="server")` on an **interface**; method `sslPort()` maps to `server.ssl-port` (kebab-case).
-- Source precedence (high→low): system props (400) > env vars (300) > `.env` (295) > `$PWD/config/application.properties` (260) > classpath `application.properties` (250).
+- Source precedence (high→low): system props (400) > env vars (300) > `.env` (295) > `config/application.properties` in the working directory (260) > classpath `application.properties` (250).
 - Env-var form: `foo.bar` ↔ `FOO_BAR` (non-alphanumeric → `_`, uppercased).
 - Profiles: prefix keys with `%dev.`, `%test.`, `%prod.` or use `application-{profile}.properties`. `dev` = `quarkus:dev`, `test` = tests, `prod` = default. Activate custom via `quarkus.profile`.
 

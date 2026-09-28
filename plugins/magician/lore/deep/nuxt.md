@@ -335,7 +335,7 @@ export default defineNuxtConfig({
 
 ### runtimeConfig & env
 
-Private keys = server-only; keys under `public` reach the client. Read with `useRuntimeConfig()` (pass `event` in server routes: `useRuntimeConfig(event)`).
+Private keys = server-only; keys under `public` reach the client. Read with `useRuntimeConfig()` (in server routes, hand it the `event`: `useRuntimeConfig(event)`).
 
 DO
 - Declare every runtime value in `nuxt.config` first — env vars only override **already-declared** keys (prevents leaks).
