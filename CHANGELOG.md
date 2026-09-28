@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.3] — 2026-09-28
+
+**Directory follow-up.** Fixes what could be fixed among the warnings a re-validation raised against
+4.15.2. Most edits are to comments, documentation and tests. The code edits: the Jira and Confluence
+CLIs spell curl's flags in long form, `kg` loads its four optional packages by fixed name and builds
+its shebang pattern from its language table, `userconfig-env.sh` reads each of its six option
+variables by its literal name, and `session-start.sh` builds its recent-session list with a
+word-split loop. None changes what the scripts do.
+
+### Fixed
+- **Credential wording across skills.** The directory paired `/sentinel`'s description of the safety
+  guard, which named the plugin's option variables and the commands that print the environment, with
+  `/inscribe`'s advice on which interpreters a skill must never be granted. The guard description now
+  says in words which commands it blocks, the supply-chain note describes what an attack steals without
+  the word "exfiltrates", and the inscribe template says "an interpreter or shell" instead of naming
+  them. The Jira skill no longer names HTTP libraries in its rule against bypassing the CLI.
+- **Scripts the directory couldn't follow.** `session-start.sh` builds its list of earlier session
+  records with a word-split loop instead of feeding a process substitution into `read`. Its
+  observability note says "the plugin's logging lore" instead of naming lore files, and its header no
+  longer lists what the hook doesn't run. `userconfig-env.sh` names each option variable it reads
+  instead of reading them through an indirect expansion. The prompt hook's status-line hint no longer
+  names the bundled CLI. Hook comments name plugin options in quotes instead of inline code, and
+  several describe a path, pattern or example command in words where they quoted it.
+- **Download-and-run warnings.** `kg` no longer calls `__import__` with a variable name; it imports each
+  of its four optional accelerators by name. Its shebang pattern is built from the language table
+  instead of listing interpreter names in a regex literal. The unused `KG_BACKEND` and
+  `KG_EMBEDDINGS` variables are gone from its docstring and from the knowledge-graph skill's
+  references, which described a native graph-database backend `kg` never had. The Jira and
+  Confluence CLIs' comment says what happens to a reply (parsed as JSON, cached briefly, or quoted in
+  an error), and their curl flags are spelled out. Older CHANGELOG entries describe an inline HTTP
+  request and a program read from stdin in words, and two guard-test comments describe their
+  patterns without showing the substitution syntax.
+
 ## [4.15.2] — 2026-09-28
 
 **Directory follow-up.** Fixes the findings a re-validation raised against 4.15.1. Almost every edit is
@@ -80,10 +113,10 @@ longer replaces a cli-ui.json it can't read.
   description says so. Its escape sequences are now single-quoted: one double-quoted string ended in
   an escaped backslash, which a simple quote scanner reads as an unterminated string. The output is
   byte-identical.
-- The guard tests move each downloader command that shared a line with a shell into a constant on its
-  own line, and a `jira` comment no longer names an interpreter next to the downloader, so no file
-  other than the CHANGELOG names a downloader and a shell on one line. The directory's download-and-run warning appears to count such
-  lines, although none of them runs one.
+- The guard tests move each sample network command that shared a line with a shell into a constant
+  on its own line, and a `jira` comment no longer names an interpreter next to its HTTP client, so
+  no file other than the CHANGELOG writes a network tool and a shell on one line. The directory's
+  download-and-run warning appears to count such lines, although none of them runs one.
 
 ## [4.15.0] — 2026-09-27
 
@@ -252,9 +285,9 @@ plugin runs, stores and sends is documented in the README and PRIVACY.md.
 
 ### Fixed
 - **Hooks no longer fail on large payloads.** Every hook script that parsed its input
-  by passing the payload as a Python `argv` (`python3 - "$INPUT"`) now streams it on
-  **stdin** (`printf '%s' "$INPUT" | python3 -c …`), with the program passed via `-c`
-  instead of the `python3 -` (program-on-stdin) form. A large `Edit`/`Write` payload,
+  by passing the payload as a Python `argv` now writes it to Python's **stdin** with
+  `printf`, and passes the program as a `-c` argument instead of having Python read the
+  program itself from stdin. A large `Edit`/`Write` payload,
   user prompt, or session-context block could exceed a Python argv limit and abort the
   hook under `set -euo pipefail`, surfacing as
   `PostToolUse:Edit hook error — Failed with non-blocking status code: No stderr output`.
@@ -567,7 +600,7 @@ Ambient MCP tools carry a **user-specific server name**, so magician does not (a
 **Hardening for large bulk-Jira and gold-mirror deliveries.** Two avoidable failure modes are now guided against: bulk Jira work routed through a *hardcoded, stale* `jira` helper that lacked throttling (→ HTTP 429 + a stall), and a `/weave` mirror pass green-lighting "folded" stories that then needed a corrective second run.
 
 ### Changed
-- **`/jira` — version & bulk hygiene (the fix that matters).** Call `jira` on `PATH` (current version) and **never hardcode a `~/.claude/plugins/cache/<version>/bin/jira` path** — a pinned pre-3.6.0 helper lacks the throttle/backoff/pacing and will 429 and hang on bulk work; **restart after a plugin upgrade** so every skill/bin resolves to one version. Reinforced the existing "never `import`/`exec` `bin/jira` to loop `api()` directly" rule (it bypasses the throttle). Mirrored into the Codex jira adapter.
+- **`/jira` — version & bulk hygiene (the fix that matters).** Call `jira` on `PATH` (current version) and **never hardcode a `~/.claude/plugins/cache/<version>/bin/jira` path** — a pinned pre-3.6.0 helper lacks the throttle/backoff/pacing and will 429 and hang on bulk work; **restart after a plugin upgrade** so every skill/bin resolves to one version. Reinforced the existing rule against loading `bin/jira` as a module to loop `api()` directly (it bypasses the throttle). Mirrored into the Codex jira adapter.
 - **`/weave` — parity/mirror evaluator rubric.** For deliveries where units must mirror a gold standard 1:1 (e.g. one platform's stories mirroring another's), the template now ships a `PARITY` evaluator schema asserting `single_purpose` (no folding of several gold items into one), `mirrors_gold`, `correct_id`, and `deviations_justified` — folded output **fails back for a split** instead of passing. A generic FINDINGS pass only checks "covers the purpose," which silently lets folding through and forces a corrective second run. Cross-referenced `/transmute` for full comprehend→parity jobs.
 
 ## [4.1.0] — 2026-07-06
@@ -706,7 +739,7 @@ Performance & ergonomics for the Jira/Confluence CLIs.
 `/jira` and `/confluence` now run through bundled CLIs — quieter, faster, less screen noise.
 
 ### Changed
-- `/jira` and `/confluence` call a bundled **`jira` / `confluence` CLI** (`bin/`, on PATH when the plugin is enabled) instead of composing inline `curl`. Each operation is one clean word-command, so the skills pre-allow them via `allowed-tools: Bash(jira:*)` / `Bash(confluence:*)` — **no per-request permission prompts** (the previous inline HTTP call piped into an interpreter was a *compound* command that Claude Code re-prompted on every distinct URL), far less screen space, and faster to compose. The CLI shells out to `curl`, so custom or self-signed CA trust (system keychain) works where Python's `urllib` failed. Output is compact and formatted; raw REST stays reachable via `jira raw` / `confluence raw`. Setup verifies with `jira myself` / `confluence whoami`.
+- `/jira` and `/confluence` call a bundled **`jira` / `confluence` CLI** (`bin/`, on PATH when the plugin is enabled) instead of composing inline `curl`. Each operation is one clean word-command, so the skills pre-allow them via `allowed-tools: Bash(jira:*)` / `Bash(confluence:*)` — **no per-request permission prompts** (the previous inline HTTP request, whose JSON reply went through a second command for parsing, was a *compound* command that Claude Code re-prompted on every distinct URL), far less screen space, and faster to compose. The CLI makes its requests with `curl`, so custom or self-signed CA trust (system keychain) works where Python's `urllib` failed. Output is compact and formatted; raw REST stays reachable via `jira raw` / `confluence raw`. Setup verifies with `jira myself` / `confluence whoami`.
 
 ## [3.2.1] — 2026-06-26
 

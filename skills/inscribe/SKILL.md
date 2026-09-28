@@ -30,8 +30,8 @@ description: <one sentence; name when/why to use this skill and the trigger cont
 # Optional: short slug name (defaults to the directory name)
 name: <name>
 # Recommended: scope tools to reduce permission prompts, e.g. Read, Edit(./src/**), Bash(git status)
-# Never grant bare Bash, Write, WebFetch or WebSearch, a whole CLI (Bash(git *)) or an
-# interpreter (python, node, sh -c); scope each command, e.g. Bash(npm test *).
+# Never grant bare Bash, Write, WebFetch or WebSearch, a whole CLI (Bash(git *)), or an
+# interpreter or shell; scope each command, e.g. Bash(npm test *).
 # allowed-tools: <comma-separated tools>
 # For side-effectful or standalone skills, prevent silent auto-invocation:
 # disable-model-invocation: true

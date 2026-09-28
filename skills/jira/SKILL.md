@@ -48,7 +48,7 @@ Resolve the user's board id from memory (e.g. "my board") and pass it to `jira s
 ## Resilience — let the CLI handle Jira
 
 The `jira` CLI is **throttle-aware and self-pacing**, which matters most for bulk work:
-- **Invoke the `jira` command, one call per item.** Hand-rolled `urllib`/`requests`/inline `python` HTTP, or importing `bin/jira` as a module to call `api()` in a loop, **bypasses the retry/cache/pacing below**, which is how bulk work trips 429s and stalls.
+- **Invoke the `jira` command, one call per item.** Hand-rolled HTTP calls from your own script, or importing `bin/jira` as a module to call `api()` in a loop, **bypasses the retry/cache/pacing below**, which is how bulk work trips 429s and stalls.
 - **Version/path hygiene — use `jira` on `PATH`, not a hardcoded path into the plugin cache.** `jira` on `PATH` resolves to the *current* plugin version; a pinned *older* copy can predate the throttle/backoff/pacing hardening (added in **3.6.0**) and will 429 and hang on bulk work. After a plugin upgrade, **start a new session** so `jira` (and every skill/bin) resolves to one, current version.
 - **On HTTP 429 (rate-limited):** the CLI already backs off and retries (`JIRA_RETRIES`). If it still returns 429, it tells you to STOP — **do not re-run the same call in a tight loop.** Wait, shrink the batch, and slow the pace with `JIRA_MIN_INTERVAL_MS=300 jira …` (or higher); a prefixed command isn't pre-approved, so it asks first.
 - **Repeated identical reads are free** — GETs are cached briefly (`JIRA_CACHE_TTL`, cleared on any write), so you don't need to avoid re-reading, but don't *spam* the same query expecting change.
@@ -65,7 +65,7 @@ Before any create / comment / update / transition / link / worklog (`jira create
 
 - **People — double-confirm identity (show email) before any write that names someone.** Names collide; never guess. @mentions use the account id / username, not email (see [reference.md](reference.md#comments--mentions)).
 - **Creating an issue**: draft a clear, testable issue (User Story → Context → **Gherkin AC** → measurable **DoD**; templates in [authoring.md](authoring.md)). If accurate AC needs research, invoke **`/magic`** first. Use **AskUserQuestion** to set metadata (epic, labels, priority, points) — offer remembered values.
-- **Bulk writes (epic + N stories, many dependency links)**: after confirmation, loop the **`jira create`** / **`jira link`** commands one item per call — the CLI paces and backs off so it won't trip rate limits. Do **not** import the module or write a urllib loop. After an interrupted write, **re-query before retrying** (it may have committed — avoid duplicates). If you hit a persistent 429, stop, wait, raise `JIRA_MIN_INTERVAL_MS`, and resume from where you left off. See [reference.md](reference.md#bulk-writes--playbook).
+- **Bulk writes (epic + N stories, many dependency links)**: after confirmation, loop the **`jira create`** / **`jira link`** commands one item per call — the CLI paces and backs off so it won't trip rate limits. Do **not** import the module or write your own HTTP loop. After an interrupted write, **re-query before retrying** (it may have committed — avoid duplicates). If you hit a persistent 429, stop, wait, raise `JIRA_MIN_INTERVAL_MS`, and resume from where you left off. See [reference.md](reference.md#bulk-writes--playbook).
 
 ## Security
 

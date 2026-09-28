@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash|PowerShell) — ABSOLUTE hard gate against catastrophic commands, plus a softer
-# permission-style stage folded in from the former sentinel-guard. Ported to plain bash 3.2 (macOS
-# /bin/bash, and GNU bash on Linux) so the plugin directory's script validator — which only follows
-# shell, not an interpreter hand-off — can read this hook end to end. No other interpreter, no
-# code pulled in from another file and no calls to another plugin file; a static contract test
-# covers this.
+# permission-style stage folded in from the former sentinel-guard. Ported to plain bash 3.2 (the macOS
+# system bash, and GNU bash on Linux), so the whole hook is shell in this one file; a static
+# contract test covers this.
 #
 # On a catastrophic command it writes ONE reason line to stderr and exits 2, which stops the tool
 # call BEFORE Claude Code evaluates permission rules — the block overrides allow-rules and fires in
@@ -75,7 +73,7 @@ SENT=$'\002'
 NL=$'\n'
 
 # Pathname expansion stays off for the whole script: every unquoted word split below is the
-# command's own text, and a glob in it (`/usr/*/*`) must never expand against the filesystem.
+# command's own text, and a glob in it, such as a * in a path, must never expand against the filesystem.
 set -f
 
 # repl_char TEXT CHAR [TO] -> sets REPL_OUT to TEXT with every CHAR replaced by TO (one character
@@ -202,7 +200,7 @@ resolve_head() {
   RH_REST=""
   set -f
   # A for loop, not set -- and shift: bash 3.2 copies the positional parameters on every function
-  # call, so a call per word of a long `nice nice nice ...` would be quadratic. The case tests
+  # call, so a call per word of a long chain of repeated nice wrappers would be quadratic. The case tests
   # skip the calls for the usual word; this runs several times for every statement.
   for w in $seg; do
     i=$((i + 1))
@@ -331,8 +329,8 @@ blank_single() { blank_quoted "'" "$1"; }
 blank_double() { blank_quoted '"' "$1"; }
 
 # split_on CHAR TEXT -> sets SPLIT_OUT to the fields of TEXT between each CHAR, the same fields
-# `IFS=CHAR read -r -a` returns. Word splitting keeps it in memory, whereas redirecting the text
-# into read makes bash 3.2 write a temporary file, and this runs once per statement. IFS is local
+# read -r -a returns with IFS set to CHAR. Word splitting keeps it in memory; giving the text to
+# read instead would make bash 3.2 write a temporary file, and this runs once per statement. IFS is local
 # and nothing is called while it is changed; pathname expansion is already off.
 split_on() {
   local IFS="$1"
@@ -436,8 +434,8 @@ join_quoted() {
 
 # line_texts TEXT -> sets LINES to the commands TEXT puts on separate lines. A line break inside
 # quotes is joined first, so only one the shell would act on splits. LINES stays empty when TEXT
-# is a single line, which the whole-text checks already cover. Text fed to a shell on its standard
-# input counts line by line too, because the shell runs it one line at a time.
+# is a single line, which the whole-text checks already cover. A multi-line script counts line by
+# line too, because a shell runs it one line at a time.
 line_texts() {
   LINES=()
   case "$1" in
@@ -476,7 +474,7 @@ whole_nq="$BLANK_OUT"
 # check_pipeline_text QUOTE-BLANKED-TEXT -> blocks on a network download / decoded payload piped
 # straight into an interpreter. Split on ; && || & into statements, then each statement on | into
 # pipeline stages; once a DOWNLOADERS or "base64 -d" stage has been seen, the very next stage may
-# not resolve to a RUNNERS word (except the harmless `python3 -m json.tool` pretty-printer).
+# not resolve to a RUNNERS word (except the harmless json.tool pretty-printer module of Python, run with -m).
 check_pipeline_text() {
   local t st pseg src
   # & and && end a statement. || stays: it splits into an empty pipeline stage, which resets the
@@ -584,10 +582,11 @@ check_pipeline_text "$whole_nq"
 check_substitution_text "$whole_dq"
 check_lines "$proc_ml"
 
-# ---- Bash only: unwrap `sh|bash|zsh|ksh|dash -c '...'`/"..." iteratively, up to 4 levels deep
-# (matching the reference implementation's bounded recursion), so a catastrophic command wrapped
-# in nested shell invocations is still caught by EVERY check above, not just the per-command rules
-# further down. Each unwrapped level gets its own quote-blanked pipeline/substitution check.
+# ---- Bash only: unwrap a single- or double-quoted -c payload given to sh, bash, zsh, ksh or dash,
+# iteratively, up to 4 levels deep (matching the reference implementation's bounded recursion), so
+# a catastrophic command wrapped in nested shell invocations is still caught by EVERY check above,
+# not just the per-command rules further down. Each unwrapped level gets its own quote-blanked
+# pipeline/substitution check.
 UNWRAPPED=()
 UNWRAPPED_NQ=()
 if [ "$TOOL" = Bash ]; then
@@ -678,7 +677,7 @@ fi
 # ---- everything below here is Bash-only, matching the reference implementation's scope ----
 
 # FSEGS: proc_cmd flat-split on ; && || & |, plus the same flat split applied to every level
-# UNWRAPPED already found above (so a per-command rule below also sees inside nested `... -c`
+# UNWRAPPED already found above (so a per-command rule below also sees inside nested shell -c
 # invocations, up to the same 4-level depth) and to every line check_lines collected.
 # All of them are joined with ; and split once: re-copying FSEGS for each of hundreds of lines
 # would cost time in proportion to lines times segments.
@@ -835,7 +834,8 @@ done
 
 # ---- device / critical-file overwrite via redirection (whole-string) ----
 # Scans proc_cmd, not the quote-blanked whole_nq: blanking would also erase a quoted target
-# argument (`> "/etc/passwd"`), which is exactly the token this rule needs to see.
+# argument (a double-quoted system file path after >), which is exactly the token this rule needs
+# to see.
 case "$proc_cmd" in
   *'>'*)
     # Each field after a split on '>' starts with that redirect's target; an empty field is the
@@ -948,7 +948,7 @@ check_forkbomb() {
   done
 }
 
-# The whole command, and each `sh -c` payload unwrapped above.
+# The whole command, and each shell -c payload unwrapped above.
 for _fb_text in "$whole_nq" "${UNWRAPPED_NQ[@]}"; do
   check_forkbomb "$_fb_text"
 done
@@ -956,8 +956,9 @@ done
 # ---- userConfig secrets: block a Bash command that reads or dumps them ----
 # Matched against proc_cmd (the raw, unescaped command, quotes included) rather than a
 # quote-blanked variant: whole_dq/whole_nq blank single- or double-quoted spans, which would hide
-# `printenv 'CLAUDE_PLUGIN_OPTION_...'` or a quoted CLAUDE_ENV_FILE reference. A quoted MENTION
-# (e.g. a commit message) is accepted as an over-block here, since this rule protects real secrets.
+# a quoted userConfig option name given to printenv, or a quoted CLAUDE_ENV_FILE reference. A
+# quoted MENTION (e.g. a commit message) is accepted as an over-block here, since this rule
+# protects real secrets.
 case "$proc_cmd" in
   *CLAUDE_PLUGIN_OPTION_*)
     block "a command references a magician userConfig secret variable" ;;
@@ -992,8 +993,8 @@ for seg in "${FSEGS[@]}"; do
   _lastwrap=""
   _skip=0
   set -f; set -- $seg
-  # Strip a layer of ( { } ) ; grouping punctuation around a word (so `(env)` / `{ env; }` don't
-  # hide the payload), VAR=value assignments, bare numeric args, and WRAPPERS words (sudo, command,
+  # Strip a layer of ( { } ) ; grouping punctuation around a word (so an env run inside
+  # parentheses or braces is still seen), VAR=value assignments, bare numeric args, and WRAPPERS words (sudo, command,
   # nohup, timeout N, time, builtin, env with an operand, ...; a value-taking flag is consumed via
   # flag_takes_value) to reach the real command, same as resolve_head does for the rm/dd/... loop
   # above — except a trailing env/printenv with NO further command is the dump itself, not a
@@ -1090,9 +1091,9 @@ CMD_LC="$LOWER_OUT"
 # Run on the quote-blanked, lowercased text (not raw proc_cmd): a curl/wget MENTION inside a
 # string (a commit message) is blanked away here, so it can't be misread as a real pipeline. The
 # stage immediately after the pipe must RESOLVE (via resolve_head) to an exact RUNNERS word, not
-# just contain "sh" as a substring — otherwise `curl ... | jq ... | shasum` would falsely match on
-# "shasum". Mirrors check_pipeline_text's adjacency (only the very next stage counts, same
-# `-m json.tool` pretty-printer carve-out) so the soft heuristic agrees with the hard gate above it.
+# just contain "sh" as a substring — otherwise a later stage such as shasum would falsely match
+# on "shasum". Mirrors check_pipeline_text's adjacency (only the very next stage counts, same
+# json.tool pretty-printer carve-out) so the soft heuristic agrees with the hard gate above it.
 lower "$whole_nq"
 NQ_LC="$LOWER_OUT"
 split_on '|' "$NQ_LC"

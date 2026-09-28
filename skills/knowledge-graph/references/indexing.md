@@ -39,4 +39,4 @@ Staleness is **content-hash** based, not mtime — a `touch` with no edit is not
 
 ## Monorepos
 
-Over ~50k files, `kg init` stops and asks for `--all` or `--max N` so you don't accidentally index a giant tree. For genuinely huge graphs, a native backend (`KG_BACKEND=cozo|kuzu|duckdb`) is the opt-in escape hatch; SQLite remains the default and is more than fast enough for typical repos.
+Over ~50k files, `kg init` stops and asks for `--all` or `--max N` so you don't accidentally index a giant tree. SQLite is the only backend and is more than fast enough for typical repos; for a very large graph, run `kg daemon` so queries skip the per-call graph load.

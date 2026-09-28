@@ -37,10 +37,10 @@ The graph + cache are a durable on-disk artifact. A spawned agent runs `kg query
 
 - **Tier 0 (default, zero-dep):** stdlib `sqlite3` + FTS5 BM25, regex parser, in-memory CSR traversal, content cache, fast hashing; optional `KG_JOBS` parallel parsing (opt-in; serial is faster for typical repos).
 - **Tier 1 (auto, optional wheels, silent fallback):** `tree-sitter` (parse) and `numpy` (PageRank) used iff importable; `ctags` binary used iff present. ~95% of native speed, no shipped binary.
-- **Tier 2 (opt-in):** `kg daemon` (resident process keeping the graph in RAM — skips the per-call graph load; ~1 ms socket round-trip, win grows with graph size); `KG_BACKEND=cozo|kuzu|duckdb` for million-node monorepos. Never required.
+- **Tier 2 (opt-in):** `kg daemon` (resident process keeping the graph in RAM — skips the per-call graph load; ~1 ms socket round-trip, win grows with graph size). Never required.
 
-Why not a Rust/C core or GPU by default? At repo scale this is small data that fits in RAM (a 2-hop traversal is sub-millisecond even at millions of edges) — the bottleneck is parsing, process startup, and repeated work, not the engine. GPU transfer overhead would make typical repos *slower*. So: SQLite + tree-sitter + the daemon + the cache, with native graph DBs as an opt-in escape hatch.
+Why not a Rust/C core or GPU by default? At repo scale this is small data that fits in RAM (a 2-hop traversal is sub-millisecond even at millions of edges) — the bottleneck is parsing, process startup, and repeated work, not the engine. GPU transfer overhead would make typical repos *slower*. So: SQLite + tree-sitter + the daemon + the cache; there is no native graph-database backend.
 
 ## Env knobs
 
-`MAGICIAN_HOME` (root) · `KG_PARSER` (`treesitter|ctags|regex|auto`) · `KG_JOBS` (parallel parse workers) · `KG_BACKEND` (`sqlite` default) · `KG_EMBEDDINGS` (off) · `KG_MAX_FILE` (skip files larger than N bytes).
+`MAGICIAN_HOME` (root) · `KG_PARSER` (`treesitter|ctags|regex|auto`) · `KG_JOBS` (parallel parse workers) · `KG_MAX_FILE` (skip files larger than N bytes).

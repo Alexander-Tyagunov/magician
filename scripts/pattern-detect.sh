@@ -5,8 +5,9 @@
 #     No hint when the prompt already contains a slash command. Jira / Confluence are mentioned only
 #     when the prompt itself names /jira or /confluence.
 #   * Status line markers (only while the Magician status line is enabled in cli-ui.json):
-#     status/<session>.json records the hinted skill name; status/<session>.effort.json records
-#     "ultracode" when the prompt switches that mode on, and is removed when it is switched off.
+#     one per-session file under status/ records the hinted skill name, and a second per-session
+#     effort file records "ultracode" when the prompt switches that mode on and is removed when it
+#     is switched off.
 # Nothing derived from the prompt is stored (no prompt text or excerpt), and the transcript is
 # never read. Plain bash; always exits 0.
 export LC_ALL=C
@@ -192,7 +193,7 @@ case $LEAD in /*) ;;                                           # the prompt is a
   elif [ "$SHORT" = 0 ] && transmute_hit; then
     SKILL=transmute;  MSG="Magician: the /magician:transmute command covers understanding an existing feature, then porting it to another app or integrating a change behind a parity check. It runs when the user types it."
   elif t_statusline; then
-    SKILL=statusline; MSG="Magician: the magician:statusline skill covers the Magician status line (enable, configure, disable) through the bundled magician-ui CLI."
+    SKILL=statusline; MSG="Magician: the magician:statusline skill covers the Magician status line (enable, configure, disable)."
   elif [ "$SHORT" = 0 ] && t_magic; then
     SKILL=magic;      MSG="Magician: the magician:magic skill covers research and analysis requests."
   fi ;;
