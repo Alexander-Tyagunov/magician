@@ -132,11 +132,13 @@ def api(method, path, body=None, timeout=None):
             return cached
     else:
         shutil.rmtree(CACHE_DIR, ignore_errors=True)  # a write invalidates cached reads
-    # Run curl so the system trust store is used (the standard library HTTP client may not see the
-    # same roots). The auth header goes on stdin (-H @-) so it never shows in the process list.
+    # curl makes the request so the system trust store is used (the standard library HTTP client
+    # may not see the same roots). The auth header goes on stdin (-H @-) so it never shows in the
+    # process list. The reply is only parsed as JSON (a GET reply is also cached briefly) or quoted
+    # in an error message.
     headers = "Authorization: " + _auth() + "\nAccept: application/json\n"
-    cmd = ["curl", "-sS", "--compressed", "--connect-timeout", "10", "--max-time", str(timeout),
-           "-X", method, "-H", "@-"]
+    cmd = ["curl", "--silent", "--show-error", "--compressed", "--connect-timeout", "10",
+           "--max-time", str(timeout), "-X", method, "-H", "@-"]
     if body is not None:
         headers += "Content-Type: application/json\n"
         cmd += ["--data-binary", json.dumps(body)]
