@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Notification(agent_completed|agent_needs_input) — OPT-IN desktop notification when a background
 # session finishes or starts waiting for input. Off unless the user enables the
-# `desktop_notifications` plugin option. Delivery is a terminal notification sequence that Claude
+# "desktop_notifications" plugin option. Delivery is a terminal notification sequence that Claude
 # Code writes: OSC 9 (iTerm2, WezTerm, Windows Terminal, ConEmu), OSC 99 (Kitty) or OSC 777 (Ghostty,
 # Warp and every other terminal). Terminals without a notification escape (macOS Terminal.app, the
 # VS Code and JetBrains terminals, Alacritty, plain tmux, many Linux terminals) ignore it and show no
-# notification; this hook doesn't start a desktop notifier program.
+# notification. The hook only hands that sequence to Claude Code in its JSON output.
 # The notification text is the event's message with control characters removed, capped at 160 bytes.
 # Nothing is stored.
 # Plain bash; always exits 0.

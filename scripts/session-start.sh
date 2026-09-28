@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SessionStart hook: stack detection, bundled lore and per-project notes, emitted as the documented
 # SessionStart JSON (hookSpecificOutput.additionalContext, plus a user-only systemMessage when there
-# is a notice). Plain bash 3.2 + standard utilities: no interpreters, no eval/source, and no other
-# plugin file is run. It writes only under the plugin data dir (and the status-bar markers when the
+# is a notice). Plain bash 3.2 and standard system utilities; all of its code is in
+# this one file. It writes only under the plugin data dir (and the status-bar markers when the
 # user enabled the status line); it never writes Claude Code settings or the session env file.
 # No `set -e`/`-u` (an unset variable must not kill the hook) and no pipefail (`grep -q` closing a
 # pipe early must not turn a match into a miss). Always exits 0.
@@ -127,7 +127,7 @@ if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
 fi
 
 # ── Deep framework detection from package.json (dependencies + devDependencies keys) ──
-# Dependency objects never nest, so `\{[^}]*\}` captures each one whole.
+# Dependency objects never nest, so the brace-to-brace match in the grep below captures each one whole.
 if [ -f "package.json" ]; then
   PJ_DEPS=$(head -c1048576 package.json | tr -d '\n\r' \
     | grep -oE '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[^}]*\}' \
@@ -212,7 +212,7 @@ if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ] || [ -
   _in "postgresql|mysql-connector|mysql:mysql|mariadb|com\.h2database|ojdbc|mssql-jdbc|starter-jdbc|hikaricp|r2dbc" && detect_append "jdbc"
 fi
 [ -e ".git" ]                                    && detect_append "git"   # a file in linked worktrees
-# shadcn/ui: copy-in components (not an npm dep) — detected by its components.json marker
+# shadcn/ui: copy-in components (not a package dependency) — detected by its components.json marker
 [ -f "components.json" ] && grep -qi "shadcn\|tailwind\|aliases" components.json 2>/dev/null && detect_append "radix"
 # node: already detected as javascript; inject node lore for server-side Node projects
 [ -f "package.json" ] && [ ! -f "tsconfig.json" ] && grep -qiE '"main"|"bin"' package.json 2>/dev/null && detect_append "node"
@@ -222,8 +222,9 @@ fi
 # ── Database ENGINE detection (cross-ecosystem) ───────────────────────────────
 # Keyed on the engine actually in use — drivers/clients in ANY manifest or docker-compose
 # service images — independent of language and ORM. Dotenv files are never read. When any engine is
-# found, the shared `databases` foundation is listed before the specific engine cores (when the lore
-# budget is short, the lore loader keeps the engine cores first). Each engine's deep-dive file (lore/deep/<engine>.md, incl. its #performance section) stays on-demand.
+# found, the shared databases foundation is listed before the specific engine cores (when the lore
+# budget is short, the lore loader keeps the engine cores first). Each engine's deep-dive file,
+# including its performance section, stays on-demand.
 DB_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile uv.lock poetry.lock setup.py setup.cfg go.mod go.sum pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle/libs.versions.toml build.sbt docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]')
 if [ -n "$DB_HAY" ]; then
   DBS=""
@@ -305,7 +306,7 @@ detect_append "security"
 # ── Lore enable/disable flag (default ENABLED) ───────────────────────────────
 # Bundled lore is a baseline BELOW the repo's own rules; a user can turn it off when it conflicts with
 # local/project knowledge or gives wrong judgment. Resolution (first match wins): env MAGICIAN_LORE=
-# 0/off/false → per-project `.magician/lore.off` → global cli-ui.json "lore":"disabled" → default ENABLED.
+# 0/off/false → a per-project .magician/lore.off file → global cli-ui.json "lore":"disabled" → default ENABLED.
 # When disabled, NO lore is injected (the rest of the SessionStart context is unaffected).
 LORE_ENABLED=1
 case "$(printf '%s' "${MAGICIAN_LORE:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -355,7 +356,10 @@ case "$(printf '%s' "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" | tr '[:uppe
   false|0|no|off) ;;
   *)
     if [ -n "$PWD_P" ] && [ -d "$PLUGIN_DATA/chronicle" ]; then
-      while IFS= read -r _f; do
+      _list=$(ls -t "$PLUGIN_DATA/chronicle" 2>/dev/null | head -30)
+      _ifs=$IFS; IFS=$'\n'; set -f   # one name per line; the list is split once, before the loop
+      for _f in $_list; do
+        IFS=$_ifs; set +f
         case "$_f" in *.json) ;; *) continue ;; esac
         if [ -n "$SS_SID" ]; then case "$_f" in *"-$SS_SID.json") continue ;; esac; fi
         _c=$(head -c8192 "$PLUGIN_DATA/chronicle/$_f" 2>/dev/null | tr -d '\n\r')
@@ -364,7 +368,8 @@ case "$(printf '%s' "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" | tr '[:uppe
         [ -n "$_s" ] && CHRONICLE_NOTE="
 Previous magician session in this directory: ${_s}"
         break
-      done < <(ls -t "$PLUGIN_DATA/chronicle" 2>/dev/null | head -30)
+      done
+      IFS=$_ifs; set +f
     fi ;;
 esac
 
@@ -416,14 +421,14 @@ This repository ($_n tracked files) has no magician knowledge-graph index; /magi
   fi
 fi
 
-# ── Observability note (passive; platform-aware logging lives in lore/logging.md) ──
+# ── Observability note (passive; platform-aware logging guidance is in the logging lore) ──
 OBS_NOTE=""
 if [ -n "$OBS_PLATFORM" ]; then
   OBS_NOTE="
-Log platform for this project: ${OBS_PLATFORM} (${OBS_SRC}); its query syntax is in lore/${OBS_PLATFORM}.md and logging conventions are in lore/logging.md.${OBS_FILE:+ Record: ${OBS_FILE}.}"
+Log platform for this project: ${OBS_PLATFORM} (${OBS_SRC}); its query syntax is in the plugin's ${OBS_PLATFORM} lore and logging conventions are in the plugin's logging lore.${OBS_FILE:+ Record: ${OBS_FILE}.}"
 elif [ "$OBS_APP" = 1 ] && [ -n "$OBS_FILE" ]; then
   OBS_NOTE="
-No log platform is recorded for this project. Later sessions read a JSON record at ${OBS_FILE} ({\"platform\":\"<name>\",\"envs\":[…],\"note\":\"…\"}; known platforms: dynatrace, grafana, splunk, gcp-logging, cloudwatch, azure-monitor); logging conventions are in lore/logging.md."
+No log platform is recorded for this project. Later sessions read a JSON record at ${OBS_FILE} ({\"platform\":\"<name>\",\"envs\":[…],\"note\":\"…\"}; known platforms: dynatrace, grafana, splunk, gcp-logging, cloudwatch, azure-monitor); logging conventions are in the plugin's logging lore."
 fi
 
 # ── Post-compaction / resume: conventions the compaction may have dropped ──
@@ -453,7 +458,7 @@ fi
 
 # ── Lore loader (runs last so its budget is whatever the other notes leave) ──
 # Always-injected cap in bytes (LC_ALL=C). Raised 3000 → 6000 → 8000 → 8100 as the lore corpus grew
-# (language, database and observability layers; +100 in v4.15.0 for the `lore/deep/<t>.md#{…}` pointers).
+# (language, database and observability layers; +100 in v4.15.0 for the deep-dive section pointers).
 # It is clamped to the room the other notes leave under BUDGET. That room is usually smaller, so cores
 # are tried in the selection order below; about 2k tokens once per session. Deep-dive files
 # stay on-demand. The plugin root is written once, in HEAD; every lore path after it is relative to it.

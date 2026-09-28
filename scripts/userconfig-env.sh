@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SessionStart hook: bridge magician's userConfig values into the Bash tool environment.
 #
-# Claude Code exports each userConfig option to hook processes as CLAUDE_PLUGIN_OPTION_<KEY>, but
-# not to commands Claude runs through the Bash tool, which is where the bundled Jira and
+# Claude Code exports each userConfig option to hook processes, named CLAUDE_PLUGIN_OPTION_ and the
+# upper-cased key, but not to commands Claude runs through the Bash tool, where the bundled Jira and
 # Confluence command-line helpers run. This hook appends one export line per NON-EMPTY Jira or
 # Confluence option to $CLAUDE_ENV_FILE, which Claude Code loads before each Bash command in this
 # session. It also exports MAGICIAN_DATA (this plugin's data dir, from CLAUDE_PLUGIN_DATA) so the
@@ -59,16 +59,13 @@ magician_bridge_userconfig() (
     emit "export $name=$sq$esc$sq"
   }
 
-  for name in \
-    CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL \
-    CLAUDE_PLUGIN_OPTION_JIRA_EMAIL \
-    CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN \
-    CLAUDE_PLUGIN_OPTION_CONFLUENCE_BASE_URL \
-    CLAUDE_PLUGIN_OPTION_CONFLUENCE_EMAIL \
-    CLAUDE_PLUGIN_OPTION_CONFLUENCE_API_TOKEN
-  do
-    emit_quoted "$name" "${!name:-}" "re-enter it with /plugin configure magician"
-  done
+  again="re-enter it with /plugin configure magician"
+  emit_quoted CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL "${CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL:-}" "$again"
+  emit_quoted CLAUDE_PLUGIN_OPTION_JIRA_EMAIL "${CLAUDE_PLUGIN_OPTION_JIRA_EMAIL:-}" "$again"
+  emit_quoted CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN "${CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN:-}" "$again"
+  emit_quoted CLAUDE_PLUGIN_OPTION_CONFLUENCE_BASE_URL "${CLAUDE_PLUGIN_OPTION_CONFLUENCE_BASE_URL:-}" "$again"
+  emit_quoted CLAUDE_PLUGIN_OPTION_CONFLUENCE_EMAIL "${CLAUDE_PLUGIN_OPTION_CONFLUENCE_EMAIL:-}" "$again"
+  emit_quoted CLAUDE_PLUGIN_OPTION_CONFLUENCE_API_TOKEN "${CLAUDE_PLUGIN_OPTION_CONFLUENCE_API_TOKEN:-}" "$again"
   emit_quoted MAGICIAN_DATA "${CLAUDE_PLUGIN_DATA:-}" "the CLIs fall back to their default data dir"
   emit "export MAGICIAN_USERCONFIG_BRIDGE=1"
   exit 0

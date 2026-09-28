@@ -3,7 +3,7 @@
 # branch, commit count, changed-file names and a one-line summary, all taken from git. No prompt,
 # response or transcript content is read. The newest 50 session records are kept.
 # Commit subjects that record a decision ("decided", "switched to", ...) are also appended to the
-# per-project learnings file. Off when the user sets the `session_history` plugin option to false.
+# per-project learnings file. Off when the user sets the "session_history" plugin option to false.
 # Plain bash; always exits 0.
 export LC_ALL=C
 case "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" in false|0|no|off) exit 0 ;; esac
@@ -83,7 +83,8 @@ if [ -e "$1" ] && [ "$#" -gt "$KEEP" ]; then
   while [ "$n" -gt 0 ]; do rm -f -- "$1"; shift; n=$((n - 1)); done
 fi
 
-# Decision-style commit subjects -> per-project learnings (project key: first 12 hex of md5(pwd -P)).
+# Decision-style commit subjects -> per-project learnings. The project key is the first 12 hex
+# digits of the md5 of the physical working directory.
 [ -n "$LOG" ] || exit 0
 if command -v md5sum >/dev/null 2>&1; then H=$(printf '%s' "$WD" | md5sum | cut -c1-12)
 elif command -v md5 >/dev/null 2>&1; then H=$(printf '%s' "$WD" | md5 -q | cut -c1-12)

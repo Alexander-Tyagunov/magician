@@ -9,12 +9,12 @@ so agents read the right lines instead of grepping and reading whole files.
 Tiered performance — lightweight by default, faster on opt-in:
   Tier 0  stdlib only: sqlite3 + FTS5, regex parser, in-memory CSR, content cache.
   Tier 1  auto-used iff importable: tree-sitter (parse), numpy (pagerank). Silent fallback.
-  Tier 2  opt-in: `kg daemon` (resident in-RAM server, ~1ms queries); KG_BACKEND=… pluggable.
+  Tier 2  opt-in: `kg daemon` (resident in-RAM server, ~1ms queries).
 
 One clean command per call so a single `Bash(kg:*)` allow rule covers everything.
 
 Env: MAGICIAN_HOME, KG_PARSER (treesitter|ctags|regex|auto), KG_JOBS (parallel index),
-     KG_BACKEND (sqlite|…), KG_EMBEDDINGS (off), KG_MAX_FILE (bytes).
+     KG_MAX_FILE (bytes).
 """
 import os, sys, json, re, time, hashlib, sqlite3, subprocess, shutil, socket
 
@@ -43,8 +43,19 @@ def die(msg, code=1):
 
 # ─────────────────────────── optional accelerators ─────────────────────────
 def _try(modname):
+    # Only these four optional packages are ever loaded, each by its fixed name.
     try:
-        return __import__(modname)
+        if modname == "blake3":
+            import blake3 as mod
+        elif modname == "numpy":
+            import numpy as mod
+        elif modname == "tree_sitter_language_pack":
+            import tree_sitter_language_pack as mod
+        elif modname == "tree_sitter_languages":
+            import tree_sitter_languages as mod
+        else:
+            return None
+        return mod
     except Exception:
         return None
 
@@ -191,9 +202,9 @@ def _ignored(rel):
     return any(p in IGNORE_DIRS for p in parts)
 
 
-_SHEBANG = re.compile(r"^#!.*\b(python|bash|node|ruby|perl|sh)\d*\b")
 _SHEBANG_LANG = {"python": "python", "bash": "shell", "sh": "shell",
                  "node": "javascript", "ruby": "ruby", "perl": "perl"}
+_SHEBANG = re.compile(r"^#!.*\b(" + "|".join(_SHEBANG_LANG) + r")\d*\b")
 
 
 def lang_of(rel):
@@ -861,6 +872,8 @@ def daemon_serve(idle=900):
             state["ix"], state["iv"] = Index(), iv
         return state["ix"]
 
+    # A request picks one of these read-only lookups by name, or asks the daemon to stop (below);
+    # its other fields are only passed to the lookup as arguments.
     funcs = {"query": lambda a: query(a.get("q", ""), a.get("k", 12), ix=ix_now()),
              "neighbors": lambda a: neighbors(a.get("target"), a.get("depth", 1), ix=ix_now()),
              "blast": lambda a: blast(a.get("target"), a.get("depth", 2), ix=ix_now()),

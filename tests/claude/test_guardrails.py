@@ -77,8 +77,8 @@ def _download_and_run_pattern() -> re.Pattern[str]:
     feed = r"(?:<<<\s*|<\s*)?"  # the substitution may also arrive as a redirect or a here-string
     forms = (
         rf"{dl}[^\n]*?{pipe}\s*{run}",  # downloader, then later a pipe into a runner
-        rf"{shell}(?:\s+-\S+)*\s+{feed}[\"']?[<$]\(\s*{dl}",  # runner on <(download) or $(download)
-        rf"{edge}(?:{words(PS_RUN_WORDS)}){end}\s*[\"']?\$?\(\s*{dl}",  # iex (download)
+        rf"{shell}(?:\s+-\S+)*\s+{feed}[\"']?[<$]\(\s*{dl}",  # runner fed a substituted download
+        rf"{edge}(?:{words(PS_RUN_WORDS)}){end}\s*[\"']?\$?\(\s*{dl}",  # iex on a bracketed download
     )
     return re.compile("|".join(f"(?:{f})" for f in forms), re.I)
 
@@ -298,7 +298,7 @@ class GuardrailsTests(unittest.TestCase):
             "{d} -s {u} {p} /usr/bin/env {r}",
             "{d} -s {u} {p} sudo env MODE=1 /bin/{r} -",
             "/usr/bin/{d} -s {u} -o- {p} tee install.log {p} {r}",
-            "Run `{d} {u} {p} {r}` to install.",
+            "A doc may show `{d} {u} {p} {r}` inline.",
             "{r} <({d} -s {u})",
             "{r} -s < <({d} -s {u})",
             '{r} <<< "$({d} -s {u})"',
