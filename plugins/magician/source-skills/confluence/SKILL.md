@@ -1,6 +1,6 @@
 ---
 name: confluence
-description: Work with Confluence over its REST API — "check/read/open confluence", "search confluence", "summarize this confluence page", "find the <X> doc/page", "the <name> page/space", "create/update a confluence page", "comment on a page", "add a label". Any read/search/create/update on Confluence pages, including references to a remembered space, page, or doc. Uses the bundled `confluence` CLI (Confluence REST over HTTPS).
+description: Work with Confluence over its REST API — "check/read/open confluence", "search confluence", "summarize this confluence page", "find the X doc/page", "the X page/space", "create/update a confluence page", "comment on a page", "add a label". Any read/search/create/update on Confluence pages, including references to a remembered space, page, or doc. Uses the bundled `confluence` CLI (Confluence REST over HTTPS).
 allowed-tools: Read, AskUserQuestion, Bash(confluence whoami), Bash(confluence get *), Bash(confluence search *), Bash(confluence cql *), Bash(confluence children *), Bash(confluence comments *), Bash(confluence raw GET *), Edit(~/.claude/plugins/data/magician-*/confluence-memory.md)
 argument-hint: "[page URL/id · 'search …' · space · 'create …' · setup]"
 ---
@@ -9,7 +9,7 @@ argument-hint: "[page URL/id · 'search …' · space · 'create …' · setup]"
 
 Work with Confluence through the plugin's **`confluence` helper** (on PATH when magician is enabled). It calls the Confluence REST API over HTTPS using the connection settings from magician's plugin configuration, one short command per call, and handles auth, retries, pacing, and caching for you, so there's no need to build HTTP requests by hand. This skill pre-approves the read commands (`whoami`, `get`, `search`/`cql`, `children`, `comments`, `raw GET`); writes (`raw POST|PUT`) ask for approval.
 
-This skill uses the bundled `confluence` CLI. If the user prefers another installed Confluence integration, use that. The `confluence` CLI is on PATH for workflow subagents too.
+This skill uses the bundled `confluence` CLI. If the user prefers another installed Confluence integration, use that. Workflow subagents have `confluence` on PATH whenever you do.
 
 - **CQL patterns, page-id rules, raw REST shapes** → [reference.md](reference.md)
 - **Content formats (storage / wiki), macros** → [authoring.md](authoring.md)

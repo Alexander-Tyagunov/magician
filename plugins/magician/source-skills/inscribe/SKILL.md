@@ -1,6 +1,6 @@
 ---
 name: inscribe
-description: Creates a new reusable project skill from a workflow worth capturing, written to .claude/skills/<name>/SKILL.md in the current repo. Use to scaffold a new SKILL.md.
+description: Creates a new reusable project skill from a workflow worth capturing, written to .claude/skills/NAME/SKILL.md in the current repo. Use to scaffold a new SKILL.md.
 allowed-tools: Read, Glob, AskUserQuestion, Edit(./.claude/skills/**), Bash(git commit -m *)
 disable-model-invocation: true
 argument-hint: "[skill-name or pattern description]"

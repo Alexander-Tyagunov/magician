@@ -384,7 +384,43 @@ class CodexPackagingTests(unittest.TestCase):
         for name in ("magician-ui", "magician-statusline"):
             with self.subTest(name=name):
                 self.assertFalse((plugin_root / "bin" / name).exists())
-        self.assertTrue((main_source() / "bin" / "kg").is_file())
+        self.assertTrue((main_source() / "tools" / "kg").is_file())
+
+    def test_claude_only_fallback_lines_are_stripped(self) -> None:
+        plugin_root = _marketplace_plugin_root()
+        main_skills = main_source() / "skills"
+        self.assertTrue(any("> **Bundled command:**" in p.read_text(encoding="utf-8")
+                            for p in main_skills.glob("*/SKILL.md")))
+        for skill in sorted((plugin_root / "source-skills").glob("*/SKILL.md")):
+            with self.subTest(skill=skill.parent.name):
+                text = skill.read_text(encoding="utf-8")
+                self.assertNotIn("**Bundled command:**", text)
+                self.assertNotIn("CLAUDE_PLUGIN_ROOT", text)
+                self.assertNotIn("\n\n\n", text)
+
+    def test_fallback_strip_fails_on_any_leftover(self) -> None:
+        builder = _load_builder()
+        line = "> **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg`."
+        cases = {
+            "stripped at end of file": ("intro\n\n" + line + "\n", None),
+            "line runs on into text": ("intro\n" + line + "\nmore\n", "left after stripping"),
+            "path in a reference": ("intro\n\n" + line + "\n\nbody\n", "left after stripping"),
+            "no fallback line at all": ("intro\n", "no bundled-command fallback"),
+        }
+        for label, (text, error) in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                skill = Path(tmp) / "kg-skill"
+                skill.mkdir()
+                (skill / "SKILL.md").write_text(text)
+                if label == "path in a reference":
+                    (skill / "references").mkdir()
+                    (skill / "references" / "more.md").write_text("see `${CLAUDE_PLUGIN_ROOT}/tools/kg`\n")
+                if error is None:
+                    builder._strip_claude_fallbacks(Path(tmp))
+                    self.assertEqual((skill / "SKILL.md").read_text(), "intro\n\n")
+                else:
+                    with self.assertRaisesRegex(RuntimeError, error):
+                        builder._strip_claude_fallbacks(Path(tmp))
 
     def test_jira_and_confluence_adapters_override_plugin_option_setup(self) -> None:
         plugin_root = _marketplace_plugin_root()

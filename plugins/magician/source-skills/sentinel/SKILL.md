@@ -34,7 +34,7 @@ Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook, `s
 magician-scan .
 ```
 
-`magician-scan` is plugin-provided (on PATH when the plugin is enabled) and makes no network calls. If the command is not found, note that in the report, skip this step, and continue with the remaining checks.
+`magician-scan` is plugin-provided (on PATH when the plugin is enabled) and makes no network calls. If `magician-scan` can't be run, note that in the report, skip this step, and continue with the remaining checks.
 
 Reports: hardcoded credentials, private keys, eval() calls, SQL injection via % formatting, innerHTML XSS, dangerouslySetInnerHTML, os.system calls, shell=True subprocess.
 

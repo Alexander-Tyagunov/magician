@@ -4,9 +4,9 @@ description: >-
   Comprehend an existing feature, then PORT it to another app (optionally upgrading it) or
   INTEGRATE/transform it in place — including swapping the vendor behind the scenes while
   preserving the exact user experience. Use when the user says "port / re-implement / recreate /
-  clone / replicate this feature or flow into <app>", "copy this feature from <url/app> into ours",
-  "swap / replace / migrate the vendor / 3rd-party / provider behind <feature> but keep the UX",
-  "change how <feature> talks to <vendor>", "figure out how this feature works then rebuild it",
+  clone / replicate this feature or flow into another app", "copy this feature from that URL or
+  app into ours", "swap / replace / migrate the vendor / 3rd-party / provider behind this feature
+  but keep the UX", "change how this feature talks to its vendor", "figure out how this feature works then rebuild it",
   or "go to this page, walk the flow, and recommend improvements".
 allowed-tools: Read, Grep, Glob, Task, Workflow, AskUserQuestion, Edit(./.workspace/shared/research/**), Edit(./.workspace/local/session-state.md), Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), mcp__context7__resolve-library-id, mcp__context7__query-docs
 argument-hint: "<feature/URL to comprehend> · [port | integrate | audit] · [target app/path]"

@@ -31,7 +31,7 @@ SETUP_HINT = ("export CONFLUENCE_BASE_URL and CONFLUENCE_API_TOKEN (plus CONFLUE
 BASE_URL_HINT = "the Confluence base URL (CONFLUENCE_BASE_URL)"
 # ---- magician:connection-config end ----
 
-# Resilience knobs (env-overridable) — mirrors bin/jira: throttle-aware retries, brief
+# Resilience knobs (env-overridable) — mirrors tools/jira: throttle-aware retries, brief
 # GET cache, bulk-loop pacing, connect-timeout.
 TIMEOUT = int(os.environ.get("CONFLUENCE_TIMEOUT", "45"))
 RETRIES = int(os.environ.get("CONFLUENCE_RETRIES", "3"))

@@ -14,7 +14,7 @@ Prints rows ready for a **ranged `Read`**:
 
 ```
 skills/jira/SKILL.md:23-40  section Commands  (0.91)
-bin/jira:27                 function api      (0.74)
+tools/jira:27               function api      (0.74)
 ```
 
 Use it instead of a broad grep when you need "where is the code for X" or "what's related to X". Then `Read` the exact ranges.
@@ -28,8 +28,8 @@ Direct graph neighbors — callers/callees/imports — ranked by centrality. Goo
 Reverse-dependency BFS: everything that transitively depends on the target, with depth and pagerank. This is the **change blast-radius** — the set a reviewer must consider when the target changes.
 
 ```
-blast radius of bin/jira (2 impacted):
-  d1  bin/confluence  (pr=0.075)
+blast radius of tools/jira (2 impacted):
+  d1  tools/confluence  (pr=0.075)
   d1  scripts/session-start.sh  (pr=0.009)
 ```
 

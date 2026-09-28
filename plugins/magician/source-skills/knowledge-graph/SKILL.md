@@ -1,6 +1,6 @@
 ---
 name: knowledge-graph
-description: Local code knowledge-graph + cache for fast, cheap, targeted retrieval — "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of <file>", "what depends on <file/symbol>", "find the code for <thing>". A per-repo SQLite graph of symbols + relationships at ~/.claude/magician/knowledge-graph; query it for ranked file:line instead of grepping and reading whole files. No MCP, no network, stdlib by default.
+description: Local code knowledge-graph + cache for fast, cheap, targeted retrieval — "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of this file", "what depends on this file or symbol", "find the code for X". A per-repo SQLite graph of symbols + relationships at ~/.claude/magician/knowledge-graph; query it for ranked file:line instead of grepping and reading whole files. No MCP, no network, stdlib by default.
 allowed-tools: Read, AskUserQuestion, mcp__visualize__show_widget, Bash(kg check), Bash(kg status *), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Bash(kg stale), Bash(kg refresh), Bash(kg cache stats)
 argument-hint: "[status · init · refresh · reset · query \"<text>\" · blast <file>]"
 ---

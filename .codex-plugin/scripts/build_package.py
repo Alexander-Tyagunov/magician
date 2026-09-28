@@ -31,13 +31,17 @@ import tempfile
 
 CODEX_ROOT = Path(__file__).resolve().parents[2]
 TARGET = CODEX_ROOT / "plugins" / "magician"
-MAIN_INPUTS = ("skills", "lore", "bin", "LICENSE", ".claude-plugin/plugin.json")
+MAIN_INPUTS = ("skills", "lore", "tools", "LICENSE", ".claude-plugin/plugin.json")
 IGNORED_NAMES = {".DS_Store", "__pycache__"}
-# Every file in main's bin/ must be classified: shipped to Codex (reviewed for Codex behavior) or
-# excluded. A new, unclassified CLI fails the build instead of shipping unreviewed.
+# Every file in main's tools/ must be classified: shipped to Codex (reviewed for Codex behavior) or
+# excluded. A new, unclassified CLI fails the build instead of shipping unreviewed. The package keeps
+# them in bin/, where the Codex adapters look for them.
 SHIPPED_BINS = {"jira", "confluence", "kg", "ctx", "magician-scan"}
 # Claude-only helpers: they edit ~/.claude/settings.json and the Claude status line. Never shipped.
 EXCLUDED_BINS = {"magician-ui", "magician-statusline"}
+# Main's skills tell Claude where a bundled command lives when it isn't on PATH, in one line each with
+# this prefix. Codex resolves the commands through its adapters instead, so the build drops them.
+CLAUDE_FALLBACK_LINE = re.compile(r"^> \*\*Bundled command:\*\* [^\n]*\n(?:\n|\Z)", re.MULTILINE)
 # Tracked paths that exist only on a pre-4.15 main (the Codex material used to live there).
 PRE_415_CODEX_PATHS = (".codex-plugin", "tests/codex", "plugins/magician")
 
@@ -369,17 +373,32 @@ def _overlay_codex_lore(lore_root: Path) -> None:
             shutil.copy2(source, destination)
 
 
+def _strip_claude_fallbacks(skills_root: Path) -> None:
+    """Drop the Claude-only fallback lines from the copied skills; at least one is mandatory."""
+    stripped = 0
+    for skill_file in sorted(skills_root.glob("*/SKILL.md")):
+        text, count = CLAUDE_FALLBACK_LINE.subn("", skill_file.read_text())
+        stripped += count
+        skill_file.write_text(text)
+    for doc in sorted(skills_root.rglob("*.md")):
+        text = doc.read_text()
+        if "**Bundled command:**" in text or "CLAUDE_PLUGIN_ROOT}/tools/" in text:
+            raise RuntimeError(f"{doc}: a Claude-only bundled-command fallback is left after stripping")
+    if not stripped:
+        raise RuntimeError("main skills have no bundled-command fallback lines; did main drift?")
+
+
 def _check_bin_classification(bin_root: Path) -> None:
     names = {path.name for path in bin_root.iterdir() if path.name not in IGNORED_NAMES}
     unknown = sorted(names - SHIPPED_BINS - EXCLUDED_BINS)
     if unknown:
         raise RuntimeError(
-            f"main bin/ has unclassified files {unknown}: add each to SHIPPED_BINS (after a Codex review) "
+            f"main tools/ has unclassified files {unknown}: add each to SHIPPED_BINS (after a Codex review) "
             "or EXCLUDED_BINS in build_package.py"
         )
     missing = sorted(SHIPPED_BINS - names)
     if missing:
-        raise RuntimeError(f"main bin/ is missing shipped Codex CLIs {missing}")
+        raise RuntimeError(f"main tools/ is missing shipped Codex CLIs {missing}")
 
 
 def build(destination: Path, source: Path) -> None:
@@ -389,11 +408,12 @@ def build(destination: Path, source: Path) -> None:
     _rewrite_adapter_links(destination / "skills")
     _copy_tree(CODEX_ROOT / ".codex-plugin" / "references", destination / "references")
     _copy_tree(source / "skills", destination / "source-skills")
+    _strip_claude_fallbacks(destination / "source-skills")
     _copy_tree(source / "lore", destination / "lore")
     _overlay_codex_lore(destination / "lore")
     _rewrite_lore_links(destination / "lore")
-    _check_bin_classification(source / "bin")
-    _copy_tree(source / "bin", destination / "bin", exclude=EXCLUDED_BINS)
+    _check_bin_classification(source / "tools")
+    _copy_tree(source / "tools", destination / "bin", exclude=EXCLUDED_BINS)
     for name in STATE_REWRITES:
         _rewrite_state_defaults(destination / "bin" / name)
     for name in CREDENTIAL_CLIS:

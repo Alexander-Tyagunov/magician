@@ -46,13 +46,20 @@ See [INSTALL.md](INSTALL.md) for hook trust, credentials and environment-policy 
 ## Main → Codex contract
 
 The build (`build_package.py --source <main> [--ref <ref>]`) consumes only `skills/`, `lore/`,
-`bin/`, `LICENSE` and `.claude-plugin/plugin.json` from main. Every rewrite anchor below is
+`tools/`, `LICENSE` and `.claude-plugin/plugin.json` from main. Main keeps its CLIs in `tools/`
+(a top-level `bin/` blocks Claude chat and Cowork installs); the package ships them in `bin/`, where
+the Codex adapters look for them, so the `bin/…` paths below name package files built from main's
+`tools/…`. Every rewrite anchor below is
 mandatory: if main drifts, the build fails loudly instead of shipping Claude-only behavior.
 
 - **Version**: `.claude-plugin/plugin.json` `version` (X.Y.Z) is injected into the Codex manifest.
 - **Bins**: an allowlist. `jira`, `confluence`, `kg`, `ctx` and `magician-scan` ship; `magician-ui` and
-  `magician-statusline` (Claude settings/status line) are excluded. Any other file in main's `bin/`
+  `magician-statusline` (Claude settings/status line) are excluded. Any other file in main's `tools/`
   fails the build until it is classified in `build_package.py`.
+- **Bundled-command fallbacks**: main's skills carry Claude-only lines that start
+  `> **Bundled command:**` and name `${CLAUDE_PLUGIN_ROOT}/tools/<cli>`. The build removes each one
+  (with the blank line after it), fails if main has none, and fails if any such line or tools path
+  is left anywhere in the copied skills.
 - **Credentials** (`bin/jira`, `bin/confluence`): exactly one block between
   `# ---- magician:connection-config begin` and `# ---- magician:connection-config end ----`.
   Inside it, every setting is read only as `os.environ.get("CLAUDE_PLUGIN_OPTION_<KEY>")`, and the
