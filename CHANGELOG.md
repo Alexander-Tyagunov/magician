@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.16.1] — 2026-09-28
+
+**`magician-scan` arguments.** `magician-scan --help` scanned a path named `--help` and reported it
+clean, and so did any path that doesn't exist. Both now say what went wrong instead.
+
+### Fixed
+- **`-h` and `--help`** print a short usage text (what the scan covers and skips, the argument, the
+  options and the exit codes) and exit 0 without scanning.
+- **A path that doesn't exist** fails with `magician-scan: no such file or directory: <path>` on
+  stderr and exit 2, instead of "No security issues found." An argument that starts with `-` and isn't
+  an existing path fails the same way as an unknown option. Exit 2 is new and marks bad input, so CI
+  can tell it apart from 1 (issues found). An existing folder whose name starts with `-` is still
+  scanned, and with no argument the current directory is scanned as before.
+
 ## [4.16.0] — 2026-09-28
 
 **Claude chat and Cowork.** The bundled commands move from `bin/` to `tools/`, because a plugin with a
