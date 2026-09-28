@@ -85,6 +85,30 @@ def _download_and_run_pattern() -> re.Pattern[str]:
 
 DOWNLOAD_AND_RUN = _download_and_run_pattern()
 
+# The plugin directory blocks a package launcher followed by a package with no exact version in the
+# files it reads as code (Markdown prose isn't checked). No word below is followed by a package name.
+LAUNCHER_WORDS = ("npx", "bunx", "uvx", "pnpx", "pnpm dlx", "yarn dlx", "pipx run", "npm exec")
+UV_RUN_WORD = "uv run"
+
+
+def _unpinned_launcher_pattern() -> re.Pattern[str]:
+    words = "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in LAUNCHER_WORDS)
+    pkg = r"(?:@[\w.-]+/)?[A-Za-z0-9][\w.-]*"  # name or @scope/name
+    exact = r"\d+\.\d+\.\d+(?:-[\w.]+)?(?![\w.+/-]|\|\|)"  # 1.2.3 or 1.2.3-beta.1, not a range
+    loose = rf"(?:@(?!{exact})\S*)?"  # no version, or one that isn't exact (latest, ^1.2.0, 1)
+    # The name must end where it can't continue, so backtracking can't cut it short to dodge a pin.
+    return re.compile(rf"(?<![\w.-])(?:{words})(?:\s+--?[\w-]+)*\s+(?:--package=)?{pkg}{loose}(?![\w./@-])")
+
+
+UNPINNED_LAUNCHER = _unpinned_launcher_pattern()
+# `uv run` starts a tool too; the directory accepts it with --locked or --frozen instead of a version.
+UV_RUN = re.compile(r"(?<![\w.-])uv\s+run\s+[\w@.-]")
+UV_LOCKED = re.compile(r"(?<!\S)--(?:locked|frozen)(?!\S)")
+
+
+def holds_unpinned_launcher(line: str) -> bool:
+    return bool(UNPINNED_LAUNCHER.search(line) or (UV_RUN.search(line) and not UV_LOCKED.search(line)))
+
 
 def tracked_files(use_git: bool = True) -> list[Path]:
     """Every file git tracks, as it is in the working tree (a tracked file deleted locally is
@@ -304,6 +328,35 @@ class GuardrailsTests(unittest.TestCase):
                 sample = template.format(d=d, r=r, p="|", u="https://example.test/install")
                 if bool(download_and_run_lines(sample)) != want:
                     wrong.append(sample)
+            with self.subTest(expected=label):
+                self.assertEqual(wrong, [], f"matcher got these wrong (expected {label})")
+
+    def test_no_code_file_holds_an_unpinned_launcher(self) -> None:
+        """Every tracked file except Markdown, tests included: the directory reads them as code."""
+        hits = []
+        for path in tracked_files():
+            text = text_of(path)
+            if text is None or path.suffix == ".md":
+                continue
+            hits += [f"{path.relative_to(ROOT)}:{n}" for n, line in enumerate(text.splitlines(), 1)
+                     if holds_unpinned_launcher(line)]
+        self.assertEqual(hits, [], "unpinned package launcher written out in: " + ", ".join(hits))
+
+    def test_unpinned_launcher_matcher_flags_samples(self) -> None:
+        """Self-check for the scan above; `{l}` is filled with each launcher word at runtime."""
+        caught = ("{l} tsc", "Bash({l} tsc *)", "{l} -y some-tool --flag", "run `{l} @scope/tool`",
+                  "{l} tool@latest", "{l} tool@^1.2.0", "{l} tool@1", "{l} launcher\")",
+                  "{l} tool@1.2.3||2.0.0", "{l} --package=tool bin", "{l} --yes --package=@scope/tool -- bin",
+                  "{l} --package=tool@latest bin")
+        missed = ("{l} tool@1.2.3", "{l} @scope/tool@1.2.3 --flag", "Bash({l} tool@1.2.3-beta.1 *)", '("{l}", "other")', "{l}\\s",
+                  "a launcher ({l}) in a command", "no{l} tool", "{l}-cache tool", "Bash({l} tool@1.2.3:*)",
+                  "[{l} tool@1.2.3, x]", "{l} tool@1.2.3; echo", "{l} tool@1.2.3&&x", "{l} --package=tool@1.2.3 bin")
+        uv_caught = ("{u} ruff", "{u} --with tool script.py", "Bash({u} pytest:*)")
+        uv_missed = ("{u} --locked ruff", "{u} --frozen pytest", '("{u}", "x")', "a{u} tool")
+        for label, pairs, want in (
+                ("caught", [(t, w) for t in caught for w in LAUNCHER_WORDS] + [(t, UV_RUN_WORD) for t in uv_caught], True),
+                ("missed", [(t, w) for t in missed for w in LAUNCHER_WORDS] + [(t, UV_RUN_WORD) for t in uv_missed], False)):
+            wrong = [s for s in (t.format(l=w, u=w) for t, w in pairs) if holds_unpinned_launcher(s) != want]
             with self.subTest(expected=label):
                 self.assertEqual(wrong, [], f"matcher got these wrong (expected {label})")
 

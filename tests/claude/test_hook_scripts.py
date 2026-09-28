@@ -9,9 +9,10 @@ hookSpecificOutput with the event it is wired to. The scripts ported in 4.15 (pa
 chronicle-stop, format, notify, ci-watch) are also held to a literal token list. Launcher, install and
 fetcher words are assembled from pieces so this file does not itself contain them.
 
-Behaviour half: the scripts run for real under /bin/bash. External tools they may call (notify-send,
-uname, gofmt, prettier, gh, sleep) are stub scripts on a temp PATH that record their argv (osascript
-is stubbed too, only to prove no hook runs it), so no real notification, formatter, GitHub call or wait ever happens. Every run gets a fully
+Behaviour half: the scripts run for real under /bin/bash. External tools they may call (gofmt,
+prettier, gh, sleep) are stub scripts on a temp PATH that record their argv (osascript and
+notify-send are stubbed too, only to prove no hook runs them), so no real notification, formatter,
+GitHub call or wait ever happens. Every run gets a fully
 specified env built from temp dirs (HOME, CLAUDE_PLUGIN_DATA, MAGICIAN_HOME, MAGICIAN_SETTINGS,
 CLAUDE_ENV_FILE): nothing is inherited from os.environ, so the real ~/.claude/settings.json and
 ~/.claude/magician are never read or touched.
@@ -540,9 +541,8 @@ class NotifyTests(_SandboxCase):
 
     def setUp(self) -> None:
         super().setUp()
-        for name in ("osascript", "notify-send"):
+        for name in ("osascript", "notify-send", "uname"):
             self.sb.stub(name)
-        self.sb.stub("uname", "echo Darwin")
 
     def _event(self, kind: str = "agent_completed", message: str = "Background run finished") -> dict:
         return {"hook_event_name": "Notification", "notification_type": kind, "message": message,
@@ -587,15 +587,16 @@ class NotifyTests(_SandboxCase):
         seq = self._seq(self.sb.run(self.SCRIPT, self._event(), KITTY_WINDOW_ID="3", **self.ON))
         self.assertEqual(seq, "\x1b]99;;Magician: Background run finished\x1b\\")
 
-    def test_linux_notify_send_and_default_fallback(self) -> None:
-        self.sb.stub("uname", "echo Linux")
-        proc = self.sb.run(self.SCRIPT, self._event("agent_needs_input", "Waiting on you"), **self.ON)
-        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
-        self.assertEqual(self.sb.calls("notify-send"), [["--", "Magician: needs your input", "Waiting on you"]])
-        self.sb.stub("uname", "echo Darwin")
+    def test_every_other_terminal_gets_osc_777_and_no_program_runs(self) -> None:
+        """Linux included: the hook runs no desktop notifier, so the scan of hook scripts has nothing
+        further to follow."""
+        seq = self._seq(self.sb.run(self.SCRIPT, self._event("agent_needs_input", "Waiting on you"),
+                                    TERM_PROGRAM="gnome-terminal", **self.ON))
+        self.assertEqual(seq, "\x1b]777;notify;Magician;Waiting on you\x07")
         seq = self._seq(self.sb.run(self.SCRIPT, self._event(), **self.ON))
         self.assertEqual(seq, "\x1b]777;notify;Magician;Background run finished\x07")
-        self.assertEqual(len(self.sb.calls("notify-send")), 1)
+        for name in ("osascript", "notify-send", "uname"):
+            self.assertEqual(self.sb.calls(name), [], f"notify.sh ran {name}")
 
     def test_other_notification_types_are_ignored(self) -> None:
         for kind in ("idle_prompt", "permission_prompt", "auth_success"):

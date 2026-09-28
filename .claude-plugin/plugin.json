@@ -1,6 +1,6 @@
 {
   "name": "magician",
-  "version": "4.15.0",
+  "version": "4.15.1",
   "description": "Skills and agents for the software lifecycle in Claude Code: research, design, planning, test-first building, code review, security checks and release. Includes a local code index, per-project workspace notes, stack-specific guidance at session start, and optional Jira and Confluence access.",
   "author": {
     "name": "Alexander Tyagunov",
@@ -82,7 +82,7 @@
     "desktop_notifications": {
       "type": "boolean",
       "title": "Notify when a background session finishes or needs input",
-      "description": "Sends a terminal or desktop notification for background-session completion or input requests. Off by default.",
+      "description": "Asks your terminal to show a notification when a background session finishes or needs input; terminals without notification support show none. Off by default.",
       "default": false
     },
     "session_history": {

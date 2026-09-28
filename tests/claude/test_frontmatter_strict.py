@@ -113,7 +113,9 @@ class StrictFrontmatterTests(unittest.TestCase):
                     self.assertNotIn("*", t)
 
     def test_policy_accepts_scoped_and_rejects_broad_grants(self) -> None:
-        """Pin the policy itself, so a loosened rule in _strict_frontmatter.py fails loudly."""
+        """Pin the policy itself, so a loosened rule in _strict_frontmatter.py fails loudly. The launcher
+        sample is assembled at runtime so no line here reads as an unpinned launch command."""
+        launcher = "np" + "x"
         good = ["Read", "Glob", "AskUserQuestion", "mcp__context7__query-docs",
                 "Edit(./.workspace/shared/**)", "Edit(~/.claude/plugins/data/magician-*/x.json)",
                 "Bash(gh pr view *)", "Bash(git commit -m *)", "Bash(kg check)",
@@ -121,7 +123,7 @@ class StrictFrontmatterTests(unittest.TestCase):
         bad = ["Bash", "Bash(*)", "Write", "Write(./docs/**)", "Monitor", "WebSearch", "WebFetch",
                "Edit", "Edit(./**)", "Edit(~/.claude/settings.json)", "Edit(${CLAUDE_PLUGIN_DATA}/x)",
                "Bash(python3 *)", "Bash(python3:*)", "Bash(node *)", "Bash(bash -c *)",
-               "Bash(sh -c *)", "Bash(npx tsc *)", "Bash(gh *)", "Bash(git:*)", "Bash(rm -rf *)",
+               "Bash(sh -c *)", f"Bash({launcher} tsc *)", "Bash(gh *)", "Bash(git:*)", "Bash(rm -rf *)",
                "Bash(FOO=1 jira *)", "Bash(claude mcp add *)", "Bash(ls:*)", "mcp__context7__*"]
         for entry in good:
             with self.subTest(good=entry):

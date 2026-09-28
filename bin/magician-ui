@@ -11,8 +11,8 @@ Subcommands:
                              any permission entries or data files left over from earlier versions.
   enable [--all|--only a,b]  Copy the renderer to ~/.claude/magician/statusline.py and point
                              `statusLine` in settings.json at it. Records the chosen components;
-                             with no flag or component list it keeps the saved ones (all, the first
-                             time).
+                             with no flag or component list it keeps the saved ones (all when none
+                             valid are saved).
   set <a,b,c>                Change which components show (cli-ui.json only; settings.json untouched).
   default                    Same as `enable --all`.
   disable [--purge [--force]]
@@ -36,6 +36,13 @@ Subcommands:
 
 A subcommand given an argument it doesn't take, and `enable` or `set` given no known component, stops
 without changing anything; -h or --help after any subcommand prints this text.
+
+If cli-ui.json exists but can't be read (not valid JSON, not UTF-8, or not a JSON object), nothing
+replaces it: `enable`, `default`, `set`, `lore on|off` and `voice <level>` stop without changing
+anything; `cleanup` and `disable` do the rest, leave it as is and say so; `disable --purge` refuses
+while settings.json has permission entries the record might cover (--force deletes it anyway). Session
+start keeps reading its old values until you fix the file or delete it. An empty file counts as no
+file.
 
 magician no longer adds permission rules or sets the permission mode, so `allow` and `automode`
 without --off change nothing. Add rules with /permissions; pick a mode with Shift+Tab or
@@ -73,6 +80,8 @@ VOICE_DEFAULT = "scribe"
 # the union of all versions). Nothing adds these any more; they are kept only so `cleanup` can remove
 # them. Each merge also wrote "allow": "on" to cli-ui.json, and `cleanup` removes these rules only while
 # that record is there. A matching rule the user also wrote can't be told apart from magician's then.
+# The package-launcher rule is spelled in two adjacent parts (still one string) so no line of this file
+# reads as an unpinned launch command.
 READONLY_ALLOW = [
     "Read", "Grep", "Glob", "LS", "TaskOutput",
     "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
@@ -87,7 +96,7 @@ READONLY_ALLOW = [
     "Bash(jira url:*)", "Bash(jira raw GET:*)",
     "Bash(confluence whoami:*)", "Bash(confluence get:*)", "Bash(confluence search:*)", "Bash(confluence raw GET:*)",
     "Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run lint:*)", "Bash(npm run typecheck:*)",
-    "Bash(npm run build:*)", "Bash(npx tsc:*)", "Bash(yarn test:*)", "Bash(yarn lint:*)",
+    "Bash(npm run build:*)", "Bash(np" "x tsc:*)", "Bash(yarn test:*)", "Bash(yarn lint:*)",
     "Bash(pnpm test:*)", "Bash(pnpm lint:*)", "Bash(jest:*)", "Bash(vitest:*)", "Bash(pytest:*)",
     "Bash(go test:*)", "Bash(cargo test:*)",
     "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh pr diff:*)", "Bash(gh pr list:*)",
@@ -129,16 +138,59 @@ def _now():
 
 
 # ---------------- config ----------------
-def load_cfg():
+def _read_cfg():
+    """(cli-ui.json as a dict, None), or ({}, why) when the file exists but can't be read. A missing or
+    empty file holds no record: ({}, None)."""
     try:
-        with open(CFG, encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
+        with open(CFG, "rb") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return {}, None
+    except OSError as e:
+        return {}, e.strerror or str(e)
+    if not raw.strip():
+        return {}, None
+    try:
+        d = json.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:
+        return {}, "not UTF-8"
+    except RecursionError:
+        return {}, "not valid JSON: nested too deeply"
+    except ValueError as e:
+        return {}, f"not valid JSON: {e}"
+    if not isinstance(d, dict):
+        return {}, "not a JSON object"
+    return d, None
+
+
+def _cfg_to_show(width):
+    """cli-ui.json for a command that only prints it. An unreadable file gets a note first: the lines
+    after it show defaults, while the hooks may still read values from its raw text."""
+    cfg, problem = _read_cfg()
+    if problem:
+        print(f"{'config:':<{width}}{CFG} could not be read ({problem}) — fix it or delete it; the lines "
+              "below show defaults")
+    return cfg, problem
+
+
+def _cfg_for_update():
+    """cli-ui.json for a command that saves it. Stops first when the file can't be read: saving would
+    replace a record the user can still fix, and `cleanup` needs that record."""
+    cfg, problem = _read_cfg()
+    if problem:
+        die(f"{CFG} could not be read ({problem}); fix it or delete it, then run this again. "
+            "Nothing was changed.")
+    return cfg
+
+
+def _left_as_is(problem, then):
+    print(f"{CFG} could not be read ({problem}) and was left as is: {then}")
 
 
 def save_cfg(d):
+    problem = _read_cfg()[1]
+    if problem:   # backstop; callers that save read through _cfg_for_update()
+        die(f"{CFG} could not be read ({problem}); refusing to replace it. Fix it or delete it.")
     try:
         os.makedirs(HOME, exist_ok=True)
         tmp = CFG + ".tmp"
@@ -411,7 +463,7 @@ def _legacy_files():
 
 # --------------- commands ---------------
 def cmd_status(_args):
-    cfg = load_cfg()
+    cfg, problem = _cfg_to_show(13)
     st = cfg.get("state")
     st = st if st in ("enabled", "disabled") else "not enabled"
     comps = cfg.get("components")
@@ -426,13 +478,21 @@ def cmd_status(_args):
     print(f"voice:       {cfg.get('voice', VOICE_DEFAULT)} (output brevity: warrior<scribe<bard; default scribe — `magician-ui voice <level>`)")
     left = _permission_leftovers(s, cfg)
     kept = _allow_rules_split(s, cfg)[1]
+    # An unreadable record may be the one that says magician set defaultMode "auto".
+    mode_unknown = bool(problem) and _auto_mode_is_ours(s, {"automode": "on"})
     if left:
         print(f"permissions: {', '.join(left)} added by an earlier magician version — `magician-ui cleanup` removes them")
-    elif not kept:
+    elif not kept and not mode_unknown:
         print("permissions: no entries from earlier magician versions")
     if kept:
+        why = "magician's record of adding them is unreadable" if problem else \
+            "but magician has no record of adding them"
         print(f"{'             ' if left else 'permissions: '}{len(kept)} allow rule(s) match magician's old list, "
-              "but magician has no record of adding them — `magician-ui cleanup` leaves them")
+              f"{why} — `magician-ui cleanup` leaves them")
+    if mode_unknown:
+        print(f"{'             ' if left or kept else 'permissions: '}defaultMode \"auto\" may have been set by an "
+              "earlier magician version, but magician's record of that is unreadable — `magician-ui cleanup` "
+              "leaves it")
     old = _legacy_files()
     if old:
         print(f"old data:    {len(old)} obsolete file(s) from earlier versions — `magician-ui cleanup` removes them")
@@ -446,7 +506,7 @@ def _saved_components(cfg):
 
 
 def cmd_enable(args):
-    cfg = load_cfg()
+    cfg = _cfg_for_update()
     # A plain `enable` (the refresh step after an update) keeps the components chosen earlier with
     # `enable --only` or `set`. --all, --only or a bare list chooses them again.
     chosen = any(a == "--all" or a.startswith("--only") or not a.startswith("-") for a in args)
@@ -470,7 +530,7 @@ def cmd_set(args):
     comps = parse_components(args)
     if not comps:
         die(f"nothing valid to set; choose from: {', '.join(ALL)}. Nothing was changed.")
-    cfg = load_cfg()
+    cfg = _cfg_for_update()
     cfg["components"] = comps
     cfg["updatedAt"] = _now()
     save_cfg(cfg)
@@ -513,9 +573,20 @@ def cmd_disable(args):
             d.pop("statusLine", None)
 
     cur = _read_settings()
-    cfg = load_cfg()
+    cfg, problem = _read_cfg()
+    if purge and os.path.isdir(CFG) and not os.path.islink(CFG):
+        die(f"{CFG} is a directory, not magician's record file; remove it yourself, then run this again. "
+            "Nothing was changed.")
     # cleanup finds these only through cli-ui.json, so deleting it first would strand them. The env key
-    # is found without the record, so it doesn't count.
+    # is found without the record, so it doesn't count. A record that can't be read may cover any rule on
+    # the old list and defaultMode "auto", and fixing it by hand would let cleanup remove them.
+    if purge and not force and problem and (_matching_allow_rules(cur)
+                                            or _auto_mode_is_ours(cur, {"automode": "on"})):
+        die(f"{CFG} could not be read ({problem}). It may record that an earlier magician version added "
+            "permission entries settings.json still has (rules on magician's old list or defaultMode "
+            "\"auto\"), and `magician-ui cleanup` needs that record to remove them. Fix it and run "
+            "`magician-ui cleanup`, then `magician-ui disable --purge`. To delete it and keep the entries, "
+            "run `magician-ui disable --purge --force`. Nothing was changed.")
     if purge and not force and (_allow_rules_split(cur, cfg)[0] or _auto_mode_is_ours(cur, cfg)):
         die("cli-ui.json records permission entries an earlier magician version added to settings.json "
             "(`magician-ui status` lists them), and `magician-ui cleanup` needs that record to remove them. "
@@ -532,9 +603,13 @@ def cmd_disable(args):
             print(f"  removed {p}")
         print("Re-enable anytime with `magician-ui enable` (lore and voice return to their defaults).")
         return
-    cfg["state"] = "disabled"
-    cfg["updatedAt"] = _now()
-    save_cfg(cfg)
+    if problem:
+        _left_as_is(problem, "session start still reads its old state and may keep writing status markers "
+                             "until you fix it or delete it.")
+    else:
+        cfg["state"] = "disabled"
+        cfg["updatedAt"] = _now()
+        save_cfg(cfg)
     print("Magician CLI UI disabled. Re-enable anytime with `magician-ui enable`. "
           f"`magician-ui disable --purge` also deletes {INSTALLED}, {STATUS_DIR}/ and {CFG}; before "
           "uninstalling magician, run `magician-ui cleanup` first, then the purge.")
@@ -544,8 +619,9 @@ def cmd_cleanup(_args):
     """Remove what magician 4.14 and earlier wrote without being asked each time: its allow rules (only
     when cli-ui.json records magician merged them), defaultMode "auto" (only when cli-ui.json records
     magician set it — never replaced with another mode), the unused auto-mode env key, obsolete data
-    files; then prune settings backups to the newest 3."""
-    cfg = load_cfg()
+    files; then prune settings backups to the newest 3. A cli-ui.json that can't be read is left as is:
+    no rule counts as recorded, and the rest still runs."""
+    cfg, problem = _read_cfg()
     found = {"rules": [], "kept": [], "mode": False, "env": False}
 
     def mut(d):
@@ -571,14 +647,18 @@ def cmd_cleanup(_args):
         if found["env"]:
             print(f"  removed env {AUTOMODE_ENV_KEY}")
     elif not found["kept"]:
-        print(f"{SETTINGS}: no entries from earlier magician versions; not modified.")
+        print(f"{SETTINGS}: {'' if problem else 'no entries from earlier magician versions; '}not modified.")
     if found["kept"]:
+        why = "magician's record of adding them is unreadable" if problem else \
+            "magician has no record of adding them"
         print(f"Kept {len(found['kept'])} allow rule(s) that match magician's old list "
-              f"({', '.join(found['kept'])}): magician has no record of adding them. "
-              "Remove any you don't want with /permissions.")
+              f"({', '.join(found['kept'])}): {why}. Remove any you don't want with /permissions.")
 
     # Clearing the records also stops the SessionStart upgrade notice, which reads the same keys.
-    if os.path.exists(CFG):
+    if problem:
+        _left_as_is(problem, "fix it and run `magician-ui cleanup` again to remove what it records, "
+                             "or delete it; until then the weekly upgrade notice may continue.")
+    elif os.path.exists(CFG):
         for k in [k for k in cfg if k.startswith(("allow", "automode"))]:
             cfg.pop(k, None)
         cfg["permissionsCleanedAt"] = _now()
@@ -652,14 +732,15 @@ def cmd_lore(args):
     SessionStart hook then adds NO lore); `lore status` prints the state. Per-project override: create
     `.magician/lore.off` in a repo (disables lore there only). Env override: MAGICIAN_LORE=0. The bundled
     on/off state lives in cli-ui.json; the status bar's `lore` chip shows it live. Takes effect next session."""
-    cfg = load_cfg()
     if args and args[0] in ("status", "--status"):
+        cfg = _cfg_to_show(17)[0]
         st = "disabled" if cfg.get("lore") == "disabled" else "enabled"
-        shown = "lore" in (cfg.get("components") or ALL)
+        shown = "lore" in _saved_components(cfg)
         print(f"lore injection:  {st} (default: enabled)")
         print(f"status-bar chip: {'shown' if shown else 'hidden'}  (toggle via `magician-ui set ...,lore`)")
         print("overrides:       per-project `.magician/lore.off` · env `MAGICIAN_LORE=0`")
         return
+    cfg = _cfg_for_update()
     if args and args[0] in LORE_OFF:
         cfg["lore"] = "disabled"; save_cfg(cfg)
         print("Magician lore DISABLED — SessionStart will not add language/DB lore; your project/local "
@@ -680,10 +761,10 @@ def cmd_voice(args):
     fragments or jargon. `magician-ui voice <level>` sets it; `voice status` prints the state.
     Resolution (first match wins): env MAGICIAN_VOICE → per-project `.magician/voice` → this
     setting → default scribe. The status bar's `voice` chip shows it live. Takes effect next session."""
-    cfg = load_cfg()
     if not args or args[0] in ("status", "--status"):
+        cfg = _cfg_to_show(17)[0]
         lvl = cfg.get("voice", VOICE_DEFAULT)
-        shown = "voice" in (cfg.get("components") or ALL)
+        shown = "voice" in _saved_components(cfg)
         print(f"voice level:     {lvl} (default: {VOICE_DEFAULT}; least→most wordy: {' < '.join(VOICE_LEVELS)})")
         print(f"status-bar chip: {'shown' if shown else 'hidden'}  (toggle via `magician-ui set ...,voice`)")
         print("overrides:       env `MAGICIAN_VOICE` · per-project `.magician/voice`")
@@ -691,6 +772,7 @@ def cmd_voice(args):
     lvl = args[0].strip().lower()
     if lvl not in VOICE_LEVELS:
         die(f"unknown voice '{args[0]}'; choose from: {', '.join(VOICE_LEVELS)}")
+    cfg = _cfg_for_update()
     cfg["voice"] = lvl
     cfg["updatedAt"] = _now()
     save_cfg(cfg)

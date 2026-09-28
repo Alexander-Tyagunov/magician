@@ -14,6 +14,9 @@ aliases for `cleanup`). What remains must be exact and bounded:
     cleanup still needs cli-ui.json's record, unless --force;
   * a subcommand given an argument it doesn't take, `enable`/`set` naming no known component, or
     --help, changes nothing;
+  * a cli-ui.json that exists but can't be read is never replaced: commands that save it stop first,
+    `cleanup` and `disable` do the rest and say they left it, and `disable --purge` refuses while
+    settings.json has entries the unreadable record might cover, unless --force;
   * settings backups are mode 0600 and at most 3 are kept.
 It also covers the renderer's status-folder pruning.
 
@@ -58,6 +61,16 @@ OURS = READONLY_ALLOW + STALE_ALLOW
 AUTOMODE_ENV = "CLAUDE_CODE_ENABLE_AUTO_MODE"
 # The check scripts/session-start.sh makes before showing its upgrade notice.
 NOTICE_RECORD = re.compile(r'"(allow|automode)"\s*:\s*"on"')
+
+# cli-ui.json files that exist but can't be read as a JSON object. Each still has "allow": "on" in its
+# text (the session-start notice finds it), so saving over one would lose the record cleanup needs.
+BROKEN_CFGS = {
+    "truncated": b'{"state": "enabled", "allow": "on", "allowVersion": "4.14.0"',
+    "comment": b'{"allow": "on", // added by 4.14\n "state": "enabled"}',
+    "not utf-8": b'{"allow": "on", "state": "enabled", "note": "\xff"}',
+    "not an object": b'[{"allow": "on"}]',
+    "nested too deeply": b'{"allow": "on", "state": "enabled", "x": ' + b"[" * 200_000,
+}
 
 # A statusLine entry magician-ui recognises as its own.
 OUR_BAR = {"type": "command", "command": "python3 /x/magician/statusline.py", "padding": 0}
@@ -447,6 +460,173 @@ class CleanupTests(UiCase):
         self.write_cfg({"state": "enabled"})
         self.ui("disable", "--purge")
         self.assertFalse((self.mh / "cli-ui.json").exists())
+
+
+class UnreadableConfigTests(UiCase):
+    """A cli-ui.json that exists but can't be read stays byte for byte: saving over it would lose the
+    record cleanup needs, and the user may still fix it by hand."""
+
+    MATCHING = CleanupTests.MATCHING
+    SAVING = (["enable"], ["enable", "--all"], ["default"], ["set", "rot"], ["lore", "off"], ["lore"],
+              ["voice", "bard"])
+
+    def write_broken_cfg(self, raw: bytes) -> Path:
+        self.mh.mkdir(parents=True, exist_ok=True)
+        p = self.mh / "cli-ui.json"
+        p.write_bytes(raw)
+        return p
+
+    def assert_one_note(self, out: str, cfg: Path) -> str:
+        notes = [ln for ln in out.splitlines() if "could not be read" in ln]
+        self.assertEqual(len(notes), 1, out)
+        self.assertIn(str(cfg), notes[0])
+        return notes[0]
+
+    def test_cleanup_leaves_it_and_does_the_rest(self) -> None:
+        legacy = self.magician_data / "patterns.json"
+        legacy.parent.mkdir(parents=True)
+        for name, broken in BROKEN_CFGS.items():
+            with self.subTest(cfg=name):
+                cfg = self.write_broken_cfg(broken)
+                allow = self.MATCHING + ["Bash(mytool:*)"]
+                self.write_settings({"env": {"FOO": "bar", AUTOMODE_ENV: "1"}, "permissions": {"allow": allow}})
+                legacy.write_text("x", encoding="utf-8")
+                r = self.ui("cleanup")
+                self.assertEqual(cfg.read_bytes(), broken, "cleanup replaced a cli-ui.json it couldn't read")
+                after = self.read_settings()
+                self.assertEqual(after["permissions"]["allow"], allow, "rules removed without a readable record")
+                self.assertEqual(after["env"], {"FOO": "bar"}, "the env key doesn't need the record")
+                self.assertFalse(legacy.exists(), "obsolete data files don't need the record")
+                note = self.assert_one_note(r.stdout, cfg)
+                for word in ("left as is", "fix it", "delete it", "magician-ui cleanup", "upgrade notice"):
+                    self.assertIn(word, note)
+                self.assertIn("Kept 3 allow rule(s)", r.stdout)
+                self.assertNotIn("no record of adding them", r.stdout, "the record exists; it can't be read")
+
+    def test_commands_that_save_it_stop_and_change_nothing(self) -> None:
+        raw = self.write_settings({"model": "some-model"})
+        for name, broken in BROKEN_CFGS.items():
+            cfg = self.write_broken_cfg(broken)
+            for argv in self.SAVING:
+                with self.subTest(cfg=name, argv=argv):
+                    r = self.ui(*argv, expect=1)
+                    self.assertIn(str(cfg), r.stderr)
+                    self.assertIn("could not be read", r.stderr)
+                    self.assertIn("Nothing was changed", r.stderr)
+                    self.assertEqual(cfg.read_bytes(), broken)
+                    self.assertEqual(self.settings.read_bytes(), raw)
+                    self.assertFalse((self.mh / "statusline.py").exists(), "enable installed the renderer")
+                    self.assertEqual(self.backups(), [])
+
+    def test_disable_removes_the_status_line_and_leaves_it(self) -> None:
+        for name, broken in BROKEN_CFGS.items():
+            with self.subTest(cfg=name):
+                cfg = self.write_broken_cfg(broken)
+                self.write_settings({"model": "some-model", "statusLine": OUR_BAR})
+                r = self.ui("disable")
+                self.assertEqual(self.read_settings(), {"model": "some-model"})
+                self.assertEqual(cfg.read_bytes(), broken)
+                note = self.assert_one_note(r.stdout, cfg)
+                self.assertIn("left", note)
+                # session-start.sh still greps the file for "state": "enabled".
+                self.assertIn("status markers", note)
+
+    def test_purge_refuses_while_the_record_might_be_needed(self) -> None:
+        """An unreadable record might say magician added the matching entries, so --purge treats it like
+        a record cleanup still needs: it refuses and changes nothing unless --force is given."""
+        for perms in ({"allow": list(self.MATCHING)}, {"defaultMode": "auto"}):
+            for name, broken in BROKEN_CFGS.items():
+                with self.subTest(perms=perms, cfg=name):
+                    raw = self.write_settings({"statusLine": OUR_BAR, "permissions": perms})
+                    cfg = self.write_broken_cfg(broken)
+                    backups = self.backups()
+                    r = self.ui("disable", "--purge", expect=1)
+                    self.assertIn(str(cfg), r.stderr)
+                    self.assertIn("could not be read", r.stderr)
+                    self.assertIn("--purge --force", r.stderr)
+                    self.assertIn("Nothing was changed", r.stderr)
+                    self.assertEqual(self.settings.read_bytes(), raw, "a refused purge edited settings.json")
+                    self.assertEqual(cfg.read_bytes(), broken, "a refused purge touched the record")
+                    self.assertEqual(self.backups(), backups)
+
+                    self.ui("disable", "--purge", "--force")
+                    self.assertEqual(self.read_settings(), {"permissions": perms})
+                    self.assertFalse(cfg.exists())
+
+    def test_purge_goes_ahead_when_no_entry_could_depend_on_it(self) -> None:
+        self.write_settings({"statusLine": OUR_BAR, "env": {AUTOMODE_ENV: "1"},
+                             "permissions": {"allow": ["Bash(mytool:*)"], "defaultMode": "plan"}})
+        cfg = self.write_broken_cfg(BROKEN_CFGS["truncated"])
+        self.ui("disable", "--purge")
+        self.assertFalse(cfg.exists())
+        self.assertNotIn("statusLine", self.read_settings())
+
+    def test_status_reports_it_and_writes_nothing(self) -> None:
+        raw = self.write_settings({"permissions": {"allow": list(self.MATCHING)}})
+        for name, broken in BROKEN_CFGS.items():
+            with self.subTest(cfg=name):
+                cfg = self.write_broken_cfg(broken)
+                out = self.ui("status").stdout
+                self.assert_one_note(out, cfg)
+                self.assertIn("3 allow rule(s) match magician's old list", out)
+                self.assertNotIn("no record of adding them", out)
+                # The hooks read the raw text, so the defaults these print may not be what applies.
+                for argv in (["lore", "status"], ["voice"], ["voice", "status"]):
+                    self.assert_one_note(self.ui(*argv).stdout, cfg)
+                self.assertEqual(cfg.read_bytes(), broken)
+                self.assertEqual(self.settings.read_bytes(), raw)
+
+    def test_status_never_claims_no_entries_while_auto_mode_might_be_recorded(self) -> None:
+        """`disable --purge` refuses in this state because of defaultMode "auto", so `status` must not
+        say there are no entries from earlier versions."""
+        self.write_settings({"permissions": {"defaultMode": "auto"}})
+        for name, broken in BROKEN_CFGS.items():
+            with self.subTest(cfg=name):
+                cfg = self.write_broken_cfg(broken)
+                out = self.ui("status").stdout
+                self.assert_one_note(out, cfg)
+                self.assertNotIn("no entries from earlier magician versions", out)
+                line = next((ln for ln in out.splitlines() if 'defaultMode "auto"' in ln), "")
+                self.assertIn("unreadable", line, out)
+                self.assertIn("magician-ui cleanup` leaves it", line)
+        self.write_cfg({"state": "enabled"})  # a readable record without automode: nothing to report
+        out = self.ui("status").stdout
+        self.assertIn("no entries from earlier magician versions", out)
+        self.assertNotIn('defaultMode "auto"', out)
+
+    def test_a_folder_in_its_place_is_never_reported_absent(self) -> None:
+        cfg = self.mh / "cli-ui.json"
+        (cfg / "inner").mkdir(parents=True)
+        raw = self.write_settings({"model": "some-model", "statusLine": OUR_BAR})
+        for argv in (["disable", "--purge"], ["disable", "--purge", "--force"]):
+            with self.subTest(argv=argv):
+                r = self.ui(*argv, expect=1)
+                self.assertIn(f"{cfg} is a directory", r.stderr)
+                self.assertIn("Nothing was changed", r.stderr)
+                self.assertEqual(self.settings.read_bytes(), raw)
+                self.assertTrue((cfg / "inner").is_dir())
+        r = self.ui("disable")
+        self.assertEqual(self.read_settings(), {"model": "some-model"})
+        self.assert_one_note(r.stdout, cfg)
+        self.assertTrue((cfg / "inner").is_dir())
+        self.assert_one_note(self.ui("cleanup").stdout, cfg)
+        self.assertTrue((cfg / "inner").is_dir())
+
+    def test_status_views_accept_components_that_are_not_a_list(self) -> None:
+        for comps in (5, "rot", {"rot": True}, None):
+            with self.subTest(components=comps):
+                self.write_cfg({"components": comps})
+                self.assertIn("status-bar chip: shown", self.ui("lore", "status").stdout)
+                self.assertIn("status-bar chip: shown", self.ui("voice").stdout)
+                self.assertIn("components:", self.ui("status").stdout)
+
+    def test_an_empty_file_holds_no_record(self) -> None:
+        self.write_settings({"model": "some-model"})
+        cfg = self.write_broken_cfg(b"")
+        self.ui("enable", "--only", "rot")
+        self.assertEqual(self.read_cfg()["components"], ["rot"])
+        self.assertNotIn("could not be read", self.ui("status").stdout)
+        self.assertTrue(cfg.exists())
 
 
 class ArgumentTests(UiCase):
