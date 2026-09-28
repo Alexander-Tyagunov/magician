@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.2] — 2026-09-28
+
+**Directory follow-up.** Fixes the findings a re-validation raised against 4.15.1. Almost every edit is
+to comments, documentation, examples or tests. The code edits are one loop in `chronicle-stop.sh`,
+the order of the flags `gate.sh` passes to the plugin eval command, the guard's separator string
+(byte-identical) and the wording of a few notes the hooks add to Claude's context; none changes
+what the scripts do.
+
+### Fixed
+- **Three blocking findings in the safety guard.** The directory reads inline-code spans in shell
+  comments as commands. Three comments in `destructive-guard.sh` quoted an example substitution or an
+  indirect expansion, so the directory read them as commands whose program is computed at run time.
+  They now say the same thing in words. The ANSI-C string of word separators now writes its single
+  quote and backtick as hex escapes, and its value is byte-identical. A new test scans every script
+  under `scripts/`, comments included, for text that reads that way.
+- **Scripts the directory couldn't follow.** `chronicle-stop.sh` now builds its file list with a
+  word-split loop instead of redirecting text into `read`. The output is the same, and bash 3.2 no
+  longer writes a temporary file. The session-start context no longer names two lore files the hook
+  never reads, and its knowledge-graph and lore-disabled notes name the bundled helpers' commands in
+  plain words instead of inline code. The prompt hook's Jira and Confluence hint now says "another
+  available integration" where it said "another installed integration". Hook comments no longer name
+  a sourced file or a test path, no longer use the here-document and here-string terms or operator,
+  and no longer mention installs or the bundled command-line helpers.
+- **Credential examples.** Lore snippets that read a connection string or a session secret from the
+  environment now take it as a variable and say it comes from app config. Prose that read like a
+  password-manager command now uses other verbs. The guard and guardrail test
+  fixtures write their example hosts without a URL scheme, the CI-watch test uses a local relative
+  remote, the userConfig tests use the local stub or host-free values, and the dotenv self-check no
+  longer samples the working-directory variable or environment dumps. The Jira and Confluence skills
+  state the rule against printing the environment in words.
+- **Download-and-run warnings.** Wherever a closing backtick came straight after the word eval, the
+  comment or doc now writes the command with its `--trust-plugin` flag or in plain text. A guard-test
+  sample is now built from two parts, so the file never contains it whole. `scripts/gate.sh` now
+  passes `--trust-plugin` before the target, which does the same thing.
+
 ## [4.15.1] — 2026-09-27
 
 **Directory follow-up.** Fixes the findings a re-validation raised against 4.15.0, and `magician-ui` no
@@ -154,7 +189,7 @@ plugin runs, stores and sends is documented in the README and PRIVACY.md.
   `function` keyword or one that backgrounds itself before the pipe, a `git clean` that deletes ignored
   files written with `--force`, `-X` or git options before `clean`, and a `sh -c` script with other
   shell options before the `-c`. The README's second list now also blocks reading a `.env` or `.env.*`
-  file anywhere in a path, gcloud or Azure credentials, and `eval` of single-quoted text, and no longer
+  file anywhere in a path, gcloud or Azure credentials, and eval of single-quoted text, and no longer
   blocks a commit message that only mentions piping a download into a shell or reading a template such
   as `.env.example`. In PowerShell, a forced recursive delete of a project deeper inside a home folder
   (`C:\Users\<name>\proj`, `~\proj`) is no longer refused; a drive root, anything under `C:\Windows`,
@@ -249,7 +284,7 @@ plugin runs, stores and sends is documented in the README and PRIVACY.md.
 ### Added
 - **A single-entrypoint passing gate — `scripts/gate.sh`.** Runs the offline tiers always (Claude self-tests + Codex packaging + `claude plugin validate`) and an opt-in behavioral eval tier (`--evals`). Wired into CI as `.github/workflows/gate.yml`.
 - **`tests/claude/` — a dependency-free self-test suite** (stdlib `unittest`, no third-party deps) covering agent/skill/hook shape, the destructive-command guard, the compaction resume capsule, and guardrail invariants. Includes `test_skill_quality.py`: skill bodies ≤500 lines, descriptions ≤1536 chars, no time-sensitive prose, agents never request a subagent-blocked tool, valid agent name/flags.
-- **`evals/` — a behavioral eval suite** (`claude plugin eval`) asserting security-scan, code-review, and destructive-command behavior end to end.
+- **`evals/` — a behavioral eval suite** (`claude plugin eval --trust-plugin`) asserting security-scan, code-review, and destructive-command behavior end to end.
 - **Three AI-SDLC gate agents.** `gatekeeper` (grades the end state GO / NO-GO / UNVERIFIED, never passing an unrun check), `guardian` (the agentic-security lens: lethal trifecta, prompt-injection, tool/permission least-privilege, untested guardrails), and `fixer` (bounded auto-fix that edits source only — never tests, evals, or gates — and escalates on ambiguity).
 - **`/scrutinize` now dispatches the full gate team** — `guardian` as a security lens when a change touches the agentic surface, `fixer` for bounded remediation (re-reviewed, never author-approved), and `gatekeeper` as the final GO/NO-GO gate before handoff.
 

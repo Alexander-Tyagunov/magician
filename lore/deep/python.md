@@ -250,7 +250,7 @@ class User(TypedDict):
 def first[T](xs: list[T]) -> T: ...
 class Box[T]:
     def __init__(self, v: T) -> None: self.v = v
-type IntBox = Box[int]                 # `type` statement → TypeAliasType, lazy eval
+type IntBox = Box[int]                 # `type` statement → TypeAliasType, lazily evaluated
 ```
 - DO use `TypeVar` defaults (PEP 696, **3.13**): `class Box[T = int]: ...`.
 - Fallback (≤3.11): classic `TypeVar` + `Generic`:

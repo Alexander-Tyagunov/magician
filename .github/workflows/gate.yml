@@ -3,8 +3,8 @@ name: magician-gate
 # The plugin's own quality gate. The offline tiers run on every push and PR — they are
 # dependency-free (stdlib unittest only), deterministic, and need no secrets or network. The
 # runner has no `claude` CLI, so gate.sh skips the validator tier here with a note.
-# The behavioral eval tier (`claude plugin eval`) spends API budget, so the maintainer runs it
-# locally before a release: bash scripts/gate.sh --evals --threshold 0.8
+# The behavioral eval tier (claude plugin eval --trust-plugin) spends API budget, so the
+# maintainer runs it locally before a release: bash scripts/gate.sh --evals --threshold 0.8
 
 on:
   push:

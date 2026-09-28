@@ -2,8 +2,8 @@
 # PostToolUse(Write|Edit) — OPT-IN auto-format of the file Claude just wrote or edited.
 # Off unless the user enables the `auto_format` plugin option; prettier additionally needs
 # `auto_format_prettier`. Runs only a formatter that is already on PATH (ruff or black, gofmt,
-# rustfmt, shfmt, prettier) and never installs one. When the file changed on disk, Claude is told
-# so through PostToolUse additionalContext. Plain bash; always exits 0.
+# rustfmt, shfmt, prettier); a formatter that isn't there is skipped. When the file changed on
+# disk, Claude is told so through PostToolUse additionalContext. Plain bash; always exits 0.
 export LC_ALL=C
 case "${CLAUDE_PLUGIN_OPTION_AUTO_FORMAT:-false}" in true|1|yes|on) ;; *) exit 0 ;; esac
 INPUT=$(cat 2>/dev/null) || exit 0

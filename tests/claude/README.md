@@ -6,7 +6,7 @@ plugin can run them with nothing installed. Run the whole gate with:
 
 ```bash
 bash scripts/gate.sh            # offline tiers (below)
-bash scripts/gate.sh --evals    # also run the behavioral `claude plugin eval` suite (spends API budget)
+bash scripts/gate.sh --evals    # also run the behavioral suite, claude plugin eval, which spends API budget
 ```
 
 `scripts/gate.sh` runs, in order:
@@ -31,7 +31,7 @@ python3 -m unittest discover -s tests/claude -p 'test_*.py'
 | File | Contract |
 |------|----------|
 | `test_hooks.py` | `hooks/hooks.json` and `monitors/monitors.json` match the exact wiring contract (events, matchers, timeouts, `async`); every command is the quoted literal `"${CLAUDE_PLUGIN_ROOT}"/scripts/<name>.sh` form and points to an executable script; the userConfig bridge has its 10-second timeout; removed hooks stay removed. |
-| `test_hook_scripts.py` | Every hook script is plain bash 3.2: `LC_ALL=C`, no interpreters, `eval`, `source`, launchers, fetchers or calls to other plugin files, exit 0 except the guard's deliberate block (exit 2), no transcript reads, no settings writes, and only the userConfig bridge touches `CLAUDE_ENV_FILE`. The pattern-detect, chronicle-stop, format, notify and ci-watch scripts are also run under `/bin/bash` with stubbed tools in an isolated environment; `notify.sh` writes only a terminal escape sequence and runs no notifier program. |
+| `test_hook_scripts.py` | Every hook script is plain bash 3.2: `LC_ALL=C`, no interpreters, no eval or `source`, no launchers, fetchers or calls to other plugin files, exit 0 except the guard's deliberate block (exit 2), no transcript reads, no settings writes, and only the userConfig bridge touches `CLAUDE_ENV_FILE`. The pattern-detect, chronicle-stop, format, notify and ci-watch scripts are also run under `/bin/bash` with stubbed tools in an isolated environment; `notify.sh` writes only a terminal escape sequence and runs no notifier program. Every script under `scripts/`, comments included and `gate.sh` too, holds no text the plugin directory reads as a command whose program is computed at run time: no inline-code span with a command substitution or indirect expansion, or that starts with a variable expansion other than the plugin-root variable, no indirect expansion anywhere in a comment, and no ANSI-C string with an escaped quote or a backtick (with a self-check of that scan). |
 | `test_session_start.py` | `session-start.sh` emits valid SessionStart JSON within its 9,500-character budget for every source, fails open on bad input, injects the detected stack's lore cores, shows the first-run and migration notices as a `systemMessage`, keeps its session stamps and knowledge-graph note bounded, and never writes settings or the session env file. |
 | `test_compaction.py` | `compact-context.sh` (SessionStart, matcher `compact`) restates the branch, changed files, session commits and `.workspace/shared/` artifacts from git and the filesystem; transcript content never reaches its output; lists are bounded, output is JSON-escaped, and it writes nothing. |
 | `test_userconfig.py` | The `userConfig` schema, and the `userconfig-env.sh` bridge that copies non-empty `CLAUDE_PLUGIN_OPTION_*` values into the session env file: quoting of hostile values, privacy (mode 0600, silent), idempotence; plus the `jira`/`confluence` CLIs' connection config, auth header shapes and refusal of plain HTTP to a remote host; and no hook script except the guard names a project dotenv file, bare, quoted or at the end of a path (with a self-check of that pattern). |
@@ -57,8 +57,8 @@ the real `~/.claude` is never read or written.
 
 ## Behavioral eval tier (`evals/`, opt-in)
 
-`bash scripts/gate.sh --evals` runs the plugin end-to-end through `claude plugin eval` — a real model,
-in a sandbox, graded on what actually happened. It spends API budget and needs the network, so it is
+`bash scripts/gate.sh --evals` runs the plugin end-to-end through
+`claude plugin eval --trust-plugin` — a real model, in a sandbox, graded on what actually happened. It spends API budget and needs the network, so it is
 opt-in and local-only: the maintainer runs it before a release, and CI (`.github/workflows/gate.yml`)
 runs only the offline gate. The suite gates the behavior that is **reliably observable** in the eval
 sandbox:

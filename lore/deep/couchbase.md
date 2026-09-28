@@ -67,7 +67,7 @@ Index array elements: `CREATE INDEX ix ON route(DISTINCT ARRAY s.utc FOR s IN sc
 
 ### Pagination, parameters, plans
 - `OFFSET` scans then discards skipped rows — **keyset-paginate** on an indexed key (`WHERE id>$last ORDER BY id LIMIT n`).
-- Parameterize: named `$name` / positional `$1`/`?` (via `args`); mask secrets with `$_secret_` (7.6.8+). Never string-concat user input.
+- Parameterize: named `$name` / positional `$1`/`?` (via `args`); mask a secret by starting and ending its parameter name with an underscore (7.6.8+). Never string-concat user input.
 - `PREPARE`/`EXECUTE` caches the plan; pair with parameters so hot queries skip re-planning.
 
 ### Sources

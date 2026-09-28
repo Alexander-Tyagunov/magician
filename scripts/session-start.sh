@@ -402,7 +402,7 @@ if [ -n "$_top" ]; then
     :
   elif [ -f "$MAG_HOME/knowledge-graph/repos/$_h/meta.json" ]; then
     KG_NOTE="
-This repository has a magician knowledge-graph index: \`kg query \"<terms>\"\`, \`kg blast <file>\` and \`kg neighbors <symbol>\` return file:line results; \`kg refresh\` updates it."
+This repository has a magician knowledge-graph index: kg query with search terms, kg blast with a file and kg neighbors with a symbol return file:line results, and kg refresh updates it."
   elif ! grep -qE '"knowledge-graph"[[:space:]]*:[[:space:]]*"disabled"' "$PLUGIN_DATA/integration-prefs.json" 2>/dev/null; then
     _m="$PLUGIN_DATA/kg-suggest/$_h"
     if [ -z "$(find "$_m" -mtime -7 2>/dev/null)" ]; then
@@ -430,7 +430,7 @@ fi
 DOCTRINE_NOTE=""
 case "$SS_SOURCE" in compact|resume)
   DOCTRINE_NOTE="
-Magician conventions, re-stated after ${SS_SOURCE}: completion claims rest on fresh verification evidence (lore/verification.md); work follows an approve-the-plan-then-execute flow (lore/autonomy.md)." ;;
+Magician conventions, re-stated after ${SS_SOURCE}: completion claims rest on fresh verification evidence (the plugin's verification lore); work follows an approve-the-plan-then-execute flow (the plugin's autonomy lore)." ;;
 esac
 
 # ── User-only notices (systemMessage; never part of Claude's context) ──
@@ -539,7 +539,7 @@ done
 
 LORE_NOTE="$STACK_NOTE"
 if [ "$LORE_ENABLED" != 1 ]; then
-  LORE_NOTE="${LORE_NOTE} Magician lore is disabled for this session (\`magician-ui lore on\` re-enables it)."
+  LORE_NOTE="${LORE_NOTE} Magician lore is disabled for this session (re-enable it with magician-ui lore on)."
 elif [ -n "$LORE_TEXT" ]; then
   LORE_NOTE="${LORE_NOTE}${LORE_HDR}${LORE_TEXT}${DEEP_HINT}"
 fi

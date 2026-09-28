@@ -67,9 +67,11 @@ else
 fi
 
 FILES_J=""
-while IFS= read -r f; do
-  [ -n "$f" ] && FILES_J="$FILES_J${FILES_J:+,}\"$(json_escape "$f")\""
-done <<< "$CHANGED"
+_ifs=$IFS; IFS=$'\n'; set -f                 # one field per line; empty lines drop out, no globbing
+for f in $CHANGED; do
+  FILES_J="$FILES_J${FILES_J:+,}\"$(json_escape "$f")\""
+done
+set +f; IFS=$_ifs
 printf '{"timestamp":"%s","session_id":"%s","session_start":"%s","working_dir":"%s","branch":"%s","commits":%s,"changed_files":[%s],"summary":"%s"}\n' \
   "$NOW" "$SID" "$(json_escape "$START")" "$(json_escape "$WD")" "$(json_escape "$BRANCH")" "$COMMITS" "$FILES_J" "$(json_escape "$SUMMARY")" \
   > "$ENTRY.$$" 2>/dev/null && mv -f "$ENTRY.$$" "$ENTRY" 2>/dev/null

@@ -1,4 +1,4 @@
-"""Static contract for the `evals/` behavioral suite (the `claude plugin eval` gate).
+"""Static contract for the `evals/` behavioral suite (the `claude plugin eval --trust-plugin` gate).
 
 Running the eval suite spends API budget and needs the network, so this gate does the part that
 can and must run offline every time: it proves the suite is *well-formed and honest* before anyone
@@ -57,7 +57,7 @@ def _agent_names() -> set[str]:
 class EvalSuiteTests(unittest.TestCase):
     def test_suite_exists_and_is_discoverable(self) -> None:
         """The runner auto-discovers evals/<case>/; there must be cases to discover. The behavioral
-        tier gates what is *reliably* observable in the `claude plugin eval` sandbox — skill
+        tier gates what is *reliably* observable in the claude plugin eval sandbox — skill
         invocation (sentinel, divine) and that a catastrophic command never runs (the guard hook itself
         is tested directly in test_destructive_guard.py). Agent
         dispatchability is gated structurally in test_agents.py (frontmatter, least-privilege, and
