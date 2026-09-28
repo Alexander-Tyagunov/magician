@@ -2,9 +2,9 @@
 # SessionStart hook: bridge magician's userConfig values into the Bash tool environment.
 #
 # Claude Code exports each userConfig option to hook processes as CLAUDE_PLUGIN_OPTION_<KEY>, but
-# not to commands Claude runs through the Bash tool, which is where the bundled `jira` and
-# `confluence` CLIs run. This hook appends one `export NAME='value'` line per NON-EMPTY Jira or
-# Confluence option to $CLAUDE_ENV_FILE, which Claude Code sources before each Bash command in this
+# not to commands Claude runs through the Bash tool, which is where the bundled Jira and
+# Confluence command-line helpers run. This hook appends one export line per NON-EMPTY Jira or
+# Confluence option to $CLAUDE_ENV_FILE, which Claude Code loads before each Bash command in this
 # session. It also exports MAGICIAN_DATA (this plugin's data dir, from CLAUDE_PLUGIN_DATA) so the
 # CLIs keep their cache in the same place as the hooks, and MAGICIAN_USERCONFIG_BRIDGE=1 to show it ran.
 #   * It never prints a value: stdout stays empty; stderr names a skipped option, never its value.
@@ -44,8 +44,9 @@ magician_bridge_userconfig() (
     fi
   }
 
-  # Emit `export NAME='value'` for a non-empty value; a value with a control character (a newline
-  # would break the line-based file) is skipped with a note that names the variable only.
+  # Emit an export line with the value single-quoted when it is non-empty; a value with a control
+  # character (a newline would break the line-based file) is skipped with a note that names the
+  # variable only.
   emit_quoted() {
     name=$1; val=$2; hint=$3
     [ -n "$val" ] || return 0

@@ -14,7 +14,7 @@ prettier, gh, sleep) are stub scripts on a temp PATH that record their argv (osa
 notify-send are stubbed too, only to prove no hook runs them), so no real notification, formatter,
 GitHub call or wait ever happens. Every run gets a fully
 specified env built from temp dirs (HOME, CLAUDE_PLUGIN_DATA, MAGICIAN_HOME, MAGICIAN_SETTINGS,
-CLAUDE_ENV_FILE): nothing is inherited from os.environ, so the real ~/.claude/settings.json and
+CLAUDE_ENV_FILE): nothing is inherited from the parent process, so the real ~/.claude/settings.json and
 ~/.claude/magician are never read or touched.
 """
 from __future__ import annotations
@@ -154,6 +154,42 @@ STRICT_TOKENS = (r"\bpython", r"\bnode\b", r"\bperl\b", r"\bruby\b", r"\bawk\b",
                  r"\bInvoke\b")
 
 
+_BT = "\x60"                         # a backtick, kept out of this file's own text
+_INDIRECT = "$" + "{" + "!"          # indirect-expansion opener, built from parts for the same reason
+_SPAN = re.compile(_BT + "([^" + _BT + "\n]*)" + _BT)
+_LEAD = re.compile(r"^[\s({!]*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*")
+# Quoted text is read left to right, so a plain single- or double-quoted string (one ending in $
+# included) is taken whole and only a real ANSI-C string reaches the check below.
+_ANSI_C = re.compile(r"\$'((?:[^'\\]|\\.)*)'|'[^']*'|\"(?:[^\"\\]|\\.)*\"|\\.")
+
+
+def _computed_program_sites(text: str) -> list:
+    """Text the plugin directory reads as a command whose program is computed at run time. Its
+    launcher scan parses inline-code spans as commands even inside comments, so a span may not hold
+    a command substitution or indirect expansion, nor start with an expansion (the plugin-root
+    variable excepted, which the directory accepts). A comment may not carry indirect-expansion
+    text, and an ANSI-C string may not hold an escaped quote or a backtick (a plain quote scanner
+    loses its place there)."""
+    found = []
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in _SPAN.finditer(re.sub(r"\\.", "  ", line)):
+            span, head = m.group(1), _LEAD.sub("", m.group(1))
+            if ("$(" in span or _INDIRECT in span
+                    or (head.startswith(("$", '"$')) and not head.lstrip('"').startswith("${CLAUDE_PLUGIN_ROOT}"))):
+                found.append((n, m.group(0)))
+        comment = line if line.lstrip().startswith("#") else ""
+        if not comment:
+            tail = re.search(r"(?:^|\s)(#\s.*)$", line)
+            comment = tail.group(1) if tail else ""
+        if _INDIRECT in comment:
+            found.append((n, line.strip()))
+    code = _code(text)
+    for m in _ANSI_C.finditer(code):
+        if m.group(0).startswith("$'") and ("\\'" in m.group(1) or _BT in m.group(1)):
+            found.append((code[:m.start()].count("\n") + 1, m.group(0)))
+    return found
+
+
 class StaticScriptTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -226,6 +262,31 @@ class StaticScriptTests(unittest.TestCase):
                 with self.subTest(script=name, token=token):
                     m = re.search(token, text)
                     self.assertIsNone(m, f"{token}: {m.group(0)!r}" if m else "")
+
+    def test_no_text_reads_as_a_computed_program(self) -> None:
+        """Every script under scripts/, comments included (see _computed_program_sites)."""
+        for path in sorted(SCRIPTS.glob("*.sh")):
+            with self.subTest(script=path.name):
+                self.assertEqual(_computed_program_sites(path.read_text(encoding="utf-8")), [])
+
+    def test_computed_program_scan_flags_samples(self) -> None:
+        """Self-check for the scan above; samples are assembled so this file holds none of them."""
+        d, b = "$", _BT
+        caught = ("# so " + b + d + "(sudo (tool ...))" + b + " is seen",
+                  "# needed so " + b + "ev" + "al \"" + d + "(fetcher ...)\"" + b + " stays visible",
+                  "# " + b + _INDIRECT + "prefix*}" + b + " reads by prefix",
+                  "# a real " + _INDIRECT + "...} is caught",
+                  "# " + b + d + "CMD --flag" + b + " runs it",
+                  "X=" + d + "'a\\'b'", "X=" + d + "'a" + b + "b'",
+                  "re='^x" + d + "'\nX=" + d + "'a\\'b'")
+        missed = ("# " + b + "sudo -u root" + b + " resolves", "# " + b + "-rf \"" + d + "HOME\"" + b,
+                  "# " + b + d + "{CLAUDE_PLUGIN_ROOT}/bin/x" + b + " is named", "X=" + d + "'a\\x27b'",
+                  "echo \"\\" + b + "kg query\\" + b + "\"", "[ \"" + _INDIRECT + "v-}\" = x ]",
+                  "re='^x" + d + "'\nM=\"\\" + b + "k\\" + b + "\"\ny='z'")
+        for s in caught:
+            self.assertTrue(_computed_program_sites(s), s)
+        for s in missed:
+            self.assertFalse(_computed_program_sites(s), s)
 
     def test_ci_watch_reads_only_the_run_number(self) -> None:
         text = self.texts["ci-watch.sh"]
@@ -670,9 +731,9 @@ class PatternDetectTests(_SandboxCase):
         ctx = self._ctx("please use /jira to show PROJ-123 details")
         self.assertIn("mentions /jira", ctx)
         self.assertIn("bundled jira CLI", ctx)
-        self.assertIn("If the user prefers another installed Jira integration, use that.", ctx)
+        self.assertIn("If the user prefers another available Jira integration, use that.", ctx)
         ctx = self._ctx("could you /confluence search for the onboarding page on your-site.atlassian.net")
-        self.assertIn("If the user prefers another installed Confluence integration, use that.", ctx)
+        self.assertIn("If the user prefers another available Confluence integration, use that.", ctx)
 
     def test_nothing_is_written_while_the_status_line_is_off(self) -> None:
         before = self.sb.snapshot()
@@ -734,7 +795,7 @@ class CiWatchTests(_SandboxCase):
 
     def _repo(self, name: str = "proj") -> Path:
         repo = self.sb.repo(name, branch="watch-branch")
-        self.sb.git(repo, "remote", "add", "origin", "https://example.invalid/repo.git")
+        self.sb.git(repo, "remote", "add", "origin", "../origin.git")
         return repo
 
     def test_baseline_is_silent_and_new_failures_report_the_number_only(self) -> None:

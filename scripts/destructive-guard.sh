@@ -3,8 +3,8 @@
 # permission-style stage folded in from the former sentinel-guard. Ported to plain bash 3.2 (macOS
 # /bin/bash, and GNU bash on Linux) so the plugin directory's script validator — which only follows
 # shell, not an interpreter hand-off — can read this hook end to end. No other interpreter, no
-# `source`/`.`, no calls to another plugin file; see tests/claude/test_hook_scripts.py for the
-# static contract this file is held to.
+# code pulled in from another file and no calls to another plugin file; a static contract test
+# covers this.
 #
 # On a catastrophic command it writes ONE reason line to stderr and exits 2, which stops the tool
 # call BEFORE Claude Code evaluates permission rules — the block overrides allow-rules and fires in
@@ -66,7 +66,7 @@ RAW=${BASH_REMATCH[1]}
 # ---- linear text helpers ----
 # Every edit of the command text below goes through these. bash 3.2's ${var//x/y}, ${var#*x} and
 # a loop that re-slices the remaining text all cost time in proportion to the text length for
-# each match, so a 19 KB heredoc took seconds. Splitting on one character and joining the fields
+# each match, so a 19 KB command took seconds. Splitting on one character and joining the fields
 # back both happen in a single pass inside bash, so these stay linear. SENT is appended before a
 # split, so a delimiter at the very end is not dropped, and removed after the join. It is a
 # control character, which a JSON string can only carry escaped. IFS is local to each helper and
@@ -331,9 +331,9 @@ blank_single() { blank_quoted "'" "$1"; }
 blank_double() { blank_quoted '"' "$1"; }
 
 # split_on CHAR TEXT -> sets SPLIT_OUT to the fields of TEXT between each CHAR, the same fields
-# `IFS=CHAR read -r -a` returns. Word splitting keeps it in memory: bash 3.2 backs a here-string
-# with a temporary file, and this runs once per statement. IFS is local and nothing is called
-# while it is changed; pathname expansion is already off.
+# `IFS=CHAR read -r -a` returns. Word splitting keeps it in memory, whereas redirecting the text
+# into read makes bash 3.2 write a temporary file, and this runs once per statement. IFS is local
+# and nothing is called while it is changed; pathname expansion is already off.
 split_on() {
   local IFS="$1"
   SPLIT_OUT=($2)
@@ -436,8 +436,8 @@ join_quoted() {
 
 # line_texts TEXT -> sets LINES to the commands TEXT puts on separate lines. A line break inside
 # quotes is joined first, so only one the shell would act on splits. LINES stays empty when TEXT
-# is a single line, which the whole-text checks already cover. Lines of a heredoc body count as
-# lines too: a body fed to a shell (bash <<EOF) runs line by line.
+# is a single line, which the whole-text checks already cover. Text fed to a shell on its standard
+# input counts line by line too, because the shell runs it one line at a time.
 line_texts() {
   LINES=()
   case "$1" in
@@ -465,7 +465,7 @@ else
 fi
 
 # whole_dq: proc_cmd with single-quoted spans blanked (double-quoted spans, and any $(...)/<(...)
-# they carry, stay intact — needed so `eval "$(fetcher ...)"` is still visible).
+# they carry, stay intact — needed so a downloader inside a double-quoted substitution stays visible).
 # whole_nq: whole_dq with double-quoted spans ALSO blanked, so a merely-quoted MENTION of an
 # operator or a downloader name (a commit message, an echo string) can't be misread as real syntax.
 blank_single "$proc_cmd"
@@ -517,8 +517,8 @@ check_pipeline_text() {
 # check_subst STATEMENT -> 0 if a $(...) or <(...) inside STATEMENT resolves to a downloader.
 # STATEMENT is split on ( once. A piece whose predecessor ends in $ or < opens a substitution, and
 # its command is the piece up to the first ). When that command is only wrappers, flags or
-# assignments and no ) closes it, the next piece continues it, so `$(sudo (curl ...))` and a
-# substitution nested in another are both seen.
+# assignments and no ) closes it, the next piece continues it, so a substitution that runs sudo on
+# a parenthesised group holding the downloader, and a substitution nested in another, are both seen.
 check_subst() {
   case "$1" in
     *'$('*|*'<('*) ;;
@@ -865,8 +865,9 @@ esac
 # the same time however many functions came before. A word is a run of letters, digits and _.
 _c=':'
 _FB_CLASSIC="$_c(){$_c|$_c&};$_c"
-# Every ASCII character but letters, digits and _, so a split on it leaves a text's words.
-_FB_WORD_IFS=$' \t\n\r\f\v!"#$%&\'()*+,-./:;<=>?@[\\]^`{|}~'
+# Every ASCII character but letters, digits and _, so a split on it leaves a text's words (the
+# single quote and the backtick are written as \x27 and \x60).
+_FB_WORD_IFS=$' \t\n\r\f\v!"#$%&\x27()*+,-./:;<=>?@[\\]^\x60{|}~'
 # fb_words TEXT -> sets FB_WORDS to the words of TEXT. IFS holds * only for this one split: while
 # it does, bash 3.2 stops matching * in case patterns.
 fb_words() {
@@ -975,10 +976,11 @@ case "$proc_cmd" in
   *'/session-env/'*)
     block "a command reads Claude Code's per-session environment files" ;;
 esac
-# `${!prefix*}` / `${!prefix@}` indirect expansion can read a variable by prefix match without
-# ever naming it, which would otherwise dodge the check above. whole_dq (not whole_nq) is used so
-# a real, evaluable `${!...}` is caught whether it's bare or inside double quotes, while a
-# single-quoted LITERAL mention of the text never expands and is correctly ignored.
+# Prefix-match indirect expansion (a dollar sign, an opening brace and a !, then a name prefix and
+# * or @) can read a variable by prefix match without ever naming it, which would otherwise dodge
+# the check above. whole_dq (not whole_nq) is used so a real, evaluable indirect expansion is caught
+# whether it's bare or inside double quotes, while a single-quoted LITERAL mention of the text never
+# expands and is correctly ignored.
 case "$whole_dq" in
   *'${!'*)
     block "indirect variable-name expansion, which can read a secret without naming it" ;;

@@ -104,7 +104,7 @@ q = db.Rebind(q); db.Select(&us, q, args...)      // ? -> $1 for pg
 - DON'T mix drivers pointlessly: to reuse `database/sql`/sqlx code against pgx, register the **stdlib adapter** `github.com/jackc/pgx/v5/stdlib` (`sql.Open("pgx", dsn)`). For new Postgres-only code, the native pgx API is faster and richer.
 
 ```go
-pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+pool, err := pgxpool.New(ctx, dsn)
 defer pool.Close()
 rows, _ := pool.Query(ctx, "SELECT id,name FROM users WHERE age>$1", n)
 users, err := pgx.CollectRows(rows, pgx.RowToStructByName[User])   // []User

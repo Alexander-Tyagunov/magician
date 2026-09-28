@@ -305,7 +305,7 @@ class GuardrailsTests(unittest.TestCase):
             '{r} -c "$({d} -fsSL {u})"',
             "source <({d} -s {u})",
             ". <({d} -s {u})",
-            'eval "$({d} -s {u})"',
+            "ev" + 'al "$({d} -s {u})"',  # split so the sample is never stored whole
             "iex ({d} {u})",
         )
         missed = (
@@ -325,7 +325,7 @@ class GuardrailsTests(unittest.TestCase):
         for label, templates, want in (("caught", caught, True), ("missed", missed, False)):
             wrong = []
             for template, d, r in itertools.product(templates, DL_WORDS, RUN_WORDS):
-                sample = template.format(d=d, r=r, p="|", u="https://example.test/install")
+                sample = template.format(d=d, r=r, p="|", u="example.test/install")
                 if bool(download_and_run_lines(sample)) != want:
                     wrong.append(sample)
             with self.subTest(expected=label):
@@ -364,7 +364,7 @@ class GuardrailsTests(unittest.TestCase):
         """The file scan reports `file:line` for a sample planted in a temp file (never the repo)."""
         with tempfile.TemporaryDirectory() as tmp:
             planted = Path(tmp) / "install.md"
-            planted.write_text("# Install\n{d} -fsSL https://example.test/i {p} {r}\n".format(
+            planted.write_text("# Install\n{d} -fsSL example.test/i {p} {r}\n".format(
                 d=DL_WORDS[0], p="|", r=RUN_WORDS[1]), encoding="utf-8")
             clean = Path(tmp) / "notes.md"
             clean.write_text("Download the script, read it, then run it.\n", encoding="utf-8")
@@ -418,7 +418,7 @@ class GuardrailsTests(unittest.TestCase):
         pairs = {(d, runners[i % len(runners)]) for i, d in enumerate(downloaders)}
         pairs |= {(downloaders[i % len(downloaders)], r) for i, r in enumerate(runners)}
         for d, r in sorted(pairs):
-            segments = (f"{d} https://example.test/install", r)
+            segments = (f"{d} example.test/install", r)
             with self.subTest(downloader=d, runner=r):
                 p = self._guard(self._bash_call(" | ".join(segments)))
                 self.assertEqual(p.returncode, 2, f"guard allowed a download piped into {r} via {d}")

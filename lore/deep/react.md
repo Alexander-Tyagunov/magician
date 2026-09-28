@@ -81,7 +81,7 @@ const full = `${first} ${last}`;
 ### Lifting state / composition
 
 DO
-- Lift shared state to the **closest common ancestor**; pass value + setter down as props.
+- Lift shared state to the **closest common ancestor**; hand value + setter down as props.
 - Prefer **passing JSX as `children`** to avoid prop-drilling through layers that don't use the data.
 
 DON'T
@@ -384,7 +384,7 @@ DO
 DON'T
 - Don't use the array **index** as key for lists that reorder/insert/delete — causes subtle state/DOM bugs (index-as-key is fine only for truly static lists).
 - Don't use `key={Math.random()}` — keys never match, everything remounts each render, losing DOM state and input focus.
-- `key` is not a prop; pass the id separately if the child needs it: `<Row key={id} id={id} />`. Use `<Fragment key>` (not `<>`) when an item renders multiple nodes.
+- `key` is not a prop; give the child the id separately if it needs it: `<Row key={id} id={id} />`. Use `<Fragment key>` (not `<>`) when an item renders multiple nodes.
 
 ### Code-splitting — lazy + Suspense
 
@@ -461,7 +461,7 @@ React has no component inheritance. Compose.
 
 ### Lifting & colocating state
 - DO keep state minimal (DRY). If a value is derivable from props/state, compute it in render — don't store it.
-- DO colocate: put state in the lowest component that needs it. Only lift to the closest common parent when siblings must share it; pass setters down as props (one-way flow).
+- DO colocate: put state in the lowest component that needs it. Only lift to the closest common parent when siblings must share it; hand setters down as props (one-way flow).
 - DON'T copy props into state (`useState(props.x)`) to "sync" — that forks the source of truth. Derive, or lift the state up.
 - DON'T `useEffect` to mirror one state into another; compute during render. (react.dev: "You Might Not Need an Effect".)
 

@@ -13,8 +13,9 @@
 #      __MACOSX).
 #   (The Codex package is built and gated on the `codex-plugin` branch.)
 #
-# The behavioral eval suite (`claude plugin eval`) spends API budget and needs the network, so it
-# is OPT-IN and local-only: pass `--evals` (or set MAGICIAN_GATE_EVALS=1). CI never runs it.
+# The behavioral eval suite (claude plugin eval --trust-plugin) spends API budget and needs the
+# network, so it is OPT-IN and local-only: pass `--evals` (or set MAGICIAN_GATE_EVALS=1). CI never
+# runs it.
 #
 # Exit 0 only if every selected tier passes. Any failure → non-zero, and the gate stops reporting
 # GO. Usage:  scripts/gate.sh [--evals] [--threshold N] [--eval-model M] [--judge-model M]
@@ -148,7 +149,7 @@ run_tier "File types (text, SVG, PNG, JPEG, GIF, WebP and fonts; no OS junk)" ch
 # ---- Tier 4: behavioral evals (opt-in, local only) ---------------------------------------------
 if [ "$RUN_EVALS" = "1" ]; then
   if command -v claude >/dev/null 2>&1; then
-    eval_cmd=(claude plugin eval "$ROOT" --trust-plugin --threshold "$THRESHOLD" --json "$ROOT/.gate-evals.json")
+    eval_cmd=(claude plugin eval --trust-plugin "$ROOT" --threshold "$THRESHOLD" --json "$ROOT/.gate-evals.json")
     [ -n "$EVAL_MODEL" ]  && eval_cmd+=(--model "$EVAL_MODEL")
     [ -n "$JUDGE_MODEL" ] && eval_cmd+=(--judge-model "$JUDGE_MODEL")
     run_tier "Behavioral evals (claude plugin eval)" "${eval_cmd[@]}"

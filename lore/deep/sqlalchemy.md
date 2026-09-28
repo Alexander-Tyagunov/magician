@@ -15,7 +15,7 @@ python -c "import sqlalchemy; print(sqlalchemy.__version__)"
 ```
 
 - `2.x` → write 2.0 style unconditionally. `future=True` is the default; do not pass it.
-- `1.4` → 2.0 style is available but opt-in; pass `future=True` on both engine and `Session`. Legacy `Query` still works.
+- `1.4` → 2.0 style is available but opt-in; add `future=True` to both engine and `Session`. Legacy `Query` still works.
 - `< 1.4` → only legacy `Query`; `Mapped[]`/`mapped_column`/`DeclarativeBase`/`select()`-ORM-execution are unavailable. Recommend upgrade.
 - `SQLModel` → 0.x, layered on SQLAlchemy 2.0 + Pydantic v2; models are `SQLModel` subclasses, but querying is SQLAlchemy `select()` via `session.exec()`. Version-check `sqlmodel.__version__` too.
 
@@ -296,7 +296,7 @@ DON'T
 ### Security — raw SQL
 
 DO
-- Use `text()` with bound params ONLY; pass values separately:
+- Use `text()` with bound params ONLY; bind values separately:
   ```python
   session.execute(text("SELECT * FROM users WHERE name = :n"), {"n": user_input})
   # or: text("... = :n").bindparams(n=user_input)

@@ -25,7 +25,7 @@ gemini_generated.png
 # Test artifacts
 /tmp/magician-test/
 
-# Behavioral eval run output (scripts/gate.sh --evals, `claude plugin eval`)
+# Behavioral eval run output (claude plugin eval, run by scripts/gate.sh --evals)
 /.gate-evals*.json
 /.gate-evals*.log
 evals/results/

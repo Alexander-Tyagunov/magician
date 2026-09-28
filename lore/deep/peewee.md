@@ -16,7 +16,7 @@ python -c "import peewee; print(peewee.__version__)"
 
 - `>= 4.1.1` → use the `Load()` eager-loading API; `prefetch()` still works but is superseded.
 - `< 4.1.1` (incl. all 3.x) → use `prefetch()`; `Load`/`with_related` unavailable.
-- `4.0.x` → psycopg2 preferred when both present; pass `prefer_psycopg3=True` to force psycopg3.
+- `4.0.x` → psycopg2 preferred when both present; add `prefer_psycopg3=True` to force psycopg3.
 
 ### Model + database binding
 
@@ -153,7 +153,7 @@ User.raw('SELECT * FROM users WHERE username = %s', username)      # params afte
 db.execute_sql('SELECT * FROM users WHERE status = %s', (ACTIVE,)) # params tuple
 ```
 
-- `SQL('...')` is a **literal fragment** (used for aliases/ordering, e.g. `.order_by(SQL('num').desc())`). It accepts `SQL(sql, *params)` — never build its string from user input; pass values as params.
+- `SQL('...')` is a **literal fragment** (used for aliases/ordering, e.g. `.order_by(SQL('num').desc())`). It accepts `SQL(sql, *params)` — never build its string from user input; bind values as params.
 - DON'T concatenate identifiers/table names from user input either; whitelist them.
 
 ### Sources

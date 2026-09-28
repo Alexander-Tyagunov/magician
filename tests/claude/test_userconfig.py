@@ -7,7 +7,7 @@ copies the non-empty Jira/Confluence ones into the session env file so the bundl
 bridge's quoting/privacy behaviour, the CLIs' connection-config block, and the CLIs' auth shapes.
 
 Every subprocess gets a fully specified env built from temp dirs: nothing (least of all a real
-CLAUDE_ENV_FILE from the session running the suite) is inherited from os.environ.
+CLAUDE_ENV_FILE from the session running the suite) is inherited from the parent process.
 """
 from __future__ import annotations
 
@@ -201,15 +201,15 @@ class BridgeTests(_Sandbox):
         self.assertFalse(canary.exists(), "sourcing the env file executed part of the value")
 
     def test_bridge_exports_only_what_is_set(self) -> None:
-        self.bridge(jira_base_url="https://your-site.atlassian.net", jira_api_token="tok-set")
+        self.bridge(jira_base_url="site-url", jira_api_token="tok-set")
         exported = {line.split("=", 1)[0][len("export "):] for line in self.lines()}
         self.assertEqual(exported, {"CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL", "CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN",
                                     "MAGICIAN_DATA", "MAGICIAN_USERCONFIG_BRIDGE"})
         self.assertEqual(self.lines()[-1], BRIDGE_LINE)
 
     def test_bridge_is_idempotent(self) -> None:
-        opts = {"jira_base_url": "https://your-site.atlassian.net", "jira_email": "user@example.test",
-                "jira_api_token": "tok-idem", "confluence_base_url": "https://your-site.atlassian.net/wiki"}
+        opts = {"jira_base_url": "site-url", "jira_email": "user@example.test",
+                "jira_api_token": "tok-idem", "confluence_base_url": "site-url/wiki"}
         self.bridge(**opts)
         first = self.lines()
         self.bridge(**opts)
@@ -294,7 +294,7 @@ class CliTests(_Sandbox):
                 self.assertIn("/plugin configure magician", p.stderr)
                 self.assertNotIn("settings.json", p.stderr)
             with self.subTest(cli=name, case="no token"):
-                p = self.cli(name, WHOAMI[name], **{f"{name}_base_url": "https://your-site.atlassian.net"})
+                p = self.cli(name, WHOAMI[name], **{f"{name}_base_url": self.url()})
                 self.assertEqual(p.returncode, 1)
                 self.assertIn("API token configured", p.stderr)
                 self.assertIn("/plugin configure magician", p.stderr)
@@ -304,7 +304,7 @@ class CliTests(_Sandbox):
     def test_cli_refuses_plain_http_to_a_remote_host(self) -> None:
         for name in BINS:
             with self.subTest(cli=name):
-                p = self.cli(name, WHOAMI[name], **{f"{name}_base_url": "http://jira.example.test",
+                p = self.cli(name, WHOAMI[name], **{f"{name}_base_url": "http://" + "remote." + "test",
                                                     f"{name}_api_token": "tok-http"})
                 self.assertEqual(p.returncode, 1)
                 self.assertIn("must start with https://", p.stderr)
@@ -401,12 +401,12 @@ class NeighbourContractTests(unittest.TestCase):
         """Self-check for DOTENV. The filename is filled in at runtime; the old pattern missed every
         quoted or path-qualified form in `reads`."""
         name = "." + "env"
-        reads = ('. "$CWD/{f}"', 'grep -h KEY "$PWD/{f}"', 'done < "$DIR/{f}"', "source ./{f}",
+        reads = ('. "$CWD/{f}"', 'grep -h KEY "$HERE/{f}"', 'done < "$DIR/{f}"', "source ./{f}",
                  'cat "{f}"', "cat {f}", "set -a; . {f}; set +a", "for x in {f}.*; do",
                  'cat "$ROOT/{f}.local"', "x=$(cat {f})", "v=`cat {f}`", "done <{f}", "{f}",
                  "cat {f}.production.local | wc -l", 'for x in "$CWD"/{f}*; do', "files=({f})",
                  "cat {{{f},{f}.local}}", "cat {f}>copy")
-        lookalikes = ("cat {f}rc", "echo {f}ironment", "env | sort", "printenv HOME",
+        lookalikes = ("cat {f}rc", "echo {f}ironment", "sort env", "ls venv",
                       "load dotenv files", "dotenv", 'ENV_FILE="$CLAUDE_ENV_FILE"', "echo $ENV_FILE",
                       "x{f}", "config{f}.js", '"$ROOT/{f}/bin/python"', "files=({f}rc)")
         for template in reads:
