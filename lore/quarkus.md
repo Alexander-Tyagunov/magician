@@ -13,6 +13,6 @@ DO test with `@QuarkusTest`; Dev Services auto-start DB/broker containers, no ma
 
 Commands: create `mvn io.quarkus.platform:quarkus-maven-plugin:create -Dextensions=rest`; dev `./mvnw quarkus:dev`; test `./mvnw test`; jar `./mvnw install`; native `./mvnw package -Dnative`.
 
-Deep dive when writing non-trivial quarkus — read lore/quarkus/{core-and-arc,reactive-and-mutiny,rest-and-panache,native-dev-and-testing}.md
+Deep dive when writing non-trivial quarkus — read lore/deep/quarkus.md#{core-and-arc,reactive-and-mutiny,rest-and-panache,native-dev-and-testing}
 
 Sources: quarkus.io/guides (getting-started, hibernate-orm-panache, native-reference); github.com/quarkusio/quarkus

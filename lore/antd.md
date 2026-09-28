@@ -13,7 +13,7 @@ DON'T use removed v6 APIs: `bordered`→`variant`, `bodyStyle`→`styles.body`, 
 
 Commands: `npm i antd @ant-design/icons`.
 
-Deep dive when writing non-trivial antd — read lore/antd/{theming-and-migration}.md
+Deep dive when writing non-trivial antd — read lore/deep/antd.md#{theming-and-migration}
 
 ## Sources
 ant.design/docs/react/introduce, /customize-theme, /migration-v6, /getting-started

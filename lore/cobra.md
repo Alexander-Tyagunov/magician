@@ -17,7 +17,7 @@ DON'T rely on `init()` globals in tests; build fresh commands so `SetArgs`/`SetO
 
 Commands: root+sub via `AddCommand`; hooks `PersistentPreRunE→PreRunE→RunE→PostRunE→PersistentPostRunE`.
 
-Deep dive when writing non-trivial cobra — read lore/cobra/{commands-and-flags}.md
+Deep dive when writing non-trivial cobra — read lore/deep/cobra.md#{commands-and-flags}
 
 ## Sources
 cobra.dev; github.com/spf13/cobra (user_guide, releases); github.com/spf13/viper

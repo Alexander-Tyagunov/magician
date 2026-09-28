@@ -4,6 +4,19 @@
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+__MACOSX/
+
+# Local scratch, drafts and tool state; the repo root is the shipped plugin folder.
+# Drafts are ignored in any folder, tool state at the root.
+/.workspace/
+/.claude/
+/.codex/
+X-*.md
+MEDIUM-*.md
+PRESENTATION*.md
+TRANSMUTE-*.md
+gemini_generated.png
 
 # Editor
 .vscode/settings.json
@@ -19,3 +32,6 @@ evals/results/
 
 __pycache__/
 *.pyc
+
+# The Codex package is generated and committed on the `codex-plugin` branch only
+/plugins/

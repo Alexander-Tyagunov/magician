@@ -1,9 +1,10 @@
 ---
 name: sentinel
-description: Security scan — OWASP Top 10, credential/secret detection, injection surfaces, dependency audit, git-history secret scan, auth spot-check. Read-only; produces a severity-ranked report. Use to audit a codebase for vulnerabilities.
-allowed-tools: Bash, Read, Grep, Glob
+description: Security scan — OWASP Top 10, credential/secret detection, injection surfaces, dependency audit, git-history secret scan, auth spot-check. Never modifies code; produces a severity-ranked report. Use to audit a codebase for vulnerabilities.
+allowed-tools: Read, Grep, Glob, Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit)
 context: fork
-argument-hint: [path]
+background: false
+argument-hint: "[path]"
 ---
 
 # /sentinel — Security Scan
@@ -24,17 +25,16 @@ See [lore/models.md](../../lore/models.md#safety-classifiers-change-which-model-
 
 ## Destructive-command hard gate (always on, not part of a scan)
 
-Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook (`scripts/destructive-guard.sh` → `destructive_guard.py`) that **unconditionally blocks catastrophic commands** — filesystem wipes (`rm -rf /` · `~` · `$HOME` · `--no-preserve-root` · system roots), disk/device destruction (`dd of=/dev/…`, `mkfs`, `wipefs`, `blkdiscard`, `shred /dev/…`, `diskutil erase…`), redirection onto a block device or over `/etc/passwd|shadow|sudoers|fstab`, fork bombs, recursive `chmod`/`chown` on system roots, `curl|bash` / `base64 -d|sh` / `eval "$(…)"`, and `git clean -x`. It exits 2, so the block lands **before permission rules are evaluated** — it overrides `allow` rules and fires in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Wrappers (`sudo`, `env`, `timeout`, …) and `sh -c '…'` payloads are unwrapped first. If you hit `[MAGICIAN HARD-GATE]`, do **not** retry, rephrase, or obfuscate — the human must run it themselves outside the agent. Honest limit (CWE-78): a denylist can't catch every obfuscation, so this is a deterministic net layered under OS sandboxing + auto-mode's classifier + model judgment, not a complete sandbox.
+Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook, `scripts/destructive-guard.sh` (self-contained plain bash — no other interpreter), that **unconditionally blocks catastrophic commands**: recursive deletes of system or home roots, raw writes to disk devices, fork bombs, piping a network download straight into a shell or interpreter, decoding base64 straight into a shell, evaluating a downloaded command substitution, and a Bash command that reads or dumps the plugin's `CLAUDE_PLUGIN_OPTION_*` userConfig secrets (a bare `env`/`printenv`/`export`/`set`/`declare -x`/`declare -p`/`compgen -e`, a read of `/proc/<pid>/environ`, or a direct reference to the secret variable). It exits 2, so the block lands **before permission rules are evaluated** — it overrides `allow` rules and fires in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Common command wrappers (`sudo`, `timeout`, `nohup`, `command`, ...), `( )`/`{ }` grouping and inline `sh -c` payloads (other shell options before the `-c` included) are unwrapped before the check. If a Bash or PowerShell call is refused with a `magician destructive-guard: refused` message, do **not** retry, rephrase, or obfuscate — the human must run it themselves outside the agent. Honest limit (CWE-78): a denylist can't catch every obfuscation, so this is a deterministic net layered under OS sandboxing + auto-mode's classifier + model judgment, not a complete sandbox.
 
 ## Process
 
 ### 1. Static Analysis (via magician-scan)
 ```bash
-SCAN=$(command -v magician-scan 2>/dev/null || echo "${CLAUDE_PLUGIN_ROOT}/bin/magician-scan")
-[ -x "$SCAN" ] && "$SCAN" . || echo "magician-scan not found; skipping static-analysis step (continuing with remaining checks)"
+magician-scan .
 ```
 
-`magician-scan` is plugin-provided (on PATH when the plugin is enabled). If absent, this step degrades gracefully and the remaining checks still run.
+`magician-scan` is plugin-provided (on PATH when the plugin is enabled) and makes no network calls. If the command is not found, note that in the report, skip this step, and continue with the remaining checks.
 
 Reports: hardcoded credentials, private keys, eval() calls, SQL injection via % formatting, innerHTML XSS, dangerouslySetInnerHTML, os.system calls, shell=True subprocess.
 
@@ -46,8 +46,10 @@ Run for detected stack:
 - Rust: `cargo audit`
 - Java: OWASP dependency-check (if configured)
 
+These audit tools reach the network: `npm audit` sends the dependency list to the npm registry; `pip-audit` sends package names and versions to PyPI (or OSV, if you choose it); `safety check` downloads Safety's vulnerability database and, when you use a Safety API key, sends the package list to Safety's servers; `govulncheck` asks the Go vulnerability database at vuln.go.dev about the modules you use, and the go command downloads any module missing from its cache from your module proxy (proxy.golang.org by default); and `cargo audit` downloads the RustSec advisory database from GitHub and, to spot yanked versions, fetches the crates.io index entry of each crate in Cargo.lock. Skip any the user doesn't want run.
+
 ### 2.5 Dependency Supply-Chain Check
-Known-CVE audits miss supply-chain attacks — the vector behind real-world incidents (litellm/PyPI, npm axios) where a plain install exfiltrates SSH keys, cloud creds, and env secrets. Check the install-time surface:
+Known-CVE audits miss supply-chain attacks — the vector behind recent registry compromises where a plain install exfiltrates SSH keys, cloud creds, and env secrets. Check the install-time surface:
 - **Install-time scripts** — flag lifecycle hooks that run arbitrary code on install:
   ```bash
   grep -rEn '"(preinstall|install|postinstall)"\s*:' package.json 2>/dev/null
@@ -60,8 +62,10 @@ Known-CVE audits miss supply-chain attacks — the vector behind real-world inci
 ### 3. Secret Detection
 Check for secrets in git history:
 ```bash
-git log --all --full-history -p -- "*.env" "*.key" "*.pem" 2>/dev/null | grep -i "password\|secret\|key\|token" | head -20
+git log --all -i -G'(password|secret|token|api[_-]?key)[[:space:]]*[:=]' --pretty=format:'%h %ad %an' --date=short --name-only -- '*.env' '*.key' '*.pem' 2>/dev/null | head -40
 ```
+
+This lists commits and files only (it never prints values). Open a specific commit to confirm, but never paste secret values into the report; tell the user to rotate anything found.
 
 ### 4. Auth/Authz Spot Check
 For web archetypes: identify all API endpoints and verify auth middleware is applied.

@@ -13,6 +13,6 @@ DON'T use moved/removed APIs: `LLMChain`, `ConversationChain`, `initialize_agent
 DON'T hardcode keys; DON'T call `.text()`; DON'T pass Pydantic/dataclass agent state.
 DON'T assume 0.0.x monolith imports — provider classes are in partner packages.
 
-Deep dive when writing non-trivial langchain — read lore/langchain/{chains-agents-rag}.md
+Deep dive when writing non-trivial langchain — read lore/deep/langchain.md#{chains-agents-rag}
 
 Sources: docs.langchain.com/oss/python — overview, releases/langchain-v1, migrate/langchain-v1, langchain/models

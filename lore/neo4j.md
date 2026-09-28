@@ -11,7 +11,7 @@ DON'T let supernodes sit on hot traversals — split via intermediate nodes/rel 
 DON'T MERGE a full pattern on unindexed props: scans + duplicate nodes. MATCH-then-CREATE or constrain the key.
 DON'T commit one node/edge per request, or run one giant unbatched tx (heap/GC blowups).
 
-Deep dive when writing non-trivial Neo4j — read lore/neo4j/{cypher-and-modeling,indexes-and-constraints,transactions-and-consistency,performance}.md
+Deep dive when writing non-trivial Neo4j — read lore/deep/neo4j.md#{cypher-and-modeling,indexes-and-constraints,transactions-and-consistency,performance}
 
 ## Sources
 neo4j.com/docs/cypher-manual/current · neo4j.com/developer/kb/neo4j-supported-versions

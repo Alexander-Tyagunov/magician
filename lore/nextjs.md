@@ -15,6 +15,6 @@ DO keep secrets server-only; only `NEXT_PUBLIC_*` env reaches the client.
 
 Commands: `next dev` · `next build` · `next start` · `next info` (no `next lint` — removed in 16; use ESLint/Biome)
 
-Deep dive when writing non-trivial nextjs — read lore/nextjs/{app-router-and-rsc,rendering-and-caching,data-and-server-actions,routing-and-config}.md
+Deep dive when writing non-trivial nextjs — read lore/deep/nextjs.md#{app-router-and-rsc,rendering-and-caching,data-and-server-actions,routing-and-config}
 
 Sources: nextjs.org/docs, /docs/app (routing · caching · upgrading · use-cache)

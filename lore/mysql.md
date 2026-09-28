@@ -14,7 +14,7 @@ DON'T treat MariaDB as drop-in: JSON=LONGTEXT, GTID/auth differ, engines Aria/Co
 DON'T run huge single-stmt DML/blocking ALTER — batch; ALGORITHM=INSTANT/INPLACE + lock_wait_timeout.
 DON'T hold a tx across app/network calls — locks + history-list bloat.
 
-Deep dive when writing non-trivial MySQL — read lore/mysql/{connection-and-pooling,engines-types-and-charset,indexing-and-explain,transactions-and-isolation,replication-and-scale,performance}.md
+Deep dive when writing non-trivial MySQL — read lore/deep/mysql.md#{connection-and-pooling,engines-types-and-charset,indexing-and-explain,transactions-and-isolation,replication-and-scale,performance}
 
 ## Sources
 dev.mysql.com/doc/refman/8.4/en/ · mariadb.com/kb (vs-mysql)

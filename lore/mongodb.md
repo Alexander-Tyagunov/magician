@@ -1,5 +1,5 @@
 # MongoDB — core digest
-Version: 8.0 Major/LTS (Rapid Release 8.3 latest); span 7.0/8.0. Multi-doc ACID txns since 4.0 (replica set)/4.2 (sharded) — design to avoid them. Complements lore/mongoose (ODM).
+Version: 8.0 Major/LTS (Rapid Release 8.3 latest); span 7.0/8.0. Multi-doc ACID txns since 4.0 (replica set)/4.2 (sharded) — design to avoid them. Complements lore/mongoose.md (ODM).
 
 DO model for the query, not normalization: embed bounded 1:1/1:few, reference large/unbounded; 16MB doc cap, no unbounded arrays.
 DO pick a shard key: even spread + high cardinality; monotonic/low-card = hot chunk that caps throughput.
@@ -11,7 +11,7 @@ DON'T use transactions as a schema crutch — costlier than single-doc; embed in
 DON'T leave critical data on `w:1`/`readConcern:"local"` — may read uncommitted/rolled-back.
 DON'T run unindexed queries or `$lookup`-heavy pipelines at scale; no cheap server JOINs.
 
-Deep dive when writing non-trivial MongoDB — read lore/mongodb/{schema-design,indexes-and-query,aggregation-pipeline,transactions-and-consistency,performance}.md
+Deep dive when writing non-trivial MongoDB — read lore/deep/mongodb.md#{schema-design,indexes-and-query,aggregation-pipeline,transactions-and-consistency,performance}
 
 ## Sources
 mongodb.com/docs/manual/{release-notes/8.0,data-modeling,core/indexes,core/sharding-choose-a-shard-key,core/transactions,read-isolation-consistency-recency} (2026-07)

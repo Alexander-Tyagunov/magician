@@ -11,7 +11,7 @@ Version: gRPC-Go v1.82.x; needs current Go (two latest majors). Gen via protoc-g
 
 Commands: `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest` · `protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative f.proto` · buf: `buf lint`·`buf breaking`·`buf generate`
 
-Deep dive when writing non-trivial grpc — read lore/grpc/{services-streaming-interceptors}.md
+Deep dive when writing non-trivial grpc — read lore/deep/grpc.md#{services-streaming-interceptors}
 
 ## Sources
 grpc.io/docs/languages/go · pkg.go.dev/google.golang.org/grpc · protobuf.dev · buf.build/docs

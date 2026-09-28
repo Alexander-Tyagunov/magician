@@ -19,6 +19,6 @@ DON'T
 
 Commands: `sqlc generate` · `vet` · `diff` · `verify` · `compile` · `createdb` · `push` · `init` · `version`.
 
-Deep dive when writing non-trivial sqlc — read lore/sqlc/{config-and-queries}.md
+Deep dive when writing non-trivial sqlc — read lore/deep/sqlc.md#{config-and-queries}
 
 Sources: docs.sqlc.dev (getting-started, config, cli)

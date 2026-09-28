@@ -1,7 +1,7 @@
 # /magic — Phase 5 "What's Next" navigation
 
-Read this when you reach **Phase 5 (navigate & suggest)**. Every block below MUST be
-delivered via the AskUserQuestion tool. Adapt the question text to reflect the actual
+Read this when you reach **Phase 5 (navigate & suggest)**. Each block below is an
+AskUserQuestion configuration; ask it through that tool. Adapt the question text to reflect the actual
 topic researched — these are templates, not literal copy. Always keep "Dig deeper" and
 "Done" as the last two options.
 

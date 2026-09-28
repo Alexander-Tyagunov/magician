@@ -1,9 +1,9 @@
 ---
 name: autopsy
 description: Blameless post-mortem / RCA — gathers facts, reconstructs a timeline, runs 5-Whys, defines action items, writes the post-mortem file and commits it. Use after an incident or outage.
-allowed-tools: Bash(git log:*), Bash(git add:*), Bash(git commit:*), Bash(gh run list:*), Write, Read, AskUserQuestion
+allowed-tools: Read, AskUserQuestion, Edit(./.workspace/shared/postmortems/**), Bash(gh run list *), Bash(kg query *), Bash(git commit -m *)
 disable-model-invocation: true
-argument-hint: [incident name or description]
+argument-hint: "[incident name or description]"
 ---
 
 # /autopsy — Post-Mortem Analysis
@@ -16,7 +16,7 @@ This process is blameless. The goal is to understand what happened and prevent r
 
 ## Autonomy — approve the plan, then run
 
-After Phase 1's three facts are answered (the incident / impact / timeframe gate), run Phases 2–5 — timeline reconstruction, 5-Whys, action items, and drafting the post-mortem — **autonomously**: `git log`, `gh run list`, `kg query`/`blast`, and other reads NEVER pause for permission. A one-line scope preview after Phase 1 (incident, time window, what to scan) is enough; then proceed.
+After Phase 1's three facts are answered (the incident / impact / timeframe gate), run Phases 2–5 — timeline reconstruction, 5-Whys, action items, and drafting the post-mortem — **autonomously**: `git log`, `gh run list`, `kg query`, and other reads need no confirmation question. A one-line scope preview after Phase 1 (incident, time window, what to scan) is enough; then proceed.
 
 Re-gate **only** on this skill's real side effects — show the drafted post-mortem and confirm before the Phase 6 `git add`/`git commit`, and before any Phase 7 `/chronicle` write. See [lore/autonomy.md](../../lore/autonomy.md).
 
@@ -107,9 +107,11 @@ Show the drafted post-mortem, then gate the commit with the **AskUserQuestion** 
 
 **End your turn at the AskUserQuestion call.** Treat any free-form "yes / looks good / approved" as **Commit it**. Only run `git add`/`git commit` on approval:
 ```bash
-git add .workspace/shared/postmortems/
+git add .workspace/shared/postmortems/YYYY-MM-DD-<incident-name>.md
 git commit -m "docs: add post-mortem for <incident>"
 ```
+
+Stage only this post-mortem, so a draft the user chose not to commit stays out. Claude Code asks before the `git add` (only the commit is pre-approved); if the user declines it, stop without committing.
 
 For wide circulation, you can also publish the post-mortem as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose an internal incident's proprietary detail, secrets, or affected-system specifics to a public link.**
 

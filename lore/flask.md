@@ -14,7 +14,7 @@ DON'T run DEBUG in prod (debugger = RCE) or serve via `app.run()` — use gunico
 
 Commands: `flask --app app run --debug` (dev) · `flask routes` · `flask shell` · `pytest` w/ `app.test_client()`
 
-Deep dive when writing non-trivial flask — read lore/flask/{patterns-and-extensions}.md
+Deep dive when writing non-trivial flask — read lore/deep/flask.md#{patterns-and-extensions}
 
 ## Sources
 flask.palletsprojects.com/en/stable/{,web-security/,patterns/,config/,cli/}

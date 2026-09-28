@@ -10,6 +10,6 @@ Concurrency: 21+ use virtual threads via `Executors.newVirtualThreadPerTaskExecu
 Version cue: 21+ virtual threads+records+sealed+switch-patterns; 17 records+sealed; 8-11 bounded pools, no records. Default GC: G1 (ZGC for low-latency).
 Commands: Maven `mvn -q verify`; Gradle `./gradlew build` / `./gradlew test`.
 
-Deep dive when writing non-trivial Java — read lore/java/{versions,language-and-idioms,concurrency,async-and-reactive,io-and-servers,errors-and-resources,performance-and-gc,build-and-testing}.md
+Deep dive when writing non-trivial Java — read lore/deep/java.md#{versions,language-and-idioms,concurrency,async-and-reactive,io-and-servers,errors-and-resources,performance-and-gc,build-and-testing}
 
 Sources: openjdk.org/projects/jdk/25; docs.oracle.com/en/java/javase/25 (+gctuning); JEP 395 Records, 409 Sealed Classes, 441 Pattern Matching for switch, 444 Virtual Threads.

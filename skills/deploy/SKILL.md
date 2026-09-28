@@ -1,9 +1,9 @@
 ---
 name: deploy
 description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
-allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(ls:*), Read, Write, Edit, Monitor, AskUserQuestion
+allowed-tools: Read, Glob, AskUserQuestion, Edit(./.github/workflows/**), Edit(./.gitlab-ci.yml), Edit(./.circleci/**), Bash(gh run list *), Bash(gh run view *), Bash(gh run watch *), Bash(kg query *)
 disable-model-invocation: true
-argument-hint: [create|monitor|fix] [provider]
+argument-hint: "[create|monitor|fix] [provider]"
 ---
 
 # /deploy — CI/CD Management
@@ -107,26 +107,28 @@ security:
 
 ### Monitoring a Pipeline
 
-Prefer the **Monitor tool** — run the pipeline watcher in the background so each status change streams back as an event and you react the moment a job fails, without a blocking `--watch` holding the turn.
+Run `gh run watch` with the Bash tool's background option so it does not hold the turn; you are notified when it exits, and its exit status tells you whether the run passed.
 ```bash
 # GitHub Actions
 gh run list --limit 5
 gh run view <run-id>
-gh run watch <run-id>   # run via the Monitor tool; falls back to a blocking watch pre-v2.1.98
+gh run watch <run-id> --exit-status   # Bash background option; non-zero exit = the run failed
 ```
-For an unattended "until green" wait, pair with **`/goal`**, or schedule with **`/loop`** (self-paces when the interval is omitted; fixed-interval on Bedrock/Vertex).
+For an unattended "until green" wait, pair with **`/goal`**, or schedule with **`/loop`** (self-paces when the interval is omitted).
+
+**Background CI watcher.** Running `/deploy` also starts magician's `ci-watch` monitor for the session. Every 90 s it asks `gh` for the newest failed GitHub Actions run on the current branch; the first check only records a baseline, and each later new failure is reported as a single line with the run ID only (the number in the run's Actions URL). It prints nothing without `gh`, a git repository, an `origin` remote or a branch, and stops after about 3 hours or when the session ends.
 
 ### Fixing a Failed Pipeline (loop until green)
 
 1. Read the failure: `gh run view <id> --log-failed`
 2. Fix the underlying issue
 3. Push the fix
-4. Monitor via the **Monitor tool**: `gh run watch` — on failure, repeat from step 1 until the run is green.
+4. Watch the new run: `gh run watch <id> --exit-status` with the Bash tool's background option — on failure, repeat from step 1 until the run is green.
 
 ## Autonomy — approve the plan, then run
 
-After the requirements answers (the three questions — provider, stages, environments — plus the one-shot create plan), execute the remaining phases **autonomously**: detecting existing pipelines (`ls`), generating the template, and monitoring (`gh run list`/`view`/`watch`, `--log-failed`), plus `kg query`/`blast` and read-only git NEVER pause for permission.
-Re-gate **only** on this skill's real side effects: `Write`/`Edit` of the workflow file, `git add`/`commit`/`push`, and PR create. Do not weaken the write gate above.
+After the requirements answers (the three questions — provider, stages, environments — plus the one-shot create plan), execute the remaining phases **autonomously**: detecting existing pipelines, generating the template, and monitoring (`gh run list`/`view`/`watch`, `--log-failed`), plus `kg query` and read-only git need no confirmation question.
+Re-gate **only** on this skill's real side effects: edits to the workflow file, `git add`/`commit`/`push`, and PR create. Do not weaken the write gate above. Commands outside the pre-approved list above (git writes, `gh pr create`) still show Claude Code's normal permission prompt.
 Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Obstacles

@@ -11,5 +11,5 @@ DO `$state.raw` for large immutable data (reassign, never mutate); `$state.snaps
 
 Commands: `npx sv create app` · `sv add <addon>` · `sv migrate svelte-5` · `sv check`
 
-Deep dive when writing non-trivial svelte — read lore/svelte/{runes-and-reactivity,components-and-stores}.md
+Deep dive when writing non-trivial svelte — read lore/deep/svelte.md#{runes-and-reactivity,components-and-stores}
 Sources: svelte.dev/docs/svelte {what-are-runes,$state,$effect,basic-markup}, svelte.dev/docs/cli

@@ -16,5 +16,5 @@ DON'T mix `keras` and `tf.keras` imports in one project.
 
 Commands: `pip install tensorflow` · `python -c "import tensorflow as tf; print(tf.__version__, tf.config.list_physical_devices('GPU'))"`
 
-Deep dive when writing non-trivial tensorflow — read lore/tensorflow/{keras3-and-training}.md
+Deep dive when writing non-trivial tensorflow — read lore/deep/tensorflow.md#{keras3-and-training}
 Sources: tensorflow.org/api_docs · keras.io/getting_started · github.com/tensorflow/tensorflow/releases

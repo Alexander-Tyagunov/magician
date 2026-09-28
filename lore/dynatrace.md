@@ -13,7 +13,7 @@ DON'T run bare `fetch logs` — bound with timeframe + filter; Grail bills by by
 DON'T log secrets/PII/tokens; mask at ingest if unavoidable.
 DON'T hardcode threshold or over-log hot loops — one structured event per action.
 
-Deep dive when writing non-trivial Dynatrace — read lore/dynatrace/{dql-log-queries,log-ingestion-and-attributes,problems-and-alerting}.md
+Deep dive when writing non-trivial Dynatrace — read lore/deep/dynatrace.md#{dql-log-queries,log-ingestion-and-attributes,problems-and-alerting}
 
 ## Sources
 docs.dynatrace.com/docs — DQL commands & functions (summarize, makeTimeseries, matchesPhrase) · Grail ingestion, OpenPipeline

@@ -12,7 +12,7 @@ DO run least-privilege, require TLS, vault secrets; log slow queries + spans —
 
 DON'T hold a tx open across network calls/think-time.
 
-Deep dive when writing non-trivial databases — read lore/databases/{connection-pooling,transactions-and-isolation,parameterized-queries-and-injection,indexing-and-query-plans,migrations-and-schema-changes,resilience-and-observability}.md
+Deep dive when writing non-trivial databases — read lore/deep/databases.md#{connection-pooling,transactions-and-isolation,parameterized-queries-and-injection,indexing-and-query-plans,migrations-and-schema-changes,resilience-and-observability}
 
 ## Sources
 cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html; postgresql.org/docs/current/transaction-iso.html; postgresql.org/docs/current/errcodes-appendix.html; opentelemetry.io/docs/specs/semconv/database

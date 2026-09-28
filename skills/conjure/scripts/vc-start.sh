@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
 # Start the Magician Visual Design Companion
 # Usage: vc-start.sh <design-dir> <project-name>
+#
+# Screens stay in <design-dir> (e.g. .workspace/shared/designs/<date>-<feature>). The companion's
+# runtime state — click/chat event log, outbox, pid and server-info — goes to the matching folder
+# under .workspace/local/ (always gitignored), so companion chat never lands in the shared tree.
 
 set -euo pipefail
 
 DESIGN_DIR="${1:?Usage: vc-start.sh <design-dir> <project-name>}"
 PROJECT_NAME="${2:?Missing project-name}"
+DESIGN_DIR="${DESIGN_DIR%/}"
 
-mkdir -p "$DESIGN_DIR/screens" "$DESIGN_DIR/state" "$DESIGN_DIR/screenshots"
+case "$DESIGN_DIR" in
+  *.workspace/shared/*) STATE_DIR="${DESIGN_DIR%%.workspace/shared/*}.workspace/local/${DESIGN_DIR#*.workspace/shared/}/state" ;;
+  *) STATE_DIR="$DESIGN_DIR/state" ;;
+esac
+
+mkdir -p "$DESIGN_DIR/screens" "$DESIGN_DIR/screenshots" "$STATE_DIR"
+# Keep the state folder out of git even when .workspace/local/ is not in .gitignore yet.
+[ -e "$STATE_DIR/.gitignore" ] || printf '*\n' > "$STATE_DIR/.gitignore"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$DESIGN_DIR/state/server.pid"
-SERVER_INFO="$DESIGN_DIR/state/server-info"
+PID_FILE="$STATE_DIR/server.pid"
+SERVER_INFO="$STATE_DIR/server-info"
 
 # Kill stale server if running
 if [ -f "$PID_FILE" ]; then
@@ -25,7 +37,7 @@ if ! command -v node &>/dev/null; then
   exit 1
 fi
 
-node "$SCRIPT_DIR/server.cjs" "$DESIGN_DIR" "$PROJECT_NAME" &
+node "$SCRIPT_DIR/server.cjs" "$DESIGN_DIR" "$PROJECT_NAME" "$STATE_DIR" &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
 

@@ -14,7 +14,7 @@ DON'T page with OFFSET on large sets; keyset-page an indexed key.
 DON'T assume writes durable — default is none (async).
 DON'T chat per-doc; batch KV ops + subdoc for single fields.
 
-Deep dive — read lore/couchbase/{data-model-and-collections,sqlpp-query-and-indexes,durability-and-consistency,performance}.md
+Deep dive — read lore/deep/couchbase.md#{data-model-and-collections,sqlpp-query-and-indexes,durability-and-consistency,performance}
 
 ## Sources
 docs.couchbase.com/server/current · learn/data/{durability,scopes-and-collections}

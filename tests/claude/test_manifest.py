@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 import unittest
 
@@ -53,19 +54,26 @@ class ManifestIntegrityTests(unittest.TestCase):
         self.assertNotIn("version", self.marketplace["plugins"][0],
                          "marketplace entry must not carry version; plugin.json is authoritative")
 
+    def test_marketplace_description_matches_manifest(self) -> None:
+        """The marketplace entry and the manifest describe the same plugin in the same words, so a
+        listing never advertises less (or more) than the plugin that installs."""
+        self.assertEqual(self.marketplace["plugins"][0].get("description"), self.plugin["description"])
+
     def test_version_is_synchronized_across_release_surfaces(self) -> None:
-        """Every place a release stamps its version must agree, so `4.x` never means two things.
-        Mirrors the Codex packaging gate from the Claude side so the Claude suite stands alone."""
+        """Every place a release stamps its version must agree, so `4.x` never means two things."""
         version = self.plugin["version"]
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         top = re.search(r"(?m)^## \[([^]]+)\]", changelog)
         self.assertIsNotNone(top, "no versioned heading in CHANGELOG.md")
         self.assertEqual(top.group(1), version, "CHANGELOG top entry != plugin version")
 
+        # The README carries no version stamp to keep in sync: it has no badges and no remote images
+        # (the plugin directory accepts Markdown images of bundled files only).
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        badge = re.search(r"shields\.io/badge/version-([\d.]+)-", readme)
-        self.assertIsNotNone(badge, "no version badge in README.md")
-        self.assertEqual(badge.group(1), version, "README badge != plugin version")
+        self.assertNotRegex(readme, r"(?i)shields\.io", "README.md must not carry a shields.io badge")
+        remote = re.findall(r"!\[[^\]]*\]\(\s*<?((?:https?:)?//[^)\s>]+)", readme)
+        remote += re.findall(r"(?i)<img\b[^>]*\bsrc\s*=\s*[\"']?((?:https?:)?//[^\"'\s>]+)", readme)
+        self.assertEqual(remote, [], f"README.md must not reference remote images: {remote}")
 
     def test_declared_component_dirs_exist(self) -> None:
         """The runtime discovers agents/, skills/, and hooks/ by convention. If the manifest names a
@@ -89,16 +97,50 @@ class ManifestIntegrityTests(unittest.TestCase):
                 self.assertTrue((ROOT / conventional).is_dir(),
                                 f"missing conventional component dir: {conventional}/")
 
-    def test_no_forbidden_artifacts_shipped_in_component_dirs(self) -> None:
-        """The plugin's shipped surface (agents/skills/hooks/scripts) must never contain scratch or
-        marketing artifacts — a distributed plugin should carry only what it runs."""
-        forbidden = re.compile(r"^(X-|MEDIUM-|PRESENTATION)")
-        for component in ("agents", "skills", "hooks", "scripts"):
-            for path in (ROOT / component).rglob("*"):
-                if path.is_file():
-                    with self.subTest(path=str(path.relative_to(ROOT))):
-                        self.assertFalse(forbidden.match(path.name),
-                                         f"scratch/marketing artifact shipped: {path.name}")
+    def test_codex_marketplace_points_at_codex_plugin_branch(self) -> None:
+        """Codex installs from the generated package on the `codex-plugin` branch. Main keeps only the
+        marketplace entry that points there, so no Codex build output may come back onto main."""
+        codex = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(codex["plugins"]), 1)
+        source = codex["plugins"][0]["source"]
+        self.assertEqual(source["source"], "git-subdir")
+        self.assertEqual(source["ref"], "codex-plugin")
+        self.assertEqual(source["path"], "./plugins/magician")
+        self.assertEqual(source["url"], self.plugin["repository"] + ".git")
+        for rel in (".codex-plugin", "plugins", "tests/codex", "hooks/codex-hooks.json",
+                    "scripts/codex-destructive-guard.sh", "scripts/codex_destructive_guard.py"):
+            path = ROOT / rel
+            files = [path] if path.is_file() else [
+                p for p in path.rglob("*") if p.is_file() and "__pycache__" not in p.parts]
+            with self.subTest(path=rel):
+                self.assertEqual(files, [], f"Codex build output belongs on the codex-plugin branch: {rel}")
+
+    def test_no_forbidden_artifacts_are_tracked(self) -> None:
+        """The plugin folder is the repo root, so every tracked file ships. Scratch and marketing
+        drafts, local tool state and OS junk must never be tracked anywhere in it, nor sit untracked
+        where .gitignore misses them (the next `git add -A` would stage them)."""
+        forbidden_name = re.compile(r"^(X-|MEDIUM-|PRESENTATION|TRANSMUTE-)|^gemini_generated\.png$"
+                                    r"|^(\.DS_Store|Thumbs\.db|desktop\.ini)$")
+        forbidden_dir = {".workspace", ".claude", ".codex", "__MACOSX", "__pycache__"}
+        tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--cached", "--others",
+                                  "--exclude-standard"], capture_output=True, text=True, check=True).stdout.split("\0")
+        self.assertGreater(len(tracked), 50)
+        for rel in filter(None, tracked):
+            parts = rel.split("/")
+            with self.subTest(path=rel):
+                self.assertFalse(forbidden_name.search(parts[-1]), f"scratch or junk file tracked: {rel}")
+                self.assertFalse(forbidden_dir & set(parts[:-1]), f"local state tracked: {rel}")
+
+    def test_gitignore_keeps_local_scratch_out(self) -> None:
+        """A plain `git add -A` (which /seal runs) must not pick up the local drafts and tool state."""
+        names = ["X-thread.md", "MEDIUM-post.md", "PRESENTATION_v2.md", "TRANSMUTE-notes.md",
+                 "gemini_generated.png", ".workspace/shared/specs/a.md", ".claude/launch.json",
+                 ".codex/CODEX-TEST.md", "skills/x/.DS_Store", "__MACOSX/a", "desktop.ini",
+                 "skills/magic/MEDIUM-notes.md", "agents/X-thread.md", "lore/PRESENTATION.md",
+                 "docs/TRANSMUTE-x.md", "assets/gemini_generated.png"]
+        out = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "--no-index", *names],
+                             capture_output=True, text=True).stdout.split()
+        self.assertEqual(sorted(out), sorted(names))
 
 
 if __name__ == "__main__":

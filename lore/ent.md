@@ -18,7 +18,7 @@ DON'T
 
 Commands: ent new <Name> | go generate ./ent | atlas migrate diff | atlas migrate apply | client.Schema.Create (dev only)
 
-Deep dive when writing non-trivial ent — read lore/ent/{schema-and-codegen}.md
+Deep dive when writing non-trivial ent — read lore/deep/ent.md#{schema-and-codegen}
 
 ## Sources
 entgo.io/docs/{getting-started,schema-def,crud,migrate,versioned-migrations}; pkg.go.dev/entgo.io/ent

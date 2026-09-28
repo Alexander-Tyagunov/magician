@@ -12,7 +12,7 @@ DON'T `search "text"` over all tables (slow); start from a table name.
 DON'T log secrets/PII into custom dimensions — they persist.
 DON'T compare a String column numerically without a cast (`toint(Level)>=10`).
 
-Deep dive when writing non-trivial Azure Monitor — read lore/azure-monitor/{kql-log-queries,app-insights-and-ingestion,workspaces-and-alerts}.md
+Deep dive when writing non-trivial Azure Monitor — read lore/deep/azure-monitor.md#{kql-log-queries,app-insights-and-ingestion,workspaces-and-alerts}
 
 ## Sources
 learn.microsoft.com/azure/azure-monitor/logs/{get-started-queries,data-platform-logs} · app/app-insights-overview

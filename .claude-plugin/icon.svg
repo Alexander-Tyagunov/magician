@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="t">
+  <title id="t">magician</title>
+  <rect width="512" height="512" rx="128" fill="#6960FC"/>
+  <path d="M152 360V248a52 52 0 0 1 104 0v112M256 248a52 52 0 0 1 104 0v112" fill="none" stroke="#FFFFFF" stroke-width="56" stroke-linejoin="round"/>
+  <path d="M392 88l13 35 35 13-35 13-13 35-13-35-35-13 35-13z" fill="#E3DFFF"/>
+</svg>

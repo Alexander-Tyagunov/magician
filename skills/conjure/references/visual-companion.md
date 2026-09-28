@@ -1,180 +1,30 @@
 # Visual Companion — Setup, Screen Types, and Capture
 
-Read this when the user chooses a **visual mode (A, B, or D)** at GATE 0. It covers permission setup, starting/stopping the companion server, the interaction loop, all screen-type templates, and Playwright capture of approved designs.
-
----
-
-## Permission Setup (Visual modes only)
-
-Immediately after the user picks A or B, check whether permissions already exist:
-
-```bash
-python3 -c "
-import json, os
-s = json.load(open('.claude/settings.json')) if os.path.exists('.claude/settings.json') else {}
-allows = s.get('permissions', {}).get('allow', [])
-print('ok' if any('.workspace' in a for a in allows) else 'missing')
-"
-```
-
-If `missing`, use the `AskUserQuestion` tool with this exact configuration — do not write any text before calling it:
-
-```json
-{
-  "questions": [
-    {
-      "question": "The visual companion writes design screens, reads click events, runs a local server, and takes Playwright screenshots. Add wildcard allow-rules to .claude/settings.json so Claude Code doesn't prompt for each operation?",
-      "header": "Permissions",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Add all (Recommended)",
-          "description": "Three groups of rules: (1) .workspace/** — reading/writing design screens and click events between your browser and Claude; (2) companion server — starting/stopping the local Node.js server that serves prototypes; (3) Playwright — navigating to prototypes, filling forms, taking screenshots of approved designs, and saving them as spec references. Without these, you'll be prompted on every individual action."
-        },
-        {
-          "label": "Skip",
-          "description": "Companion still works — you'll approve each file write, each server command, and each Playwright action (navigate, screenshot, form interaction) individually."
-        }
-      ]
-    }
-  ]
-}
-```
-
-If **Add all**: first ask about Playwright access — use `AskUserQuestion` with this exact configuration:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which Playwright tools should Claude have access to?",
-      "header": "Playwright",
-      "multiSelect": false,
-      "options": [
-        {
-          "label": "Grant all playwright",
-          "description": "mcp__playwright__* — allows all current and future Playwright tools automatically without listing each one."
-        },
-        {
-          "label": "Grant suggested (Recommended)",
-          "description": "The 5 tools used by this plugin: navigate, take_screenshot, wait_for, snapshot, close."
-        },
-        {
-          "label": "Grant specific",
-          "description": "Choose which Playwright tool groups to allow — I'll ask you to pick from grouped categories with descriptions."
-        }
-      ]
-    }
-  ]
-}
-```
-
-If **Grant specific**: follow up with:
-
-```json
-{
-  "questions": [
-    {
-      "question": "Which Playwright tool groups do you want to allow?",
-      "header": "Playwright",
-      "multiSelect": true,
-      "options": [
-        {
-          "label": "Navigation",
-          "description": "browser_navigate, browser_navigate_back, browser_wait_for, browser_tabs — browse to URLs, go back, wait for conditions, manage browser tabs"
-        },
-        {
-          "label": "Screenshots",
-          "description": "browser_take_screenshot, browser_snapshot — capture visual state and accessibility tree of pages"
-        },
-        {
-          "label": "Interaction",
-          "description": "browser_click, browser_type, browser_fill_form, browser_press_key, browser_hover, browser_drag, browser_select_option — simulate user input and mouse actions"
-        },
-        {
-          "label": "Inspection",
-          "description": "browser_evaluate, browser_run_code, browser_console_messages, browser_network_requests, browser_file_upload, browser_resize, browser_handle_dialog, browser_close — execute JS, inspect network traffic, handle dialogs, control browser state"
-        }
-      ]
-    }
-  ]
-}
-```
-
-Determine `playwright_rules` from the answer:
-- **Grant all playwright** → `["mcp__playwright__*"]`
-- **Grant suggested** → `["mcp__playwright__browser_navigate", "mcp__playwright__browser_take_screenshot", "mcp__playwright__browser_wait_for", "mcp__playwright__browser_snapshot", "mcp__playwright__browser_close"]`
-- **Grant specific** → combine rules for each selected group:
-  - Navigation: `["mcp__playwright__browser_navigate", "mcp__playwright__browser_navigate_back", "mcp__playwright__browser_wait_for", "mcp__playwright__browser_tabs"]`
-  - Screenshots: `["mcp__playwright__browser_take_screenshot", "mcp__playwright__browser_snapshot"]`
-  - Interaction: `["mcp__playwright__browser_click", "mcp__playwright__browser_type", "mcp__playwright__browser_fill_form", "mcp__playwright__browser_press_key", "mcp__playwright__browser_hover", "mcp__playwright__browser_drag", "mcp__playwright__browser_select_option"]`
-  - Inspection: `["mcp__playwright__browser_evaluate", "mcp__playwright__browser_run_code", "mcp__playwright__browser_console_messages", "mcp__playwright__browser_network_requests", "mcp__playwright__browser_file_upload", "mcp__playwright__browser_resize", "mcp__playwright__browser_handle_dialog", "mcp__playwright__browser_close"]`
-
-Then write these rules to `.claude/settings.json`, then say "Permissions saved — starting the companion..." and proceed:
-
-```python
-import json, os
-
-path = ".claude/settings.json"
-s = json.load(open(path)) if os.path.exists(path) else {}
-s.setdefault("permissions", {}).setdefault("allow", [])
-
-# playwright_rules determined by AskUserQuestion above
-playwright_rules = [...]  # replace with actual list from user's answer
-
-new_rules = [
-    "Write(.workspace/**)",
-    "Read(.workspace/**)",
-    "Bash(> .workspace/**)",
-    "Bash(mkdir* .workspace/**)",
-    "Bash(bash *conjure/scripts/vc-*.sh*)",
-    "Bash(node *conjure/scripts/server.cjs*)",
-    "Bash(open http://localhost:*)",
-] + playwright_rules
-for r in new_rules:
-    if r not in s["permissions"]["allow"]:
-        s["permissions"]["allow"].append(r)
-
-os.makedirs(".claude", exist_ok=True)
-json.dump(s, open(path, "w"), indent=2)
-print("Permissions saved.")
-```
-
-If **Skip** (or rules already existed): proceed immediately to start the companion server. Do not ask again this session.
+Read this when the user chooses a **visual mode (A, B, or D)** at GATE 0. It covers starting/stopping the companion server, the interaction loop, all screen-type templates, and Playwright capture of approved designs. The placeholders `<design-dir>`, `<state-dir>` and `<url-base>` are defined under "Paths used below" in [../SKILL.md](../SKILL.md).
 
 ---
 
 ## Visual Companion
 
-The visual companion is a local Node.js WebSocket server that serves interactive HTML design screens in the user's browser. Each screen is a file Claude writes to disk; the server auto-reloads the browser on every new file.
+The visual companion is a local Node.js WebSocket server that serves interactive HTML design screens in the user's browser. Each screen is a file Claude writes to disk; the server auto-reloads the browser on every new file. It listens on 127.0.0.1 only, on a random port between 49152 and 65535, and exits on its own after 90 minutes with no activity and no open browser tab.
 
 **URL format:** `http://localhost:{PORT}/magician/{project}/v{n}/`
 
 - `{project}` — derived from the project directory name or feature name
 - `v{n}` — prototype version, starting at 1; increment when you meaningfully revise a complete design (not every tweak)
-- Each version has its own directory: `.workspace/shared/designs/{date}-{feature}/screens/v{n}/`
+- Each version has its own directory: `<design-dir>/screens/v{n}/`
 
 ### Starting the Companion
 
-Use the appropriate output directory based on mode:
-- Modes A/B/C: `DESIGN_DIR=".workspace/shared/designs/$(date +%Y-%m-%d)-<feature>"`
-- Mode D: `DESIGN_DIR=".workspace/shared/mockups/$(date +%Y-%m-%d)-<feature>"`
+Pick the design folder by mode, using today's date:
+- Modes A/B: `.workspace/shared/designs/YYYY-MM-DD-<feature>`
+- Mode D: `.workspace/shared/mockups/YYYY-MM-DD-<feature>`
 
-```bash
-DESIGN_DIR=".workspace/shared/[designs|mockups]/$(date +%Y-%m-%d)-<feature>"
-mkdir -p "$DESIGN_DIR"
-SERVER_JSON=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/conjure/scripts/vc-start.sh" "$DESIGN_DIR" "<project-name>")
-VC_URL=$(echo "$SERVER_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['url_base'])")
-VC_STATE="$DESIGN_DIR/state"
-VC_SCREENS="$DESIGN_DIR/screens"
-```
+Run the start command from SKILL.md with that literal path — `vc-start.sh` creates the `screens/` and `screenshots/` folders and the local state folder itself, so no `mkdir` is needed. It prints the server info as JSON; read `url_base` (this is `<url-base>`) and `state_dir` (this is `<state-dir>`) from that output and use the literal values from then on.
 
-Then open the browser automatically:
-```bash
-open "${VC_URL}/v1/" 2>/dev/null || xdg-open "${VC_URL}/v1/" 2>/dev/null || true
-```
+Then open the browser: `open <url-base>/v1/` on macOS, or `xdg-open <url-base>/v1/` on Linux.
 
-Tell the user: "Design companion open at `{VC_URL}/v1/` — take a look while I explain the options."
+Tell the user: "Design companion open at `<url-base>/v1/` — take a look while I explain the options."
 Do NOT add further ceremony. One line.
 
 ### The Interaction Loop
@@ -182,24 +32,17 @@ Do NOT add further ceremony. One line.
 After writing each screen file:
 1. Tell user the current URL + a 1–2 sentence text summary of what's on screen
 2. End your turn — let the user look, click choices, and respond
-3. On your next turn: read `$VC_STATE/events.jsonl` — one JSON line per click, last line = final selection
+3. On your next turn: read `<state-dir>/events.jsonl` — one JSON line per click; handle only the lines after the ones you already read (the cursor), and treat the last new click as the final selection
 4. Read their terminal message for textual feedback
 5. **Iterating same screen:** write `screen-v2.html`, `screen-v3.html` etc. (always a new filename — the server reloads on any new file)
 6. **Moving to next design step:** write a semantically different filename
-7. **Major revision (new prototype):** increment version: write to `$VC_SCREENS/v2/approaches.html`, tell user the new URL
+7. **Major revision (new prototype):** increment version: write to `<design-dir>/screens/v2/approaches.html`, tell user the new URL
 
-Clear `events` file yourself before each new screen write so previous clicks don't pollute next reads:
-```bash
-> "$VC_STATE/events.jsonl"
-```
+The events file is append-only and is never cleared, so clicks and chat made before a new screen push are not lost; the cursor is what keeps old clicks out of the next read.
 
 ### Stopping the Companion
 
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/conjure/scripts/vc-stop.sh" "$DESIGN_DIR"
-```
-
-Call this at the end of conjure (after spec commit) or if user switches to TEXT_ONLY.
+Run the stop command from SKILL.md (`vc-stop.sh <design-dir>`). Call it at the end of conjure (after spec commit) or if user switches to TEXT_ONLY.
 
 ---
 
@@ -207,7 +50,7 @@ Call this at the end of conjure (after spec commit) or if user switches to TEXT_
 
 ### 1. Approach Comparison
 
-Write as a **fragment** (no `<!DOCTYPE>`) to `$VC_SCREENS/v1/approaches.html`.
+Write as a **fragment** (no `<!DOCTYPE>`) to `<design-dir>/screens/v1/approaches.html`.
 The server wraps it in the Magician frame template.
 
 ```html
@@ -281,7 +124,7 @@ The server wraps it in the Magician frame template.
 
 ### 2. Architecture Diagram
 
-Write as a fragment to `$VC_SCREENS/v1/architecture.html`. Use real Mermaid syntax.
+Write as a fragment to `<design-dir>/screens/v1/architecture.html`. Use real Mermaid syntax. The frame template loads Mermaid 10.9.3 from cdn.jsdelivr.net in the user's browser; without network access the diagram source shows as plain text.
 
 ```html
 <h1 class="page-title">[Feature] Architecture</h1>
@@ -330,7 +173,7 @@ For UI features, write **two files** for every mockup. The server serves the HTM
 
 Apply frontend-design quality rules — these are not optional:
 
-**Typography:** Always pair two fonts. Pick one display font (Playfair Display, Fraunces, Syne, Bebas Neue, Clash Display) and one body font (Space Grotesk, DM Sans, Inter only if combined with a strong display). Load from Google Fonts.
+**Typography:** Always pair two fonts. Pick one display font (Playfair Display, Fraunces, Syne, Bebas Neue, Clash Display) and one body font (Space Grotesk, DM Sans, Inter only if combined with a strong display). Give each a fallback stack (for example `'Fraunces', Georgia, serif`) so the mockup renders with fonts already on the user's machine. Do not link hosted web fonts (such as Google Fonts) by default — the user's browser would fetch them from that host every time the page opens. Add a hosted font `<link>` only when the user asks for the exact face, and say which host it loads from.
 
 **Color:** Define a dominant color + accent as CSS variables at `:root`. Never use plain white + purple gradients. Use dramatic palettes: near-black with electric accents, warm cream with deep ink, desaturated blue-grey with gold.
 
@@ -342,7 +185,7 @@ Apply frontend-design quality rules — these are not optional:
 
 Write the CSS file **first**, then the HTML that references it.
 
-**`$VC_SCREENS/v1/mockup.css`** — all styles, no HTML. **v3.8.0:** build it from the two-tier token system in [design-tokens.md](design-tokens.md) — Tier-1 primitives + Tier-2 semantics, with **both** a light (`:root`) and dark (`[data-theme="dark"]`) tonal map of the SAME tokens (same layout, only tones differ), and reference **only** `var(--semantic-*)` in component rules (never a primitive or raw hex). Ship a `[data-theme]` toggle and make it responsive across the chosen viewports. Stamp `data-mid="…"` on key elements so the session can act on clicks/selections. The block below is just illustrative shape:
+**`<design-dir>/screens/v1/mockup.css`** — all styles, no HTML. **v3.8.0:** build it from the two-tier token system in [design-tokens.md](design-tokens.md) — Tier-1 primitives + Tier-2 semantics, with **both** a light (`:root`) and dark (`[data-theme="dark"]`) tonal map of the SAME tokens (same layout, only tones differ), and reference **only** `var(--semantic-*)` in component rules (never a primitive or raw hex). Ship a `[data-theme]` toggle and make it responsive across the chosen viewports. Stamp `data-mid="…"` on key elements so the session can act on clicks/selections. The block below is just illustrative shape:
 
 ```css
 :root {
@@ -358,7 +201,7 @@ Write the CSS file **first**, then the HTML that references it.
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
@@ -380,7 +223,7 @@ nav {
   border-bottom: 1px solid var(--border);
 }
 
-.nav-logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 700; }
+.nav-logo { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 700; }
 .nav-links { display: flex; gap: 24px; margin-left: auto; }
 .nav-links a { font-size: 14px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
 .nav-links a:hover { color: var(--text); }
@@ -405,7 +248,7 @@ nav {
 .hero-eyebrow::before { content: ''; width: 24px; height: 1px; background: var(--accent2); }
 
 .hero-title {
-  font-family: 'Fraunces', serif;
+  font-family: 'Fraunces', Georgia, serif;
   font-size: clamp(40px, 5vw, 70px);
   font-weight: 700; line-height: 1.05; letter-spacing: -2px;
   margin-bottom: 24px;
@@ -458,7 +301,7 @@ nav {
 .card-delta { font-size: 12px; color: var(--accent2); margin-top: 4px; }
 ```
 
-**`$VC_SCREENS/v1/mockup.html`** — HTML only, no `<style>` block:
+**`<design-dir>/screens/v1/mockup.html`** — HTML only, no `<style>` block:
 
 ```html
 <!DOCTYPE html>
@@ -467,8 +310,6 @@ nav {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>[Feature] Mockup v1</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;1,9..144,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="mockup.css">
 </head>
 <body>
@@ -528,7 +369,7 @@ screens/v1/
 
 Each HTML links to its own sibling CSS (`<link rel="stylesheet" href="home.css">`). Pages link to each other with relative hrefs (`<a href="dashboard.html">`), which works both via the server and when opened directly from the filesystem.
 
-Keep `:root` variables and font imports **identical across all CSS files** so the design system is consistent. Write all pages in one pass so variables stay in sync.
+Keep `:root` variables and font stacks **identical across all CSS files** so the design system is consistent. Write all pages in one pass so variables stay in sync.
 
 ### 5. Design Iteration
 
@@ -569,15 +410,9 @@ To compare two versions side by side, write a comparison screen:
 
 ### 6. Bumping to a New Prototype Version
 
-Bump from `v1` to `v2` when you are making a fundamentally different design (not just tweaks). Create the new version directory and tell the user the new URL:
+Bump from `v1` to `v2` when you are making a fundamentally different design (not just tweaks). Write the new screens to `<design-dir>/screens/v2/` (writing a file creates its folder), then open `<url-base>/v2/` (`open` on macOS, `xdg-open` on Linux).
 
-```bash
-mkdir -p "$VC_SCREENS/v2"
-# write screens to $VC_SCREENS/v2/
-open "${VC_URL}/v2/" 2>/dev/null || true
-```
-
-Tell user: "Prototype v2 ready at `{VC_URL}/v2/` — opening it now."
+Tell user: "Prototype v2 ready at `<url-base>/v2/` — opening it now."
 
 ---
 
@@ -587,7 +422,7 @@ When the user approves a design screen, capture it as a screenshot for spec embe
 
 1. Navigate Playwright to the current URL:
    ```
-   mcp__playwright__browser_navigate({ url: "{VC_URL}/v{n}/" })
+   mcp__playwright__browser_navigate({ url: "<url-base>/v{n}/" })
    ```
 2. Wait for Mermaid/animations to complete:
    ```
@@ -597,4 +432,4 @@ When the user approves a design screen, capture it as a screenshot for spec embe
    ```
    mcp__playwright__browser_take_screenshot({ fullPage: false })
    ```
-4. Note what was captured for the spec. The approved HTML file in `$VC_SCREENS/v{n}/` is the persistent design artifact — reference it in the spec.
+4. Note what was captured for the spec. The approved HTML file in `<design-dir>/screens/v{n}/` is the persistent design artifact — reference it in the spec.

@@ -7,7 +7,7 @@ conserving its behavior, not its environment.
 
 ## B1 (PORT) — target-app fit
 
-Point `kg` at the **target** repo (`kg check`/`kg init` there, then `kg query`/`kg neighbors` for the
+Point `kg` at the **target** repo (`kg check` there, offering `kg init` if it isn't indexed and building only on the user's yes, then `kg query`/`kg neighbors` for the
 insertion area). Map the **target seam**: where the feature plugs in (routes/screens, data layer,
 config, auth), what already exists to reuse, and what conventions the target imposes (stack, patterns,
 design tokens). Record it in `<change_plan_seed><weave_shape>` and the parity contract's `<boundary>`.

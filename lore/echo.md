@@ -13,7 +13,7 @@ Version: v4.15.4 latest v4 (encoded-path hardening; the %2F GHSA-vfp3 fix landed
 
 Commands: `go get github.com/labstack/echo/v4` · `go run .` · `go test ./...`
 
-Deep dive when writing non-trivial echo — read lore/echo/{routing-middleware-binding}.md
+Deep dive when writing non-trivial echo — read lore/deep/echo.md#{routing-middleware-binding}
 
 ## Sources
 echo.labstack.com/{guide/binding,middleware/secure,middleware/cors,middleware/recover} · pkg.go.dev/labstack/echo/v4 & v5 · github.com/labstack/echo/releases

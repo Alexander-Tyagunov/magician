@@ -31,7 +31,7 @@ gh pr view <N|url> --json reviews,comments      # prior review context (don't re
 ```bash
 glab mr view <N|url>
 glab mr diff <N|url>
-glab ci status            # or: glab mr view --json | jq '.pipeline'
+glab ci status            # pipeline status for the MR's source branch
 ```
 **Branch / working tree:**
 ```bash

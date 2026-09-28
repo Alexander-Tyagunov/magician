@@ -12,7 +12,7 @@ DON'T Scan hot paths or skip/offset — cursor-paginate.
 DON'T pick low-cardinality/monotonic partition keys — hot partitions throttle.
 DON'T assume strong reads: eventual unless ConsistentRead=true (2× cost, single-Region); GSI always eventual.
 
-Deep dive (non-trivial) — read lore/dynamodb/{data-modeling-single-table,partition-keys-and-capacity,secondary-indexes-gsi-lsi,streams-and-transactions,performance}.md
+Deep dive (non-trivial) — read lore/deep/dynamodb.md#{data-modeling-single-table,partition-keys-and-capacity,secondary-indexes-gsi-lsi,streams-and-transactions,performance}
 
 ## Sources
 docs.aws.amazon.com/amazondynamodb/latest/developerguide — capacity modes · NoSQL design · transaction-apis · Streams

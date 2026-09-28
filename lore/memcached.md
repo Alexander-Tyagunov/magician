@@ -14,7 +14,7 @@ DON'T pack whole collections into one key — split it; oversized items evict an
 DON'T assume durability or HA — restart/eviction loses data; rebuild from source of truth.
 DON'T over-thread (`-t`, default 4); very high values run slower.
 
-Deep dive when writing non-trivial Memcached — read lore/memcached/{usage-and-slabs,scaling-and-hashing,performance}.md
+Deep dive when writing non-trivial Memcached — read lore/deep/memcached.md#{usage-and-slabs,scaling-and-hashing,performance}
 
 ## Sources
 - https://docs.memcached.org/ — server guide, protocols

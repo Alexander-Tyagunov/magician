@@ -18,6 +18,6 @@ DON'T
 
 Commands: `npm i @vanilla-extract/css` + dev plugin (`@vanilla-extract/vite-plugin` | webpack-plugin | esbuild-plugin | next-plugin); add-ons `recipes|sprinkles|dynamic`.
 
-Deep dive when writing non-trivial vanilla-extract — read lore/vanilla-extract/{zero-runtime-landscape}.md
+Deep dive when writing non-trivial vanilla-extract — read lore/deep/vanilla-extract.md#{zero-runtime-landscape}
 
 Sources: vanilla-extract.style/documentation/*; npm @vanilla-extract/*

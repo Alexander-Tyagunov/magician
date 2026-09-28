@@ -17,6 +17,6 @@ DON'T
 - Removed/renamed: `bg-opacity-*`→`/50`, `flex-shrink`→`shrink`, `shadow`→`shadow-sm`, `ring`→`ring-3`, `outline-none`→`outline-hidden`, `bg-gradient-*`→`bg-linear-*`.
 - Default border/ring color is `currentColor` in v4, not gray. Don't lean on `@apply`.
 
-Deep dive when writing non-trivial tailwind — read lore/tailwind/{v3-vs-v4-and-config,utility-patterns}.md
+Deep dive when writing non-trivial tailwind — read lore/deep/tailwind.md#{v3-vs-v4-and-config,utility-patterns}
 
 Sources: tailwindcss.com/docs/upgrade-guide, /blog/tailwindcss-v4

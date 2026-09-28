@@ -1,8 +1,8 @@
 ---
 name: divine
 description: Thorough, research-grounded code review of a change, PR, or MR — multi-lens (correctness, security, simplification, tests), severity-ranked with impact + fix, configurable depth, optional PR comments. Use when asked to review code, "do a code review", "review this PR/MR", "review my changes/diff/branch", or audit a changeset before merge.
-allowed-tools: Read, Grep, Glob, Bash, Monitor, Task, AskUserQuestion, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__query-docs
-argument-hint: [PR/MR URL · branch · "working tree" · monitor <repo>]
+allowed-tools: Read, Grep, Glob, Task, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(gh pr view *), Bash(gh pr diff *), Bash(gh pr checks *), Bash(gh pr list *), Bash(glab mr view *), Bash(glab mr diff *), Bash(glab mr list *), Bash(glab ci status *), Bash(git merge-base *), Bash(kg check), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *), Edit(./.workspace/shared/diffs/**), Edit(~/.claude/plugins/data/magician-*/divine-monitor.json)
+argument-hint: "[PR/MR URL · branch · \"working tree\" · monitor <repo>]"
 ---
 
 # /divine — Deep Code Review
@@ -15,7 +15,7 @@ This is the **on-demand, PR/MR-aware** reviewer. Its pipeline-internal counterpa
 
 ## Auto-invocation
 
-The `UserPromptSubmit` hook injects a strong activation hint on review intent ("review this PR/MR", "do a code review", "audit/evaluate this MR", "review my changes/diff"). When it fires — or you otherwise pick up review intent — announce:
+On review intent ("review this PR/MR", "do a code review", "audit/evaluate this MR", "review my changes/diff"), magician's `UserPromptSubmit` hook adds a one-line note to context that this skill covers code review. When this skill runs on that intent, announce:
 > "Auto-activating /divine for a structured code review. Let me establish the change context, then confirm how deep to go."
 
 ## Phase 0 — Establish change context
@@ -43,7 +43,7 @@ Confirm model/effort per the chosen depth — prefer the latest code-optimal mod
 
 ## Autonomy — approve the plan, then run
 
-Once the **depth & grounding** gate (Phase 1) is answered, run the review to completion **autonomously**: change-context reads (Phase 0), `kg query`/`blast` blast-radius, the parallel reviewer subagents (Phase 2), adversarial verification (Phase 3), and the consolidated report (Phase 4) — reading, searching, and read-only git NEVER pause for permission. Re-gate **only** on this skill's real side effects: posting the review to a PR/MR (Phase 5, `gh`/`glab` write) and, if fixes are implemented (Phase 6), `Write`/`Edit`, `git add`/`commit`/`push`, and PR create. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+Once the **depth & grounding** gate (Phase 1) is answered, run the review to completion **autonomously**: change-context reads (Phase 0), `kg query`/`blast` blast-radius, the parallel reviewer subagents (Phase 2), adversarial verification (Phase 3), and the consolidated report (Phase 4) — reading, searching, the `gh`/`glab` reads above and read-only git need no confirmation question. Re-gate **only** on this skill's real side effects: posting the review to a PR/MR (Phase 5, `gh`/`glab` write) and, if fixes are implemented (Phase 6), file edits, `git add`/`commit`/`push`, and PR create. Web searches and page fetches are not pre-approved, so each shows Claude Code's normal permission prompt; version-correct library docs come from context7 when it is installed, and wider research goes through `/magic`. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Phase 2 — Multi-lens review
 
@@ -95,11 +95,13 @@ For a PR/MR you don't own locally, prefer leaving inline review comments (Phase 
 Run /divine on a schedule to watch repos for new PRs/MRs and review them automatically:
 > `/loop 1h review open PRs in <owner/repo> at standard depth and post the review`
 > or: `/loop 1h /divine monitor <owner/repo>`
-> or **omit the interval** (`/loop review open PRs in <owner/repo> …`) to **self-pace** — Claude widens the gap on quiet repos and tightens it on active ones (fixed-interval on Bedrock/Vertex).
-
-To react the moment a PR opens or gets new commits (instead of waiting for the next tick), prefer the **Monitor tool** over clock polling — see [references/monitor-mode.md](references/monitor-mode.md).
+> or **omit the interval** (`/loop review open PRs in <owner/repo> …`) to **self-pace** — Claude widens the gap on quiet repos and tightens it on active ones.
 
 Unattended runs have no one to answer gates, so depth and post-policy are **pre-set** when the loop starts, the run is **idempotent** (reviews a PR/MR only when its head SHA hasn't been reviewed yet), and it **never implements or pushes fixes** — review (and optional review comments) only. Full flow in [references/monitor-mode.md](references/monitor-mode.md).
+
+**Posting in monitor mode.** Monitor mode posts reviews without asking again each time **only** when the user asked for posting in the prompt that started the loop — that request is the pre-authorization. Without it, monitor mode reports only. The posting commands are not pre-approved, so Claude Code still shows its normal permission prompt for them unless the session's permission mode allows them.
+
+**Monitor-mode state file:** `${CLAUDE_PLUGIN_DATA}/divine-monitor.json` — a map `"owner/repo#number" -> last-reviewed head SHA`, used only to skip PRs/MRs already reviewed at their current head. Delete it to force a full re-review.
 
 ## Obstacles
 

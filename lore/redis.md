@@ -14,7 +14,7 @@ DON'T ship O(N) or huge MULTI on the hot path.
 DON'T assume durability/HA by default — set AOF/RDB + Sentinel/Cluster.
 DON'T expect server-side JOINs or cross-slot multi-key.
 
-Deep dive when writing non-trivial Redis — read lore/redis/{data-structures-and-patterns,persistence-and-eviction,clustering-and-ha,performance}.md
+Deep dive when writing non-trivial Redis — read lore/deep/redis.md#{data-structures-and-patterns,persistence-and-eviction,clustering-and-ha,performance}
 
 ## Sources
 redis.io/docs/latest/{develop/reference/eviction,commands/scan} · redis.io/legal/licenses · valkey.io (2026-07)

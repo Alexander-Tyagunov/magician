@@ -17,7 +17,7 @@ DON'T
 Flyway: `V`__ versioned, `R`__ repeatable, `U`__ undo (paid); sep `__`; default `classpath:db/migration`; table `flyway_schema_history`. Cmds: migrate, info, validate, baseline, repair.
 Liquibase: changelog + changesets keyed by id+author (XML/YAML/JSON/SQL); tables DATABASECHANGELOG(+LOCK); define rollback. Cmds: update, status, rollback, validate, changelog-sync.
 
-Deep dive when writing non-trivial db-migrations — read lore/db-migrations/{flyway,liquibase,patterns-and-safety}.md
+Deep dive when writing non-trivial db-migrations — read lore/deep/db-migrations.md#{flyway,liquibase,patterns-and-safety}
 
 ## Sources
 documentation.red-gate.com/flyway; docs.liquibase.com; github.com/flyway/flyway

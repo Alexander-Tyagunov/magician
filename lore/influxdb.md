@@ -13,7 +13,7 @@ DON'T over-widen v3 tag sets — bigger primary key = slower sort (v3 tolerates 
 DON'T rely on local disk alone for retention/HA; v3 targets object storage.
 DON'T use InfluxDB as a general log store or query without a time filter.
 
-Deep dive when writing non-trivial InfluxDB — read lore/influxdb/{data-model-and-line-protocol,queries-influxql-flux-sql,performance}.md
+Deep dive when writing non-trivial InfluxDB — read lore/deep/influxdb.md#{data-model-and-line-protocol,queries-influxql-flux-sql,performance}
 
 ## Sources
 docs.influxdata.com: influxdb3/core (line-protocol, best-practices), influxdb/v2, influxdb/v1

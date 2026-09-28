@@ -1,8 +1,8 @@
 ---
 name: blueprint
 description: Converts an approved spec into a TDD task plan with a parallelism map (PARALLEL vs SEQUENTIAL), saved to .workspace/shared/plans/. Use after a spec is approved, before implementation.
-allowed-tools: Read, Write, Glob, AskUserQuestion
-argument-hint: [spec-file-path]
+allowed-tools: Read, Glob, AskUserQuestion, Edit(./.workspace/shared/plans/**)
+argument-hint: "[spec-file-path]"
 ---
 
 # /blueprint — Task Planning
@@ -32,7 +32,7 @@ If the spec file path is not clear from context, ask: "Which spec should I plan 
 
 ## Autonomy — approve the plan, then run
 
-Steps 1–5 run as **one autonomous pass** — read the spec + `.workspace/shared/research/`, map files, decompose, build the parallelism map, and write the plan to `.workspace/shared/plans/`. Reading and searching those inputs, and writing that plan file, NEVER pause for permission. The **only** gate is step 6: presenting the plan for approval. The real downstream side effects — implementation `Write`/`Edit`, `git add`/`commit`/`push`, PR create/merge — are gated later by `/orchestrate` and `/ward`, not here. See [lore/autonomy.md](../../lore/autonomy.md).
+Steps 1–5 run as **one autonomous pass** — read the spec + `.workspace/shared/research/`, map files, decompose, build the parallelism map, and write the plan to `.workspace/shared/plans/`. Reading and searching those inputs, and writing that plan file (the one path this skill pre-approves), need no confirmation question. The **only** gate is step 6: presenting the plan for approval. The real downstream side effects — implementation file edits, `git add`/`commit`/`push`, PR create/merge — are gated later by `/orchestrate` and `/ward`, not here. See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Global Constraints — inherited by every task
 

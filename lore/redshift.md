@@ -12,7 +12,7 @@ DON'T trust PK/FK/UNIQUE — informational, NOT enforced; invalid keys → wrong
 DON'T write row-by-row or per-row UPDATE/DELETE — batch every write; no indexes to add.
 DON'T default to INTERLEAVED SORTKEY (VACUUM REINDEX cost) or assume full Postgres — some types/functions unsupported.
 
-Deep dive — read lore/redshift/{distribution-and-sort-keys,loading-and-maintenance,performance,performance-and-concurrency,spectrum-and-federation}.md
+Deep dive — read lore/deep/redshift.md#{distribution-and-sort-keys,loading-and-maintenance,performance,performance-and-concurrency,spectrum-and-federation}
 
 ## Sources
 docs.aws.amazon.com/redshift/latest/dg: c_best-practices-best-practices · t_Defining_constraints · aws.amazon.com/redshift/pricing

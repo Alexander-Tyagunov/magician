@@ -19,7 +19,7 @@ Don't let lenses silently inherit the session model — set each `Task`'s tier a
 
 Each agent sees **none** of this conversation. Every `Task` prompt must be self-contained (see [lore/subagent-context.md](../../../lore/subagent-context.md)).
 
-**Prep once, pass by reference (don't re-dump):** before dispatching, write the diff a single time to a patch artifact (`.workspace/shared/diffs/<ref>.patch` if `.workspace/` exists, else `"$(git rev-parse --git-dir)/magician-review.patch"`) and — if a kg index exists — compute the impact set with `kg blast`/`kg neighbors` on the changed files. Pass both **by path / as a compact list** to every lens. Pasting the full diff (or whole-file contents) into each prompt copies a large payload into the parent's context once per lens and bloats every agent prompt — pass the patch path instead; agents `Read` it.
+**Prep once, pass by reference (don't re-dump):** before dispatching, write the diff a single time to a patch artifact, `.workspace/shared/diffs/<ref>.patch`, with a plain redirect — e.g. `gh pr diff <N> > .workspace/shared/diffs/pr-<N>.patch` or `git diff <base>...HEAD > .workspace/shared/diffs/<branch>.patch` (the skill's edit rule covers that folder). If `.workspace/shared/diffs/` does not exist yet, create it first with `mkdir -p .workspace/shared/diffs`, which shows a normal permission prompt. Then, if a kg index exists, compute the impact set with `kg blast`/`kg neighbors` on the changed files. Pass both **by path / as a compact list** to every lens. Pasting the full diff (or whole-file contents) into each prompt copies a large payload into the parent's context once per lens and bloats every agent prompt — pass the patch path instead; agents `Read` it.
 
 Build each prompt from this template:
 
@@ -40,7 +40,7 @@ SCOPE — review ONLY the changed files; read surrounding code as needed for con
 CONVENTIONS: <house style / lint rules / patterns this repo follows>
 OUT OF SCOPE: <anything deliberately excluded per the ticket>
 
-For each issue, verify it is real and reachable before reporting it. Default to NOT reporting if uncertain.
+Report every issue you find, at any severity, with your honest CONFIDENCE. Check each against the surrounding code so the FILE:line and IMPACT are accurate; a separate verification pass filters false positives afterwards.
 
 FINDING FORMAT (repeat per finding; if none, return "NO FINDINGS"):
 SEVERITY: Critical | High | Medium | Low

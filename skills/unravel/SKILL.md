@@ -1,8 +1,8 @@
 ---
 name: unravel
 description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use whenever a problem is reported or something misbehaves — "I have a bug / it's broken / not working / crashing", an error/exception/stack trace, a regression, a test failure, or a production issue/outage when the app is deployed. Grounds the investigation with /magic + the knowledge graph (kg query/blast) for comprehensive root-cause research.
-allowed-tools: Read, Grep, Glob, Bash, Monitor, AskUserQuestion
-argument-hint: <bug or error description>
+allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *)
+argument-hint: "<bug or error description>"
 ---
 
 # /unravel — Systematic Debugging
@@ -29,7 +29,7 @@ State your hypothesis and evidence BEFORE reading any code or making any change.
 
 ### Autonomy — approve the plan, then run
 
-Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomously**: reading code, `grep`, `kg query`/`blast`/`neighbors`, adding targeted logging, running the failing case (incl. under Monitor), and running the test suite NEVER pause for permission. Re-gate **only** on the real side effect — the **commit** (`git add`/`commit`/`push`, per Phase 4). This does not weaken the Phase 1 HARD-GATE. See [lore/autonomy.md](../../lore/autonomy.md).
+Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomously**: don't stop to ask the owner before reading code, `grep`, `kg query`/`blast`/`neighbors`, adding targeted logging, running the failing case, or running the test suite. This skill pre-approves reads and the `kg` lookups only; reproduction commands, test runs, and edits go through Claude Code's normal permission prompt unless the user runs in auto mode or approves them. Re-gate **only** on the real side effect — the **commit** (`git add`/`commit`/`push`, per Phase 4). This does not weaken the Phase 1 HARD-GATE. See [lore/autonomy.md](../../lore/autonomy.md).
 
 ### Phase 2: Evidence Gathering
 5. **Read relevant code** — only the code related to the hypothesis. If a knowledge-graph index exists, `kg query "<symptom/error/symbol>"` to jump straight to the relevant `file:line` (and `kg neighbors`/`kg blast` to see what interacts with it) instead of broad greps — then read just those ranges.
@@ -38,7 +38,7 @@ Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomous
    - In a **multi-component system** (CI → build → sign, api → service → db), instrument each component boundary — log what enters and exits every hop — and run the reproduction **once** to locate exactly where the flow breaks before changing anything. Fix where it actually breaks, not the first place you suspect.
 7. **Run the failing case** — capture exact output
    - **Reproduce it consistently before proposing a fix** — pin down the exact steps or inputs that trigger it every time. A bug you can't reproduce on demand isn't understood yet, and a fix for it is a guess you can't verify.
-   - For an intermittent or async bug, run the reproduction under the **Monitor tool** so the failing event (a 5xx, a crash, a specific log line) streams back the moment it happens instead of tailing by hand.
+   - For an intermittent or async bug, run the reproduction in the background with the Bash tool and read its output when you're notified it exits (or check it as it runs), so the failing event (a 5xx, a crash, a specific log line) is captured instead of tailed by hand.
    - If the bug involves an unfamiliar error, library, or framework behavior, use `/magic` (context7 + web) to gather external evidence — known issues, version-specific bugs, correct API usage — and fold it into the hypothesis ranking in Phase 3.
 
 ### Phase 3: Hypothesis Testing

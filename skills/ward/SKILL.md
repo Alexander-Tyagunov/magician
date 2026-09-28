@@ -1,8 +1,8 @@
 ---
 name: ward
 description: TDD engine and enforcer — red/green/refactor, one behavior at a time. Use while implementing any feature or bugfix, or to execute a specific blueprint task with TDD.
-allowed-tools: Read, Edit, Write, Bash
-argument-hint: [behavior to implement | task <N>]
+allowed-tools: Read, Grep, Glob
+argument-hint: "[behavior to implement | task <N>]"
 ---
 
 # /ward — TDD Engine
@@ -11,7 +11,7 @@ Enforce strict red → green → refactor discipline for all implementation work
 
 ## Match the project's conventions (read before you write)
 
-Before implementing, discover and read the repo's own standards — `CLAUDE.md`, any `code-review.md` / `CONTRIBUTING` / `STYLEGUIDE`, and the linter/formatter config — and mirror the patterns already in the files you touch. Conventions a formatter can't enforce (async/await over `.then`, error-wrapping, naming, FR-CA vs FR) are still binding — apply them **as you write**, not after a reviewer flags them. See [lore/code-standards.md](../../lore/code-standards.md).
+Before implementing, discover and read the repo's own standards — `CLAUDE.md`, any `code-review.md` / `CONTRIBUTING` / `STYLEGUIDE`, and the linter/formatter config — and mirror the patterns already in the files you touch. Conventions a formatter can't enforce (async/await over `.then`, error-wrapping, naming, locale-code format) are still binding — apply them **as you write**, not after a reviewer flags them. See [lore/code-standards.md](../../lore/code-standards.md).
 
 ## Effort
 
@@ -21,7 +21,7 @@ The failing test *is* the verification. Don't add a self-review step after green
 
 ## Autonomy — approve the plan, then run
 
-Once the spec is settled — the failing test you can write, or the plan task in `.workspace/shared/plans/` — run the remaining phases (RED → GREEN → REFACTOR and the per-task steps) autonomously: reading `CLAUDE.md`/standards, searching, `kg query`/`blast`, running the tests, and read-only git (`git status`, diff) NEVER pause for permission between phases. Re-gate only on real side effects — the per-task `git add`/`commit`/`push`. Beyond that, pause only for genuine spec ambiguity (the "cannot write the test first" case below). See [lore/autonomy.md](../../lore/autonomy.md).
+Once the spec is settled — the failing test you can write, or the plan task in `.workspace/shared/plans/` — run the remaining phases (RED → GREEN → REFACTOR and the per-task steps) autonomously: don't stop to ask the owner between phases before reading `CLAUDE.md`/standards, searching, `kg query`/`blast`, running the tests, or read-only git (`git status`, diff). This skill pre-approves only Read/Grep/Glob, because TDD edits arbitrary source and no honest path limit exists: `kg` lookups, test runs, and edits go through Claude Code's normal permission prompt unless the user runs in auto mode or approves them. Re-gate only on real side effects — the per-task `git add`/`commit`/`push`. Beyond that, pause only for genuine spec ambiguity (the "cannot write the test first" case below). See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Two modes
 

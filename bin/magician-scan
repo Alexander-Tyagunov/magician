@@ -29,6 +29,8 @@ PATTERNS = [
     (r'dangerouslySetInnerHTML', "dangerouslySetInnerHTML — XSS risk"),
 ]
 
+REDACTED_LABELS = {"hardcoded credential", "private key in file", "AWS credential"}
+
 SKIP_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg',
                    '.woff', '.ttf', '.eot', '.map', '.lock', '.sum'}
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build', 'vendor'}
@@ -51,11 +53,15 @@ for root, dirs, files in os.walk(target):
         for pattern, label in PATTERNS:
             for m in re.finditer(pattern, content):
                 line_no = content[:m.start()].count('\n') + 1
+                snippet = m.group(0)
+                if label in REDACTED_LABELS:
+                    # Never print the secret itself: keep the key name, drop the value.
+                    snippet = re.split(r'\s*=', snippet, maxsplit=1)[0] + " = <redacted>" if "=" in snippet else "<redacted>"
                 issues.append({
                     "file": fpath,
                     "line": line_no,
                     "issue": label,
-                    "snippet": m.group(0)[:80]
+                    "snippet": snippet[:80]
                 })
 
 if issues:

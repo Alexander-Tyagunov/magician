@@ -14,7 +14,7 @@ Schema: `strict:true` (default) drops unknown fields on save; `timestamps:true`;
 
 Commands: `npm i mongoose` (no official CLI).
 
-Deep dive when writing non-trivial mongoose — read lore/mongoose/{schemas-and-models,queries-and-pitfalls}.md
+Deep dive when writing non-trivial mongoose — read lore/deep/mongoose.md#{schemas-and-models,queries-and-pitfalls}
 
 ## Sources
 mongoosejs.com/docs/{guide,queries,api/mongoose,migrating_to_8}.html; npm mongoose (2026-07)

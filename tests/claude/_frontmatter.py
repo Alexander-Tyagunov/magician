@@ -6,6 +6,7 @@ not implement full YAML, only the single-line scalar fields these files rely on.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -16,14 +17,17 @@ def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
     clear failure rather than a silent empty dict.
     """
     text = path.read_text(encoding="utf-8")
-    if not text.startswith("---"):
+    all_lines = text.splitlines()
+    if not all_lines or all_lines[0].rstrip() != "---":
         raise ValueError(f"{path}: no opening frontmatter fence")
-    parts = text.split("---", 2)
-    if len(parts) < 3:
+    # The closing fence is the next line that is exactly `---` — never a `---` inside a value
+    # (e.g. an argument-hint or description that happens to contain three dashes).
+    end = next((n for n in range(1, len(all_lines)) if all_lines[n].rstrip() == "---"), None)
+    if end is None:
         raise ValueError(f"{path}: unterminated frontmatter")
-    _, raw, body = parts
+    lines = all_lines[1:end]
+    body = "\n".join(all_lines[end + 1:])
     fields: dict[str, str] = {}
-    lines = raw.splitlines()
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -45,6 +49,13 @@ def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
                 i += 1
             joined = (" " if folded else "\n").join(c for c in collected if c or not folded)
             fields[key] = joined.strip()
+        elif len(value) >= 2 and value[0] == value[-1] == '"':
+            # Double-quoted scalar: decode its escapes (\" inside an argument-hint) when it is
+            # JSON-compatible, which the strict gate requires; otherwise just drop the quotes.
+            try:
+                fields[key] = json.loads(value)
+            except ValueError:
+                fields[key] = value[1:-1]
         else:
             fields[key] = value.strip('"').strip("'")
     return fields, body.strip()

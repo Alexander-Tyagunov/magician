@@ -15,6 +15,6 @@ Version cue (match namespace to Hibernate major — don't mix):
 - 5.x: `javax.persistence.*`, Java 8. (Jakarta EE 9 renamed `javax`→`jakarta`.)
 - Entity: `@Entity` (non-final, no-arg ctor), `@Id`, `@GeneratedValue`. Config keys: `jakarta.persistence.jdbc.url/user/password` (6/7); `hibernate.dialect` rarely needed. jOOQ 3.21+; MyBatis 3.5.x.
 
-Deep dive when writing non-trivial orm — read lore/orm/{jpa-hibernate,jooq,mybatis,choosing-and-pitfalls}.md
+Deep dive when writing non-trivial orm — read lore/deep/orm.md#{jpa-hibernate,jooq,mybatis,choosing-and-pitfalls}
 
 Sources: docs.hibernate.org/orm/current · jooq.org/doc/latest/manual · mybatis.org/mybatis-3

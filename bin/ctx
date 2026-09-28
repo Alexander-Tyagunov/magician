@@ -1,29 +1,41 @@
 #!/usr/bin/env python3
-"""magician ctx — self-managed context: size tracking, compaction capsule, learnings.
+"""magician ctx — context size readout and the per-project learnings store.
 
-Honest limits (a plugin cannot beat these — see skills/chronicle/references/context-mgmt.md):
-  * No live token count via any API — we parse the transcript JSONL for the LATEST
-    assistant `usage` (input + cache_read + cache_creation), the real occupancy the
-    model just saw. Fallback: file bytes / 4, tagged ~approx.
-  * Cannot force, schedule, or steer compaction. PreCompact can only BLOCK. So we
-    CAPTURE a capsule at PreCompact and RE-INJECT it at the next prompt / on resume
-    (the events that actually support additionalContext).
+Commands:
+  pct --session <id> | --transcript <path>
+                            Context occupancy of one session, from the latest assistant `usage`
+                            numbers (input + cache_read + cache_creation) in that session's
+                            transcript file: --session resolves exactly
+                            <config dir>/projects/<encoded cwd>/<id>.jsonl (no search, no other
+                            file is opened); --transcript names the file directly. Only usage and
+                            model fields are read, never message text, and nothing is stored.
+                            Fallback when no usage is found: file bytes / 4, tagged ~approx.
+  learn --from-git [--session ID | --since ISO]
+                            Adds decision-style commit subjects ("decided", "switched to", ...)
+                            since the session started to this project's learnings.
+  learn --list [--n N]      Shows the newest N project learnings.
+  learn --add "<fact>" [--global]
+                            Remembers a fact for this project, or (--global) in references.md.
+  consolidate               Shows recurring project learnings.
 
-Used by the hooks (pre-compact, pattern-detect, chronicle-stop, session-start) and the
-`/chronicle` skill. One clean subcommand per call so a single `Bash(ctx:*)` allow covers it.
-Env: MAGICIAN_HOME, CLAUDE_PLUGIN_DATA, CTX_MAX (hard override of the context window),
-CLAUDE_CODE_DISABLE_1M_CONTEXT (holds native-1M models to 200K, matching Claude Code).
-Without an override the window comes from the transcript's model id — see _effective_max.
+Honest limits (see skills/chronicle/references/context-mgmt.md): there is no live token count
+through any API, so `pct` is one turn stale; a plugin cannot force, schedule or steer compaction.
+
+Data directory: $MAGICIAN_DATA, else $CLAUDE_PLUGIN_DATA, else ~/.local/share/magician.
+Learnings live in <data>/projects/<first 12 hex of md5(cwd)>/learnings.jsonl (the same key the
+hooks use); the session start time comes from <data>/sessions/<session id>.start.
+Env: CTX_MAX (hard override of the context window), CLAUDE_CODE_DISABLE_1M_CONTEXT (holds
+native-1M models to 200K, matching Claude Code). Without an override the window comes from the
+transcript's model id — see _effective_max.
 """
 import os, sys, json, time, hashlib, subprocess, re
 
 HOME = os.path.expanduser("~")
-PLUGIN_DATA = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(HOME, ".local", "share", "magician")
-MAX = int(os.environ.get("CTX_MAX") or 200000)
-BANDS = [(60, "soft"), (80, "firm"), (92, "urgent")]
-FRESH_SECONDS = 1800  # a capsule older than this isn't auto-re-injected on resume
+PLUGIN_DATA = (os.environ.get("MAGICIAN_DATA") or os.environ.get("CLAUDE_PLUGIN_DATA")
+               or os.path.join(HOME, ".local", "share", "magician"))
 _DECISION = re.compile(r"\b(decided|chose|chosen|prefer|switch(?:ed)? to|use[ds]? .* over|going with|standardiz)", re.I)
-_THREAD = re.compile(r"\b(waiting on|blocked on|blocked by|NEEDS_CONTEXT|TODO|next step|still need|pending:|to do:)", re.I)
+_SID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 
 def die(m, code=1):
@@ -36,18 +48,12 @@ def argval(a, flag, default=None):
 
 
 def project_hash():
-    # Match scripts/session-start.sh PROJECT_HASH (md5 of cwd, first 12) so the
-    # per-project dir aligns across hooks.
+    # Same key as the hooks: first 12 hex of md5 of the physical cwd (`pwd -P`).
     return hashlib.md5(os.getcwd().encode()).hexdigest()[:12]
 
 
 def proj_dir():
-    d = os.path.join(PLUGIN_DATA, "projects", project_hash())
-    return d
-
-
-def ctx_dir():
-    return os.path.join(PLUGIN_DATA, "ctx")
+    return os.path.join(PLUGIN_DATA, "projects", project_hash())
 
 
 def _ensure(d):
@@ -55,27 +61,7 @@ def _ensure(d):
     return d
 
 
-def discover_transcript():
-    """Find the newest transcript JSONL for the current cwd. The host doesn't always
-    hand the hook a usable transcript_path (this was why context tracking silently
-    no-op'd); when it doesn't, we locate the session log ourselves."""
-    root = os.path.realpath(os.getcwd())
-    enc = re.sub(r"[/_]", "-", root)  # ~/.claude/projects/<encoded cwd>/
-    d = os.path.join(HOME, ".claude", "projects", enc)
-    try:
-        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".jsonl")]
-        return max(files, key=os.path.getmtime) if files else None
-    except Exception:
-        return None
-
-
-def resolve_transcript(tpath):
-    if tpath and os.path.exists(tpath):
-        return tpath
-    return discover_transcript()
-
-
-# ─────────────────────────── transcript parsing ────────────────────────────
+# ─────────────────────────── transcript usage (pct) ────────────────────────
 def _tail(path, nbytes=524288):
     with open(path, "rb") as f:
         f.seek(0, 2)
@@ -141,274 +127,6 @@ def last_model(path):
     return None
 
 
-def _text_of(o):
-    m = _msg(o)
-    c = m.get("content")
-    if isinstance(c, str):
-        return c
-    if isinstance(c, list):
-        out = []
-        for b in c:
-            if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str):
-                out.append(b["text"])
-        return "\n".join(out)
-    return ""
-
-
-_TRIVIAL = {"continue", "yes", "go", "ok", "okay", "proceed", "y", "sure", "do it",
-            "go ahead", "next", "please continue", "yes please", "thanks", "perfect"}
-
-
-def last_user_goal(path):
-    try:
-        text, _ = _tail(path)
-    except Exception:
-        return ""
-    fallback = ""
-    for o in _iter_rev(text):
-        if not _is_role(o, "user"):
-            continue
-        t = _text_of(o).strip()
-        if not t or t.startswith("<") or "tool_result" in t[:40]:
-            continue  # skip tool-result-only user turns
-        norm = re.sub(r"\s+", " ", t)
-        if not fallback:
-            fallback = norm[:400]
-        if norm.lower().strip(" .!") in _TRIVIAL or len(norm) < 12:
-            continue  # skip bare continuations — find the last substantive prompt
-        return norm[:400]
-    return fallback
-
-
-def open_threads(path, scan=10):
-    try:
-        text, _ = _tail(path)
-    except Exception:
-        return []
-    seen, found, n = set(), [], 0
-    for o in _iter_rev(text):
-        if not _is_role(o, "assistant"):
-            continue
-        n += 1
-        for ln in _text_of(o).splitlines():
-            ln = ln.strip(" -*\t")
-            if _THREAD.search(ln) and ln not in seen and 8 < len(ln) < 200:
-                seen.add(ln)
-                found.append(ln)
-        if n >= scan or len(found) >= 6:
-            break
-    return found[:6]
-
-
-# ─────────────────────────── git helpers ───────────────────────────────────
-def _git(args, timeout=8):
-    try:
-        p = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=timeout)
-        return p.stdout.strip() if p.returncode == 0 else ""
-    except Exception:
-        return ""
-
-
-def session_start():
-    f = os.path.join(PLUGIN_DATA, "session-start-time.txt")
-    try:
-        return open(f).read().strip()
-    except Exception:
-        return ""
-
-
-def git_decisions():
-    s = session_start()
-    log = _git(["log", "--since", s, "--pretty=%s"]) if s else _git(["log", "-8", "--pretty=%s"])
-    return [l for l in log.splitlines() if l][:10]
-
-
-def changed_files():
-    out = _git(["diff", "--name-only", "HEAD"])
-    return [l for l in out.splitlines() if l][:15]
-
-
-def workspace_artifacts():
-    arts = []
-    base = ".workspace/shared"
-    if os.path.isdir(base):
-        for sub in ("specs", "plans", "research", "diffs", "decisions"):
-            d = os.path.join(base, sub)
-            if os.path.isdir(d):
-                for fn in sorted(os.listdir(d))[:6]:
-                    arts.append(os.path.join(d, fn))
-    return arts[:20]
-
-
-# ─────────────────────────── learnings store ───────────────────────────────
-def learn_path():
-    return os.path.join(proj_dir(), "learnings.jsonl")
-
-
-def list_learnings(n=3):
-    try:
-        lines = [json.loads(l) for l in open(learn_path()) if l.strip()]
-    except Exception:
-        return []
-    return lines[-n:]
-
-
-def add_learning(fact, source="manual"):
-    fact = re.sub(r"\s+", " ", fact).strip()[:240]
-    if not fact:
-        return False
-    recent = {x.get("fact") for x in list_learnings(40)}
-    if fact in recent:
-        return False
-    _ensure(proj_dir())
-    with open(learn_path(), "a") as f:
-        f.write(json.dumps({"fact": fact, "source": source, "ts": int(time.time())}) + "\n")
-    return True
-
-
-# ─────────────────────────── capsule ───────────────────────────────────────
-def capsule_paths():
-    return os.path.join(proj_dir(), "capsule.md"), os.path.join(proj_dir(), "capsule.json")
-
-
-def _kg_bin():
-    return os.path.join(os.path.dirname(os.path.realpath(__file__)), "kg")
-
-
-_KG_CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".rb",
-                ".java", ".kt", ".swift", ".scala", ".c", ".cc", ".cpp", ".h", ".hpp",
-                ".cs", ".php", ".sh", ".vue", ".svelte"}
-
-
-def kg_impact(files):
-    """Blast-radius pointers for changed CODE files from the knowledge graph (if indexed),
-    so the resumed session rehydrates impact via the graph instead of re-deriving it."""
-    kg = _kg_bin()
-    if not os.path.exists(kg) or not files:
-        return []
-    try:
-        chk = subprocess.run([kg, "check"], capture_output=True, text=True, timeout=8)
-        if "no index" in (chk.stdout + chk.stderr).lower():
-            return []
-    except Exception:
-        return []
-    # only code files kg can resolve (skip docs/config); extensionless = likely a script
-    code = [f for f in files if os.path.splitext(f)[1].lower() in _KG_CODE_EXT
-            or os.path.splitext(f)[1] == ""]
-    out = []
-    for f in code[:4]:
-        try:
-            r = subprocess.run([kg, "blast", f, "--depth", "1"], capture_output=True, text=True, timeout=10)
-            dep = [ln.split()[1] for ln in r.stdout.splitlines()
-                   if ln.strip().startswith("d") and len(ln.split()) > 1]
-            if dep:
-                out.append({"file": f, "impacted": dep[:5]})
-        except Exception:
-            pass
-    return out
-
-
-def build_capsule(tpath, trigger="manual"):
-    changed = changed_files()
-    cap = {
-        "ts": int(time.time()), "trigger": trigger, "cwd": os.getcwd(),
-        "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]) or "unknown",
-        "goal": last_user_goal(tpath) if tpath else "",
-        "open_threads": open_threads(tpath) if tpath else [],
-        "decisions": git_decisions(),
-        "changed_files": changed,
-        "kg_impact": kg_impact(changed),
-        "artifacts": workspace_artifacts(),
-        "learnings": [x.get("fact") for x in list_learnings(5)],
-    }
-    return cap
-
-
-def render_capsule(c):
-    L = ["# Resume capsule — saved before compaction",
-         f"_branch {c['branch']} · {c['trigger']} · {time.strftime('%Y-%m-%d %H:%M', time.localtime(c['ts']))}_", ""]
-    if c["goal"]:
-        L += [f"**Active goal:** {c['goal']}", ""]
-    if c["open_threads"]:
-        L += ["**Open threads:**"] + [f"- {t}" for t in c["open_threads"]] + [""]
-    if c["decisions"]:
-        L += ["**Recent commits / decisions:**"] + [f"- {d}" for d in c["decisions"]] + [""]
-    if c["changed_files"]:
-        L += ["**Changed files:** " + ", ".join(c["changed_files"]), ""]
-    if c.get("kg_impact"):
-        L += ["**Blast radius (knowledge graph) — what the changed files affect:**"]
-        L += [f"- {x['file']} → {', '.join(x['impacted'])}" for x in c["kg_impact"]] + [""]
-    if c["artifacts"]:
-        L += ["**Artifacts (read these for detail, don't re-derive):**"] + [f"- {a}" for a in c["artifacts"]] + [""]
-    if c["learnings"]:
-        L += ["**Recent learnings:**"] + [f"- {x}" for x in c["learnings"]] + [""]
-    L += ["_Rehydrate code context with `kg query \"<topic>\"` / `kg blast <file>` and `Read` by file:line — "
-          "don't re-explore from scratch._"]
-    return "\n".join(L)
-
-
-def c_capsule(a):
-    session = argval(a, "--session", "default")
-    tpath = argval(a, "--transcript")
-    trigger = argval(a, "--trigger", "manual")
-    cap = build_capsule(tpath, trigger)
-    _ensure(proj_dir())
-    md, js = capsule_paths()
-    try:
-        open(md, "w").write(render_capsule(cap))
-        json.dump(cap, open(js, "w"), indent=2)
-    except Exception as e:
-        die(f"capsule write failed: {e}")
-    # arm re-injection for the next prompt of this session
-    _ensure(ctx_dir())
-    try:
-        open(os.path.join(ctx_dir(), session + ".resume"), "w").write(str(cap["ts"]))
-    except Exception:
-        pass
-    # mirror to workspace for team visibility when present
-    if os.path.isdir(".workspace/local"):
-        try:
-            open(".workspace/local/session-state.md", "w").write(render_capsule(cap))
-        except Exception:
-            pass
-    print(f"capsule saved ({len(cap['decisions'])} commits, {len(cap['open_threads'])} threads)")
-
-
-def read_capsule_md():
-    md, _ = capsule_paths()
-    try:
-        return open(md).read(), os.path.getmtime(md)
-    except Exception:
-        return None, 0
-
-
-# ─────────────────────────── hook entrypoint ───────────────────────────────
-def c_hook(a):
-    """One call from UserPromptSubmit: re-inject capsule if pending, then a band warning."""
-    session = argval(a, "--session", "default")
-    tpath = argval(a, "--transcript")
-    out = []
-    # 1) resume re-injection (after a compaction this session)
-    flag = os.path.join(ctx_dir(), session + ".resume")
-    if os.path.exists(flag):
-        md, _ = read_capsule_md()
-        if md:
-            out.append("[MAGICIAN] Resuming after compaction — restore your bearings from this capsule "
-                       "(then continue; read the referenced paths instead of re-exploring):\n" + md)
-        try:
-            os.remove(flag)
-        except Exception:
-            pass
-    # 2) size band warning (once per band per session)
-    tpath = resolve_transcript(tpath)  # discover the session log if the host didn't pass one
-    if tpath:
-        w = _band_warning(session, tpath)
-        if w:
-            out.append(w)
-    if out:
-        print("\n\n".join(out))
-
-
 # Models whose native context window is 1M. Matched as a substring of the transcript's model id, so
 # provider-prefixed ids (anthropic.claude-opus-5, claude-opus-5@2026…) resolve too. Everything else —
 # Haiku, the 4.5 generation, unknown ids — falls through to the 200K default.
@@ -451,70 +169,98 @@ def _effective_max(toks, model=None):
     return 1_000_000 if (toks and toks > 200_000) else 200_000
 
 
-def _band_warning(session, tpath):
-    toks, approx = last_tokens(tpath)
-    if not toks:
-        return None
-    mx = _effective_max(toks, last_model(tpath))
-    pct = 100.0 * toks / mx
-    statef = os.path.join(ctx_dir(), session + ".json")
-    warned = set()
+# ─────────────────────────── git helpers ───────────────────────────────────
+def _git(args, timeout=8):
     try:
-        warned = set(json.load(open(statef)).get("warned", []))
+        p = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=timeout)
+        return p.stdout.strip() if p.returncode == 0 else ""
     except Exception:
-        pass
-    crossed = [name for thr, name in BANDS if pct >= thr and name not in warned]
-    if not crossed:
-        return None
-    for thr, name in BANDS:
-        if pct >= thr:
-            warned.add(name)
-    _ensure(ctx_dir())
-    try:
-        json.dump({"warned": list(warned), "pct": round(pct), "ts": int(time.time())}, open(statef, "w"))
-    except Exception:
-        pass
-    name = crossed[-1]
-    tag = "~" if approx else ""
-    k = mx // 1000
-    base = f"Context ~{tag}{round(pct)}% of {k}K tokens"
-    if name == "soft":
-        return f"[MAGICIAN] {base}. Good moment to offload findings to a .workspace/shared/ artifact or wrap the current thread."
-    if name == "firm":
-        return (f"[MAGICIAN] {base} — getting large. Consider `/compact` (focus on the active task) or "
-                f"`/chronicle status`, and save state to an artifact before the next big step; auto-compaction may fire soon.")
-    return (f"[MAGICIAN] {base} — very large. Strongly consider `/compact` now and persist state to a "
-            f".workspace artifact (or `/chronicle learn` key facts) to avoid loss at auto-compaction.")
+        return ""
 
 
-# ─────────────────────────── resume (on session start) ─────────────────────
-def c_resume(a):
-    """SessionStart path: print capsule if fresh + same cwd, then mark consumed."""
-    md, mt = read_capsule_md()
-    if not md:
-        return
-    if "--on-start" in a:
-        if time.time() - mt > FRESH_SECONDS:
-            return
-        _, js = capsule_paths()
-        try:
-            if json.load(open(js)).get("cwd") != os.getcwd():
-                return
-        except Exception:
-            return
-    print(md)
-    if "--keep" not in a:
-        try:
-            os.rename(capsule_paths()[0], capsule_paths()[0] + ".consumed")
-        except Exception:
-            pass
+def _read_start(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            s = f.readline().strip()
+    except Exception:
+        return ""
+    return s if _ISO.match(s) else ""
+
+
+def session_start(a=()):
+    """Start time of the session: --since ISO, else sessions/<--session ID>.start, else the
+    newest sessions/*.start in the data directory. Empty when none is known."""
+    since = argval(a, "--since")
+    if since and _ISO.match(since):
+        return since
+    d = os.path.join(PLUGIN_DATA, "sessions")
+    sid = argval(a, "--session")
+    if sid and _SID.match(sid):
+        return _read_start(os.path.join(d, sid + ".start"))
+    try:
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".start")]
+    except Exception:
+        return ""
+    if not files:
+        return ""
+    return _read_start(max(files, key=os.path.getmtime))
+
+
+def git_decisions(a=()):
+    s = session_start(a)
+    log = _git(["log", "--since", s, "--pretty=%s"]) if s else _git(["log", "-8", "--pretty=%s"])
+    return [l for l in log.splitlines() if l][:10]
+
+
+# ─────────────────────────── learnings store ───────────────────────────────
+def learn_path():
+    return os.path.join(proj_dir(), "learnings.jsonl")
+
+
+def list_learnings(n=3):
+    try:
+        with open(learn_path(), encoding="utf-8") as f:
+            lines = [json.loads(l) for l in f if l.strip()]
+    except Exception:
+        return []
+    return lines[-n:]
+
+
+def add_learning(fact, source="manual"):
+    fact = re.sub(r"\s+", " ", fact).strip()[:240]
+    if not fact:
+        return False
+    recent = {x.get("fact") for x in list_learnings(40)}
+    if fact in recent:
+        return False
+    _ensure(proj_dir())
+    with open(learn_path(), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"fact": fact, "source": source, "ts": int(time.time())},
+                           ensure_ascii=False, separators=(",", ":")) + "\n")
+    return True
 
 
 # ─────────────────────────── pct / learn / consolidate ─────────────────────
+def session_transcript(sid):
+    """Transcript path of session `sid` in the current directory, built the way Claude Code names
+    it (<config dir>/projects/<cwd with every non-alphanumeric character as '-'>/<sid>.jsonl).
+    Only this one path is computed; no directory is listed or searched."""
+    if not _SID.match(sid or ""):
+        die("--session takes a session id (letters, digits, '_' and '-')")
+    conf = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
+    name = os.environ.get("CLAUDE_CODE_PROJECT_DIR_NAME") if os.environ.get("CLAUDE_CONFIG_DIR") else None
+    if not name:
+        name = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(os.getcwd()))
+    return os.path.join(conf, "projects", name, sid + ".jsonl")
+
+
 def c_pct(a):
-    tpath = resolve_transcript(argval(a, "--transcript"))
+    sid = argval(a, "--session")
+    tpath = argval(a, "--transcript") or (session_transcript(sid) if sid else None)
     if not tpath:
-        die("no transcript found for this repo")
+        die("usage: ctx pct --session <session id> | --transcript <path to the session transcript .jsonl>")
+    if not os.path.isfile(tpath):
+        die(f"transcript not found: {tpath}")
     toks, approx = last_tokens(tpath)
     if not toks:
         die("could not read transcript usage")
@@ -529,7 +275,7 @@ def c_pct(a):
 def c_learn(a):
     if "--from-git" in a:
         added = 0
-        for subj in git_decisions():
+        for subj in git_decisions(a):
             if _DECISION.search(subj):
                 if add_learning(subj, "git"):
                     added += 1
@@ -551,14 +297,14 @@ def c_learn(a):
             add_learning(fact, "manual")
             print(f"remembered for this project: {fact[:80]}")
         return
-    die("usage: ctx learn --from-git | --list [--n N] | --add \"<fact>\" [--global]")
+    die("usage: ctx learn --from-git [--session ID | --since ISO] | --list [--n N] | --add \"<fact>\" [--global]")
 
 
 def _promote_global(fact):
     path = os.path.join(PLUGIN_DATA, "references.md")
     fact = re.sub(r"\s+", " ", fact).strip()[:240]
     try:
-        text = open(path).read() if os.path.exists(path) else "# Remembered references (global)\n"
+        text = open(path, encoding="utf-8").read() if os.path.exists(path) else "# Remembered references (global)\n"
     except Exception:
         text = "# Remembered references (global)\n"
     if fact in text:
@@ -572,12 +318,14 @@ def _promote_global(fact):
         if ln.strip() == "## Learnings":
             out.append(f"- {fact}")
     _ensure(PLUGIN_DATA)
-    open(path, "w").write("\n".join(out) + "\n")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out) + "\n")
 
 
 def c_consolidate(a):
     try:
-        items = [json.loads(l) for l in open(learn_path()) if l.strip()]
+        with open(learn_path(), encoding="utf-8") as f:
+            items = [json.loads(l) for l in f if l.strip()]
     except Exception:
         items = []
     if not items:
@@ -594,17 +342,13 @@ def c_consolidate(a):
     print("Promote high-frequency ones to global with: ctx learn --add \"<fact>\" --global (confirm first)")
 
 
-CMDS = {"hook": c_hook, "capsule": c_capsule, "resume": c_resume, "pct": c_pct,
-        "learn": c_learn, "consolidate": c_consolidate}
+CMDS = {"pct": c_pct, "learn": c_learn, "consolidate": c_consolidate}
 
 
 def main():
     av = sys.argv[1:]
     if not av or av[0] in ("help", "-h", "--help"):
         print(__doc__)
-        print("commands: hook --session ID --transcript P | pct --transcript P | "
-              "capsule --session ID --transcript P [--trigger auto] | resume [--on-start] | "
-              "learn --from-git|--list [--n N]|--add \"<fact>\" [--global] | consolidate", file=sys.stderr)
         return
     fn = CMDS.get(av[0])
     if not fn:

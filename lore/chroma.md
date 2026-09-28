@@ -14,7 +14,7 @@ DON'T over-filter: a selective where starves HNSW recall.
 DON'T ship the default MiniLM embedder unchecked.
 DON'T treat Cloud SPANN params as tunable — server drops them.
 
-Deep dive when writing non-trivial Chroma — read lore/chroma/{collections-and-usage,query-and-filtering,performance}.md
+Deep dive when writing non-trivial Chroma — read lore/deep/chroma.md#{collections-and-usage,query-and-filtering,performance}
 
 ## Sources
 docs.trychroma.com (configure · client-server · metadata-filtering) · pypi.org/project/chromadb

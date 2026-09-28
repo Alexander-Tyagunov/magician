@@ -15,6 +15,6 @@ DO `<style scoped>`; `:deep()` to pierce child styles.
 
 Commands: scaffold `npm create vue@latest`; dev/build `vite`; typecheck `vue-tsc --noEmit`.
 
-Deep dive when writing non-trivial vue — read lore/vue/{composition-and-reactivity,components-and-sfc,patterns-and-pitfalls}.md
+Deep dive when writing non-trivial vue — read lore/deep/vue.md#{composition-and-reactivity,components-and-sfc,patterns-and-pitfalls}
 
 Sources: vuejs.org/guide/introduction.html, /api/sfc-script-setup.html, /api/reactivity-core.html, github.com/vuejs/core/releases

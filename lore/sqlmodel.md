@@ -12,6 +12,6 @@ DON'T forget `SQLModel.metadata.create_all(engine)` (or use Alembic for migratio
 
 Commands: `pip install sqlmodel` · `alembic init/revision --autogenerate/upgrade head`.
 
-Deep dive when writing non-trivial sqlmodel — read lore/sqlmodel/{patterns}.md
+Deep dive when writing non-trivial sqlmodel — read lore/deep/sqlmodel.md#{patterns}
 
 Sources: sqlmodel.tiangolo.com · docs.sqlalchemy.org · pypi.org/project/sqlmodel

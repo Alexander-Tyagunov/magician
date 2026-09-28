@@ -8,6 +8,6 @@ Version: Node 24 Active LTS / 22 Maintenance (20 EOL Apr 2026, 18 EOL). Native `
 
 Commands: install `npm ci` | `pnpm i --frozen-lockfile`; run `node --run start` (Node 22+) | `npm start`; test `node --test` (Node 20+) | `vitest run`; lint `npm run lint` | `pnpm lint`.
 
-Deep dive when writing non-trivial node — read lore/node/{runtime-and-event-loop,modules-and-packaging,async-streams-and-apis,errors-diagnostics-and-security,testing-and-tooling}.md
+Deep dive when writing non-trivial node — read lore/deep/node.md#{runtime-and-event-loop,modules-and-packaging,async-streams-and-apis,errors-diagnostics-and-security,testing-and-tooling}
 
 Sources: nodejs.org/docs/latest/api (modules, test, stream, process), nodejs.org/en/learn, github.com/nodejs/release

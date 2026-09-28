@@ -1,8 +1,8 @@
 ---
 name: magic
 description: Use when the user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, library-doc search, web search, and guided output delivery.
-allowed-tools: WebSearch, WebFetch, Read, Write, AskUserQuestion, Bash(kg:*), mcp__context7__resolve-library-id, mcp__context7__query-docs
-argument-hint: [topic or research question]
+allowed-tools: Read, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Edit(./.workspace/shared/research/**), Bash(git commit -m *)
+argument-hint: "[topic or research question]"
 ---
 
 # /magic — Research, Analysis & Consulting
@@ -10,12 +10,12 @@ argument-hint: [topic or research question]
 Structured research and consulting workflow. Uses web search, document analysis, and library documentation. Every decision point uses `AskUserQuestion` so the user explicitly drives the process via action-reaction UI.
 
 <HARD-GATE>
-EVERY consultation, clarification, and decision MUST use the AskUserQuestion tool. Do NOT ask questions in plain prose — always invoke AskUserQuestion so the user sees the structured prompt UI. This applies to every gate in this skill without exception.
+Put every consultation, clarification, and decision to the user through AskUserQuestion rather than plain prose, so they see the structured prompt UI. This applies to every gate in this skill.
 </HARD-GATE>
 
 ## Autonomy — approve the plan, then run
 
-Once the **Phase 0 scope/source/depth answers** are in, **Phase 1–2 execution runs to completion autonomously**: WebSearch/WebFetch, `Read`, context7 doc queries, `kg query`/`blast`/`neighbors`, and read-only git NEVER pause for per-source or per-read permission. Re-gate **only** on this skill's real side effects — the **Phase 4** `Write` (save findings) and `git add`/`git commit` — both already `AskUserQuestion`-gated. The interactive consultation gates (Phase 0 sources/depth, Phase 3 output/persistence, Phase 5 next steps) stay — magic is question-driven by design; this note drops per-tool-call permission prompts, not those gates. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+Once the **Phase 0 scope/source/depth answers** are in, **Phase 1–2 execution runs to completion** without extra consultation questions: `Read`, context7 doc queries and `kg query`/`blast`/`neighbors` are pre-approved by this skill, and read-only git never prompts. **Web search and web fetches are not pre-approved** — they go through Claude Code's normal permission prompts (none in auto mode, or once the user approves them), and every query or URL leaves the machine, so keep private or proprietary details out of them. The skill's real side effects — the **Phase 4** save (pre-approved only inside `.workspace/shared/research/`) and `git add`/`git commit` — are already `AskUserQuestion`-gated. The interactive consultation gates (Phase 0 sources/depth, Phase 3 output/persistence, Phase 5 next steps) stay — magic is question-driven by design. Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Standalone & pipeline use
 
@@ -24,15 +24,15 @@ Once the **Phase 0 scope/source/depth answers** are in, **Phase 1–2 execution 
 It also plugs into the SDLC chain without losing context:
 - **Feeds the pipeline:** inside a magician workspace (`.workspace/` present), saved research goes to `.workspace/shared/research/<topic>-<date>.md` — a first-class artifact, like specs and plans. Phase 5 hands that **path** (not just a summary) to the next stage, so design/planning/debugging start informed.
 - **Fed by the pipeline:** `/conjure`, `/blueprint`, `/unravel`, and `/manifest` read `.workspace/shared/research/` and suggest `/magic` when a decision needs external evidence.
-- **Internal sources:** for the user's own Jira tickets/epics/boards or Confluence pages, use the `magician:jira` / `magician:confluence` skills (direct HTTP REST, no MCP; they run one-time setup if not configured) instead of web search. Fold what they return into the findings like any other source. **Skip a source the user has opted out of** ([lore/integration-prefs.md](../../lore/integration-prefs.md)) — don't suggest setting it up.
-- **The codebase itself:** when the question is about the user's own repo, query the **knowledge graph** first — `kg check` then `kg query "<topic>"` (and `kg neighbors`/`kg blast` for relationships) — and `Read` the ranked `file:line` ranges it returns, instead of broad greps. It's a first-class internal source: cheaper, faster, and shared across agents with no context loss. If there's no index, fall back to grep/Read and offer once to build one (`kg init`) — opt-out aware ([lore/integration-prefs.md](../../lore/integration-prefs.md), key `knowledge-graph`). Details: [knowledge-graph skill](../knowledge-graph/references/retrieval.md).
+- **Internal sources:** for the user's own Jira tickets/epics/boards or Confluence pages, use the `magician:jira` / `magician:confluence` skills (they use magician's bundled CLIs and walk through setup if not configured) rather than web search. If the user prefers another installed Jira or Confluence integration, use that. Fold what they return into the findings like any other source. **Skip a source the user has opted out of** ([lore/integration-prefs.md](../../lore/integration-prefs.md)) — don't suggest setting it up.
+- **The codebase itself:** when the question is about the user's own repo, query the **knowledge graph** first — `kg check` then `kg query "<topic>"` (and `kg neighbors`/`kg blast` for relationships) — and `Read` the ranked `file:line` ranges it returns, instead of broad greps. It's a first-class internal source: cheaper, faster, and shared across agents with no context loss. If there's no index, fall back to grep/Read and offer once to build one (`kg init`, run only on the user's yes) — opt-out aware ([lore/integration-prefs.md](../../lore/integration-prefs.md), key `knowledge-graph`). Details: [knowledge-graph skill](../knowledge-graph/references/retrieval.md).
 
-## Auto-Invocation
+## When it's suggested
 
-This skill is auto-triggered by the `UserPromptSubmit` hook when the user's message contains research-intent keywords: **research, investigate, analyze, analyse, find out, explore, examine, assess, evaluate, discover, look into, audit, study, probe**.
+Magician's `UserPromptSubmit` hook may add a note that this skill covers research and analysis when a prompt contains research-intent words (for example **research, investigate, analyze, explore, examine, assess, evaluate, discover, audit, study, survey, probe, benchmark**). The note is a suggestion, not an instruction — use this skill only when the request really is research.
 
-When auto-triggered, announce before any other action:
-> "Auto-activating /magic for structured research. Let me gather a few inputs before diving in."
+When you start it from such a note, say so before any other action:
+> "Starting /magic for structured research. Let me gather a few inputs before diving in."
 
 ---
 
@@ -70,20 +70,9 @@ Batch both up-front decisions into a **single** AskUserQuestion call so the user
 
 If the topic is a business document, financial report, article, spreadsheet, or anything that is not a software library/framework — **skip this step entirely** and go to Step 1.2.
 
-If user selected "Tech Library Docs (context7)", check availability:
+If user selected "Tech Library Docs (context7)", check availability: context7 is available when `mcp__context7__resolve-library-id` is in your tool list.
 
-```bash
-python3 -c "
-import subprocess
-try:
-    result = subprocess.run(['claude', 'mcp', 'list'], capture_output=True, text=True, timeout=5)
-    print('found' if 'context7' in result.stdout.lower() else 'missing')
-except Exception:
-    print('missing')
-" 2>/dev/null || echo "missing"
-```
-
-If output is `missing`, read [references/questions.md](references/questions.md) → "Phase 1 — context7 not installed" and deliver that block via AskUserQuestion. On "Yes" run the `claude mcp add` command and confirm; on "Skip" continue and note the limitation in findings.
+If it isn't, read [references/questions.md](references/questions.md) → "Phase 1 — context7 not installed" and deliver that block via AskUserQuestion. Never add the server yourself: on "Show me the command", print the command for the user to run; either way, continue without context7 and note the limitation in findings.
 
 ### Step 1.2 — Document paths (if selected)
 
@@ -97,7 +86,7 @@ Execute research in parallel where possible. Take structured notes as you go.
 
 ### Step 2.1 — Web Search (if selected)
 
-Use WebSearch with 2–4 targeted queries. Tailor queries to the research type:
+Use WebSearch with 2–4 targeted queries (each search prompts unless the user already approved web search or runs in auto mode). Build queries from the public topic only — never paste private file contents, credentials, or internal names into a query. Tailor queries to the research type:
 
 **Academic/scientific topic** — prefix queries to target academic sources:
 - `site:scholar.google.com <topic>` or `"<topic>" filetype:pdf journal`
@@ -121,7 +110,7 @@ Synthesize web findings into a running outline.
 
 ### Step 2.2 — Tech Library Docs via context7 (if selected and topic is software/tech)
 
-For each library or framework relevant to the topic:
+For each library or framework relevant to the topic (context7 queries go to the context7 service, so use the public library name and a generic question — never private code or internal names):
 1. Resolve the library ID: call `mcp__context7__resolve-library-id` with the library name
 2. Query the docs: call `mcp__context7__query-docs` with the resolved ID and a focused query
 3. Extract relevant sections and cross-reference with other findings
@@ -174,7 +163,7 @@ For findings the user wants to circulate, you can publish them as a Claude Code 
 
 ### Step 4.2 — Save to file (if requested)
 
-Write findings to the agreed filename using the Write tool.
+Write findings to the agreed filename with the Write tool. Saving inside `.workspace/shared/research/` is pre-approved by this skill; any other path goes through the normal permission prompt.
 
 ### Step 4.3 — Commit (if requested)
 

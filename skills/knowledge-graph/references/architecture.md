@@ -14,7 +14,6 @@ knowledge-graph/
     graph.db                 # SQLite: files, nodes (symbols), edges, FTS5
     meta.json                # index_version, counts, parser, accel, cache stats
     cache/<key>.json         # content-addressed derived results (TTL + LRU)
-    suggest.json             # SessionStart nudge throttle marker
     daemon.sock              # present only while the Tier-2 daemon runs
 ```
 

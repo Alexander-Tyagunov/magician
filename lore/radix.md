@@ -17,6 +17,6 @@ DON'T
 - Don't change `style`/`baseColor`/`cssVariables` after init; `new-york` is default style (`default` deprecated).
 - Don't ship Primitives unstyled or confuse them with Radix Themes.
 
-Deep dive when writing non-trivial radix — read lore/radix/{shadcn-and-composition}.md
+Deep dive when writing non-trivial radix — read lore/deep/radix.md#{shadcn-and-composition}
 
 Sources: radix-ui.com/primitives/docs/overview/{introduction,releases}; ui.shadcn.com/docs/{installation,components-json,tailwind-v4,changelog}

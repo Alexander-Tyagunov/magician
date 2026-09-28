@@ -1,522 +1,404 @@
-<div align="center">
+![magician: plan, build, verify, and ship software with Claude Code](assets/banner.svg)
 
-<img src="assets/hero.svg" alt="magician — full-stack SDLC for Claude Code" width="100%">
+magician is a Claude Code plugin for the software lifecycle: research, design, planning, test-first building, verification, review and release. It adds 25 skills, 7 agents and a few command-line helpers. A skill is a set of instructions Claude follows for one kind of task, and you start one with its slash command.
 
-<br>
+magician asks for your approval before it first pushes a change, opens or merges a pull request, or deploys; when CI then fails, `/seal` pushes its fixes under that same approval. Local commits happen as steps of work you have already approved, such as an agreed plan or the `/almanac` setup.
 
-[![Version](https://img.shields.io/badge/version-4.14.0-6C63FF?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician/releases)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-a78bfa?style=for-the-badge&labelColor=0b0b14&logo=anthropic&logoColor=white)](https://code.claude.com)
-[![Claude 5](https://img.shields.io/badge/Claude_5-Opus_·_Sonnet_·_Fable-f59e0b?style=for-the-badge&labelColor=0b0b14)](lore/models.md)
-[![Codex](https://img.shields.io/badge/Codex-adapter-22d3ee?style=for-the-badge&labelColor=0b0b14)](https://github.com/Alexander-Tyagunov/magician)
-[![License](https://img.shields.io/badge/license-MIT-43e97b?style=for-the-badge&labelColor=0b0b14)](LICENSE)
-[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff6584?style=for-the-badge&labelColor=0b0b14)](https://github.com/sponsors/Alexander-Tyagunov)
+When a session starts, magician looks at the project and adds short guidance, called [lore](#lore), for the languages, frameworks and databases it finds. Everything it runs, stores and sends is listed in [What runs on your machine](#what-runs-on-your-machine).
 
-<h3>From idea to merged PR — autonomously, grounded in your code, gated only where it matters.</h3>
+## Install
 
-<sub>25 skills · tuned for <b>Opus 5 · Sonnet 5 · Fable 5</b> and still correct on 4.6/4.8 · deep live-verified stack lore (languages · frameworks · databases · observability) · a local code knowledge-graph · cross-session memory · parallel agent orchestration · tunable output brevity (lower token cost) · an absolute destructive-command guard · zero required deps</sub>
+### Requirements
 
-</div>
+- Claude Code with plugin support, in the terminal, the desktop app or an IDE. magician ships command-line tools in a `bin/` folder, so Claude chat and Cowork can't install it.
+- bash 3.2 or later for the hooks. On Windows, run Claude Code with Git Bash installed or inside WSL.
+- Python 3 for the bundled commands and the status line. The hooks don't use it.
+- git. The GitHub CLI (`gh`), or `glab` for GitLab, is optional.
+- Node.js, optional, for the `/conjure` design preview in your browser. Without it, the design conversation stays in chat.
 
-<img src="assets/divider.svg" alt="" width="100%">
+### Add the plugin
 
-## ✦ What it is
-
-Most AI coding tools make **you** describe the stack, pick templates, and babysit context. **magician** inspects your project on every session start, assembles targeted knowledge for each technology it finds, grounds itself in a local graph of your code, and runs the whole software lifecycle — design → plan → build → verify → review → ship — pausing only at the decisions that are genuinely yours.
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4>One command · idea → PR</h4>
-<pre><code>/manifest</code></pre>
-Gather requirements → design → TDD plan → parallel build → verify → review → PR. You approve the plan; it does the rest.
-</td>
-<td width="50%" valign="top">
-<h4>Already exists? Transform it</h4>
-<pre><code>/transmute</code></pre>
-Comprehend a feature from its live usage, code, or docs — then <b>port</b> it elsewhere or <b>integrate / swap</b> it in place behind a parity contract.
-</td>
-</tr>
-</table>
-
-<img src="assets/divider.svg" alt="" width="100%">
-
-## ⚡ The flow
-
-<div align="center">
-<img src="assets/pipeline.svg" alt="magician SDLC pipeline: research → design → plan → build → verify → review → ship" width="100%">
-</div>
-
-**Approve the plan once — then it executes autonomously**, re-gating only on real side effects (writes to shared state, commits, push, PRs, deploys). Reads, searches, tests, and knowledge-graph lookups never interrupt you.
-
-<details>
-<summary><b>How it works — detailed diagrams</b> (manifest flow · dynamic inspector · self-learning)</summary>
-
-<br>
-
-### The manifest flow — full autonomous SDLC
-
-```mermaid
-flowchart TD
-    A["/manifest"] --> B{"scope OK?"}
-    B -- too large --> C["decompose into sub-projects"]
-    B -- ok --> D["/conjure — design dialogue"]
-    D --> E["approved spec"]
-    E --> F["/blueprint — plan + parallelism map"]
-    F --> G["/portal — git worktree isolation"]
-    G --> H["/orchestrate — parallel agents"]
-    H --> I["/ward — TDD throughout"]
-    I --> J["/certify — tests + browser"]
-    J --> K{all green?}
-    K -- no --> H
-    K -- yes --> L["/scrutinize — review + remediate"]
-    L --> N["/seal — PR + loop until merged"]
-    style A fill:#6c63ff,color:#fff
-    style D fill:#6c63ff,color:#fff
-    style F fill:#6c63ff,color:#fff
-    style H fill:#43e97b,color:#000
-    style I fill:#43e97b,color:#000
-    style J fill:#43e97b,color:#000
-    style L fill:#43e97b,color:#000
-    style N fill:#4facfe,color:#000
+```text
+/plugin marketplace add Alexander-Tyagunov/magician
+/plugin install magician@magician
 ```
 
-Human gates (4 only): scope confirm → spec approval → plan approval → ship. Everything else: autonomous.
+Claude Code may ask for the plugin's options during install. All of them are optional and are described in [Options](#options). Restart Claude Code if it asks.
 
-### Dynamic project inspector — no manual stack selection
+The first time you open a code project, magician shows a one-line hint suggesting `/almanac`. To check that it loaded, type `/` and look for its skills, or run `/hooks` to see its hooks.
 
-```mermaid
-flowchart LR
-    A["session start"] --> B["scan project files"]
-    B --> C{"detect markers"}
-    C --> D["package.json · tsconfig"]
-    C --> E["pom.xml · *.xcodeproj"]
-    C --> F["go.mod · Cargo.toml · pyproject"]
-    C --> G["pubspec.yaml · project.godot"]
-    D --> L["assign archetype + inject context"]
-    E --> L
-    F --> L
-    G --> L
-    L --> M["session ready in < 2s"]
-    style A fill:#0d1117,color:#ccc,stroke:#555
-    style M fill:#43e97b,color:#000
+Using Codex? The Codex package lives on the [codex-plugin branch](https://github.com/Alexander-Tyagunov/magician/tree/codex-plugin). Add it with `codex plugin marketplace add Alexander-Tyagunov/magician --sparse .agents/plugins`, then `codex plugin add magician@magician`.
+
+### Updates
+
+Claude Code updates marketplace plugins on its own. To update right away, run:
+
+```text
+/plugin marketplace update
+/plugin update magician@magician
 ```
 
-Polyglot stacks (Next.js + FastAPI + Go) get full coverage automatically — no pack selection.
+Start a new session afterwards so the hooks reload. In Codex, run `codex plugin marketplace upgrade magician`, then `codex plugin add magician@magician`.
 
-### Self-learning — intelligence grows each session
+## Quick start
 
-```mermaid
-flowchart TD
-    A["session ends"] --> B["Stop hook: chronicle"]
-    B --> C["git log + diff (observable only)"]
-    C --> D["write chronicle entry"]
-    D --> E{"pattern seen 3x?"}
-    E -- yes --> G["offer: create skill via /inscribe"]
-    E -- no --> I["next session"]
-    G --> I
-    I --> K["load recent entries as context —\ncumulative intelligence without replay"]
-    style B fill:#f7971e,color:#000
-    style D fill:#f7971e,color:#000
-    style G fill:#43e97b,color:#000
-    style K fill:#6c63ff,color:#fff
+In a project, set up the workspace once, then describe a feature:
+
+```text
+/almanac
+/manifest add CSV export to the reports page
 ```
 
-</details>
+`/almanac` asks whether to share the workspace with your team or keep it private. It then creates `.workspace/`, a folder where skills save specs and plans, updates `.gitignore`, writes a short `CLAUDE.md` and, in Shared mode, commits those files. Permission rules and MCP servers are only suggested in chat; your Claude Code settings are not changed.
 
-<img src="assets/divider.svg" alt="" width="100%">
+`/manifest` runs design, planning, building, verification, review and release in order. It stops for your approval after scoping, after the spec, after the plan and before the pull request, and asks whether to build on the current branch or in a new worktree. To run the stages one at a time, use the skills in [How it works](#how-it-works).
 
-## 🧠 What makes it different
+## Examples
 
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4>🤖 Real autonomy, not a prompt</h4>
-Makes Claude Code <b>auto mode</b> your starting mode (<code>magician-ui automode</code>) — its classifier auto-approves reads and request-aligned work and <b>gates writes, deploys, force-push, and destructive ops</b>, honoring boundaries you state in chat. Approve the plan, then step back.
-</td>
-<td width="50%" valign="top">
-<h4>🗺 Grounded in your code</h4>
-A local <b>knowledge-graph</b> (<code>kg</code>, stdlib, no network) indexes your repo into ranked <code>file:line</code> retrieval + change <b>blast-radius</b> — so agents fetch exactly what they need instead of grepping whole files. Fewer tokens, shared across agents, zero context loss.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>🔒 An absolute safety floor</h4>
-A <code>PreToolUse</code> hard gate blocks catastrophic commands <b>before permission rules even run</b> — it overrides allow-rules, fires in every mode, and has no escape hatch. <code>rm -rf /</code> never executes here.
-</td>
-<td width="50%" valign="top">
-<h4>🧾 Evidence over claims</h4>
-No "done / fixed / passing" without a verification command run <i>this turn</i> whose output was read — and a subagent's task is only done when the <b>VCS diff</b> shows it, not when the agent says "success."
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>🧭 Remembers across sessions</h4>
-Per-project <code>.workspace/</code> (team-shared via git) plus a machine-global reference store loaded into <b>every</b> session. Context follows you across repos; conventions survive context compaction.
-</td>
-<td width="50%" valign="top">
-<h4>🔌 MCP-free integrations</h4>
-Jira &amp; Confluence over their REST APIs via bundled CLIs — throttle-aware, bulk-safe, one command per call. No MCP server to run, no per-call prompts.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>🎚 Tuned to the model you're on &nbsp;<sub><code>new in 4.10.0</code></sub></h4>
-Effort guidance resolves to what your model actually supports (<code>xhigh</code> doesn't exist on Opus 4.6 or Sonnet 4.6 — Claude Code clamps it silently). Review lenses report for coverage, because current models take "be conservative" literally and drop real bugs. Fan-out is capped. Nothing here requires a Claude 5 model.
-</td>
-<td width="50%" valign="top">
-<h4>📡 Sessions that talk to each other &nbsp;<sub><code>new in 4.10.0</code></sub></h4>
-Worktrees isolate files, not consequences. When a change breaks what a sibling session is building on, Claude hands it across instead of leaving you as the message bus. Feature-detected — a silent no-op where cross-session messaging isn't available.
-</td>
-</tr>
-</table>
+### Review a branch
 
-<img src="assets/divider.svg" alt="" width="100%">
-
-## 🔮 Lore — deep, live-verified stack knowledge &nbsp;<sub><code>new in 4.8.0</code></sub>
-
-> It doesn't guess your stack. It *knows* it — and stays honest about versions.
-
-Every session, magician detects the languages, frameworks, databases, and log platform you're actually using and injects **concise, version-adaptive guidance** for exactly those — the rich detail one hop away, on demand. Every rule is traceable to current official docs (authored **and** adversarially re-checked against live docs — not model memory), and it's version-aware (Java 8→25, Python 3.8→3.14, and so on). Your repo's own conventions always win; lore is the baseline for when the repo is silent.
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4>📚 Languages &amp; frameworks</h4>
-Rust · Java (+JVM: Spring · Micronaut · Quarkus) · JavaScript/TypeScript (+React/Next · Vue · Angular · Svelte · Express · NestJS · GraphQL · ORMs · UI-styling) · Python (+data &amp; ML/AI) · Go — each version-adaptive.
-</td>
-<td width="50%" valign="top">
-<h4>🗄 Databases</h4>
-~30 engines across 7 tracks — relational · OLAP · document/NoSQL · key-value · <b>vector</b> · graph · search/time-series — each with its own <b>performance playbook</b> and a shared cross-engine foundation.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>📈 Observability &amp; logging</h4>
-Log at the right level for each environment, at the meaningful points — then actually find it. Six platforms, each with its <b>exact query language</b>: Dynatrace (DQL) · Grafana/Loki (LogQL) · Splunk (SPL) · GCP Cloud Logging · CloudWatch (Logs Insights) · Azure Monitor (KQL).
-</td>
-<td width="50%" valign="top">
-<h4>🎯 Platform-aware, by memory</h4>
-magician asks <b>once</b> where your app is deployed (or detects it), remembers it per-project, then writes platform-shaped logs and proposes exact queries. Migrated? Say <i>“we moved to Dynatrace”</i> and it updates.
-</td>
-</tr>
-</table>
-
-**Progressive disclosure — big knowledge, tiny footprint:**
-
-```mermaid
-flowchart LR
-    A["session start"] --> B["detect languages · DBs · log platform"]
-    B --> C["inject small cores<br/>(≤1.5 KB each, bounded)"]
-    C --> D["session context<br/>(~once, zero per-turn cost)"]
-    B -. "only when you touch that tech" .-> E["deep-dive trees on demand"]
-    E -. " " .-> F["exact APIs · perf tuning · correct queries"]
-    style A fill:#0d1117,color:#ccc,stroke:#555
-    style C fill:#6c63ff,color:#fff
-    style D fill:#43e97b,color:#000
-    style E fill:#4facfe,color:#000
-    style F fill:#4facfe,color:#000
+```text
+/divine review my current branch against main
 ```
 
-Always-injected **cores** stay small and bounded; the rich per-topic **deep-dives** (and every database's `performance.md`) load **only when you touch that tech** — so no matter how much lore ships, your per-turn context stays flat.
+Claude returns findings ranked by severity, each with its impact and a suggested fix. It posts pull request comments only if you ask.
 
-<details>
-<summary><b>📖 The full lore catalog</b> — every language, database &amp; platform covered (click to expand)</summary>
+### Port a feature
 
-<br>
+```text
+/transmute port the saved-searches feature in ../admin-app into apps/customer
+```
 
-**Languages &amp; ecosystems**
+magician first reads the existing feature and writes down how it behaves, then plans the port against that description. You approve the plan before any code changes.
 
-- **Rust**, **Go** (Gin · Echo · Chi · Fiber · GORM · sqlc · sqlx · ent · gRPC · Cobra · Viper · slog)
-- **Java + JVM** — Spring · Micronaut · Quarkus · JDBC · ORM (Hibernate/JPA · jOOQ · MyBatis) · migrations (Flyway · Liquibase)
-- **JavaScript / TypeScript / Node** — React+Next · Vue+Nuxt · Angular · Svelte+SvelteKit · Express · Fastify · NestJS · GraphQL · ORMs (Prisma · Drizzle · TypeORM · Sequelize · Mongoose · Kysely) · UI-styling (Tailwind · Sass · Less · Bootstrap · MUI · Ant Design · Chakra · Mantine · styled-components · Emotion · Radix/shadcn · vanilla-extract)
-- **Python** — FastAPI · Django · Flask · Litestar · pandas · NumPy · Polars · PyTorch · scikit-learn · TensorFlow · JAX · Transformers · LangChain · SQLAlchemy · Alembic · SQLModel
+### Debug a failure
 
-**Databases** — *each with a core, deep-dive tree, and a `performance.md`*
+```text
+/unravel the checkout total test fails on CI but passes locally
+```
 
-| Track | Engines |
-|---|---|
-| Relational / OLTP | PostgreSQL · MySQL · Oracle · SQL Server · SQLite |
-| Analytics / OLAP | DuckDB · ClickHouse · Snowflake · BigQuery · Redshift |
-| Document / NoSQL | MongoDB · DynamoDB · Cassandra · Couchbase · Firestore |
-| Key-value / Cache | Redis · Memcached |
-| Vector | Pinecone · Weaviate · Qdrant · Milvus · Chroma · pgvector |
-| Graph | Neo4j · Neptune · ArangoDB |
-| Search / Time-series | Elasticsearch/OpenSearch · InfluxDB · TimescaleDB · Prometheus |
+Claude lists hypotheses and gathers evidence for each before it changes any code. It then fixes the confirmed cause and adds a regression test.
 
-**Observability &amp; logging** — principles (levels × environment · what/where to log · structured + correlation IDs · errors · PII/secrets · sampling) + platforms: Dynatrace · Grafana/Loki · Splunk · GCP Cloud Logging · CloudWatch · Azure Monitor.
+### Work with Jira
 
-</details>
+```text
+/jira what's assigned to me in the current sprint?
+```
 
-<sub>🎚 <b>Not your style?</b> Lore is a baseline <i>below</i> your repo's own rules — turn it off anytime with <code>magician-ui lore off</code>, a per-project <code>.magician/lore.off</code>, or <code>MAGICIAN_LORE=0</code>. The status bar shows <code>📚 lore:on</code> / <code>lore:off</code> so you always know what's shaping the session.</sub>
+The bundled `jira` command reads your issues from the site you set up in [Jira and Confluence](#jira-and-confluence), and Claude summarizes them. Creating, commenting on or moving an issue always shows the full change first and waits for your yes.
 
-<img src="assets/divider.svg" alt="" width="100%">
+## How it works
 
-## 🗣 Voice — leaner output, lower cost &nbsp;<sub><code>new in 4.9.0</code></sub>
+Each stage has its own skill, and `/manifest` runs them in order. Claude can also pick a skill when your request matches its description, except `/manifest`, `/transmute`, `/deploy`, `/autopsy`, `/almanac` and `/inscribe`, which run only when you type them.
 
-> Output tokens are the expensive side of the bill (~5× input on current models). Say the same thing in fewer of them.
-
-magician sets an output-brevity **voice** every session — a style directive that trims filler while keeping every fact. A leaner voice cuts token cost with **no quality loss**, and it ships lean by default so you save from message one.
-
-| voice | wordiness | what it does |
+| Stage | Skill | What you get |
 |---|---|---|
-| `warrior` | leanest | the shortest fully-correct answer — no preamble, unrequested examples, or closing recaps |
-| `scribe` &nbsp;*(default)* | leaner than usual | necessary explanation only; filler, restatements, and "what I just did" recaps trimmed |
-| `bard` | standard | native Claude/Codex verbosity — nothing injected |
+| Research | `/magic` | Findings in `.workspace/shared/research/` |
+| Design | `/conjure` | An approved spec in `.workspace/shared/specs/` |
+| Plan | `/blueprint` | A test-first plan in `.workspace/shared/plans/` |
+| Build | `/orchestrate`, `/ward` | Code and tests, one behaviour at a time |
+| Verify | `/certify` | Test, type, lint and build results |
+| Review | `/scrutinize`, `/divine` | Findings ranked by severity |
+| Ship | `/seal` | A pull request watched through CI |
 
-**It cuts filler, not facts.** All substance stays, and code, commands, file paths, and error text are kept **verbatim** — it never compresses prose into fragments, arrow-chains, or jargon (readability beats raw length).
+### What skills run without asking
 
-<sub>🗣 Set it with <code>magician-ui voice warrior|scribe|bard</code> — or per-project <code>.magician/voice</code> / env <code>MAGICIAN_VOICE</code> (first match wins, then the default <code>scribe</code>). The status bar shows <code>🗣 voice:scribe</code> live. Auto-injected into Claude Code sessions; the setting is stored for Codex too.</sub>
+magician adds no permission rules and doesn't change your permission mode. Each skill lists the tools it needs in the `allowed-tools` line of its `SKILL.md`, and while that skill is active Claude Code lets it use them without a prompt. Anything else follows your own permission settings. These grants go beyond reading files:
 
-<img src="assets/divider.svg" alt="" width="100%">
-
-## 🎚 Model support — Claude 5 native, 4.6-safe &nbsp;<sub><code>new in 4.10.0</code></sub>
-
-> A plugin that hardcodes a model or an effort level is wrong the moment the next one ships. magician resolves both from the model your session is actually on.
-
-**Tuned for the Claude 5 family.** Effort guidance, review prompts, delegation limits, and context accounting all follow Anthropic's per-model guidance for **Opus 5**, **Sonnet 5**, and **Fable 5** — including the parts that changed direction. Verification reminders and severity pre-filters, which used to improve results, now cost quality on these models; magician removed them while keeping every evidence gate.
-
-**Nothing here requires a Claude 5 model.** Every new capability is feature-detected and degrades to exactly the previous behavior.
-
-| | resolves to | on an older model |
-|---|---|---|
-| **Effort** | your model's deepest supported level | `xhigh` doesn't exist on Opus 4.6 / Sonnet 4.6 — magician asks for `max` instead of letting Claude Code clamp silently |
-| **Context window** | read from the session's real model id | Haiku and the 4.5 generation stay at 200K; an unknown model falls back to the previous heuristic |
-| **Auto mode** | your starting permission mode | reports plainly when the model or an org policy doesn't support it, instead of failing quietly |
-| **Cross-session messaging** | sessions hand findings to each other | a silent no-op where it isn't available (Windows, Bedrock, Google Cloud, Foundry) |
-
-**It knows the sharp edges, too.** Opus 5 and Fable 5 run cybersecurity classifiers that can move a session to a fallback model mid-run — so `/sentinel` and `/divine`'s security lens frame their work defensively and tell you when the tier changed under them, rather than presenting mixed-tier findings as one pass.
-
-<sub>🎚 Model facts are point-in-time and say so — <code>lore/models.md</code> carries the tier, effort, and pricing matrix with an explicit "verify, don't trust blindly" rule, and <code>lore/model-behavior.md</code> carries the prompting guidance. Both are read on demand, so neither costs you session tokens.</sub>
-
-<img src="assets/divider.svg" alt="" width="100%">
-
-## 🔒 Safety — an absolute destructive-command guard &nbsp;<sub><code>new in 4.6.0</code></sub>
-
-> Security is infrastructure, not advice.
-
-Claude Code keeps its existing `PreToolUse(Bash|PowerShell)` guard unchanged. Codex ships a separate POSIX `PreToolUse(Bash)` matcher tailored to Codex's event schema; trust it once via `/hooks` and keep Codex sandboxing + approvals enabled. Both are deterministic defense-in-depth layers, not replacements for the host sandbox.
-
-The Codex adapter requires Python 3.10+ for its safety hook and bundled helpers.
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4>🗑 Filesystem wipes</h4>
-<code>rm -rf /</code> · <code>~</code> · <code>$HOME</code> · <code>--no-preserve-root</code> · system roots
-</td>
-<td width="50%" valign="top">
-<h4>💽 Disk &amp; device destruction</h4>
-<code>dd of=/dev/…</code> · <code>mkfs</code> · <code>wipefs</code> · <code>blkdiscard</code> · <code>shred /dev/…</code> · <code>diskutil erase…</code>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>⛓ Device / critical-file overwrite</h4>
-redirection onto <code>/dev/sd*</code> · over <code>/etc/passwd</code> · <code>shadow</code> · <code>sudoers</code> · <code>fstab</code>
-</td>
-<td width="50%" valign="top">
-<h4>💣 Fork bombs</h4>
-<code>:(){ :|:&amp; };:</code> and self-replicating variants
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>🔑 Recursive perms on system roots</h4>
-<code>chmod -R</code> / <code>chown -R</code> on <code>/</code> · <code>~</code> · <code>/etc</code> · <code>/usr</code> …
-</td>
-<td width="50%" valign="top">
-<h4>🕳 Opaque exec &amp; repo loss</h4>
-download piped into a shell · <code>base64 -d</code> → shell · <code>eval "$(…)"</code> · <code>git clean -x</code>
-</td>
-</tr>
-</table>
-
-Wrappers and nested payloads are inspected (`sudo`/`env`/`timeout` prefixes and one level of `sh -c '…'` are unwrapped before matching) while quoted inert mentions remain allowed.
-
-### What it guarantees — and what it does not
-
-This is a **denylist, not a sandbox** ([CWE-78](https://cwe.mitre.org/data/definitions/78.html)). Be honest about the boundary:
-
-**It guarantees** — once installed, and on Codex once trusted via `/hooks`:
-
-- **Deterministic.** The listed catastrophic patterns are blocked by a fixed matcher, not by model judgment — same input, same block, every time.
-- **Pre-execution.** The deny fires in `PreToolUse`, before the shell runs. In Claude Code it runs *before* permission/allow rules, so an over-broad allow-rule or auto-mode can't wave these through.
-- **Wrapper-aware.** Common wrappers and one level of `sh -c` nesting are unwrapped before the pattern check.
-
-**It does _not_ guarantee** — treat these as hard limits, not caveats:
-
-- **Not a complete boundary.** It blocks known catastrophic *forms*. A novel obfuscation, an unlisted tool, or destruction through a language runtime (e.g. a Python script calling `os.remove`) can slip past. The real containment layer is the host sandbox — Claude Code's sandbox and Codex's `workspace-write` / `read-only`.
-- **Shell-tool scoped.** It matches the Bash/PowerShell tool it is wired to. It does not inspect bytes sent to an already-running process (Codex `write_stdin`) or non-shell tools. The Codex launcher is POSIX-only.
-- **Codex must trust it.** Enabling the plugin does not auto-run its hooks — untrusted, Codex skips the guard entirely. Requires Python 3.10+.
-
-**Bottom line:** it is deterministic defense-in-depth that sits *under* the sandbox, approval policy, and model judgment — not a replacement for any of them. Keep the sandbox and approvals on.
-
-<img src="assets/divider.svg" alt="" width="100%">
-
-## 🛠 Skills
-
-<b>25 skills</b>, each with modern frontmatter (<code>allowed-tools</code> · <code>disable-model-invocation</code> · <code>argument-hint</code> · <code>context: fork</code>) that scales reasoning effort to the task. Approval gates use the structured <b>AskUserQuestion</b> tool, not prose.
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4>⚙️ Core SDLC</h4>
-<code>/manifest</code> · <code>/conjure</code> · <code>/blueprint</code> · <code>/ward</code> · <code>/unravel</code> · <code>/certify</code>
-</td>
-<td width="50%" valign="top">
-<h4>🎛 Orchestration</h4>
-<code>/orchestrate</code> · <code>/weave</code> · <code>/portal</code> · <code>/seal</code>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>🛡 Review &amp; security</h4>
-<code>/scrutinize</code> · <code>/divine</code> · <code>/sentinel</code>
-</td>
-<td width="50%" valign="top">
-<h4>🧠 Intelligence</h4>
-<code>/knowledge-graph</code> · <code>/chronicle</code> · <code>/statusline</code>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4>🔗 Integration</h4>
-<code>/jira</code> · <code>/confluence</code>
-</td>
-<td width="50%" valign="top">
-<h4>🔬 Research · Quality · Meta</h4>
-<code>/magic</code> · <code>/transmute</code> · <code>/accelerate</code> · <code>/deploy</code> · <code>/autopsy</code> · <code>/almanac</code> · <code>/inscribe</code>
-</td>
-</tr>
-</table>
-
-<details>
-<summary><b>Full skill catalog</b> — what each one does</summary>
-
-<br>
-
-| Skill | Purpose |
+| Skill | Runs without asking |
 |---|---|
-| `/manifest` | Full autonomous SDLC — 4 human gates (scope · spec · plan · ship); runs conjure → blueprint → portal → orchestrate → certify → scrutinize → seal |
-| `/conjure` | Structured design dialogue with a visual browser companion — 4 modes; HARD-GATE: no code until the spec is approved |
-| `/blueprint` | Turns an approved spec into a TDD task plan with a parallelism map + a verbatim Global-Constraints header every task inherits |
-| `/ward` | TDD engine — red → green → refactor, one behavior at a time; the RED test must fail for the reason under test |
-| `/unravel` | Systematic debugging — hypothesis before evidence; read the trace fully, reproduce first, instrument boundaries; not done until the original symptom is gone |
-| `/certify` | Full verification loop — tests · types · lint · build · browser check; evidence before any success claim |
-| `/orchestrate` | Multi-agent build from a blueprint — parallel waves + a per-task two-stage review (spec then quality), confirmed from the VCS diff |
-| `/weave` | Composes + runs a large multi-item delivery as one native Workflow with all guardrails (TDD per unit · kg grounding · certify · adversarial review) |
-| `/scrutinize` | Three specialist reviewers in parallel (correctness · security · simplification), consolidated then remediated |
-| `/divine` | Research-grounded code review — detects PR/MR/branch context, gates depth, 4 lenses, adversarially verifies findings, severity-ranked report |
-| `/sentinel` | Security scan — OWASP Top 10, secret detection, injection surfaces, dependency + git-history audit (read-only, forked context) |
-| `/knowledge-graph` | Local code knowledge-graph + cache (`kg` CLI, stdlib) — ranked `file:line` (BM25 + Personalized PageRank), neighbors, blast-radius |
-| `/chronicle` | Memory &amp; context steward — session history, global reference store, live context size + a pre-compaction resume capsule |
-| `/statusline` | Magician CLI UI — a local, zero-token status line (context % · rot warning · sparkline · model/git/cost · active skill · 🧠 effort) |
-| `/jira` · `/confluence` | Atlassian over REST via bundled CLIs (no MCP) — read/search, create/update (write-gated), throttle-aware, first-run token setup |
-| `/magic` | Research, analysis &amp; consulting — web + docs + local files; saves findings that feed conjure/blueprint/unravel |
-| `/transmute` | Comprehend an existing feature → PORT or INTEGRATE it, behind a parity contract + quality gateways |
-| `/accelerate` | Performance profiling — baseline-first, measure → optimize → re-measure |
-| `/deploy` | CI/CD pipeline create/update/monitor (GitHub Actions · GitLab CI · CircleCI) with a background CI-red watcher |
-| `/autopsy` | Blameless post-mortem — timeline · 5-Whys · action items |
-| `/almanac` | One-time workspace init — `.workspace/`, lean `CLAUDE.md`, `.gitignore`, MCP suggestions |
-| `/inscribe` | Author a new reusable skill; suggested by the pattern detector after repeated requests |
-| `/portal` | Git worktree isolation for a feature, with post-merge cleanup |
+| `/certify` | Your project's test, lint and build commands as `/certify` writes them, such as `npm run build`, `go test ./...` and `mvn test`. `npm test`, `pytest`, `mypy` and `cargo test` accept any arguments, including ones that update test snapshots, install type stubs, load a plugin or run another program. Test commands run the project's own code |
+| `/seal` | `git add -A`, `git commit -m` with any further arguments, `git push -u origin HEAD` exactly (it names the branch, so your git push settings can't widen it to a force, delete or other branch), `gh pr create` and `gh pr merge --squash --delete-branch`, plus edits to `CLAUDE.md` and `README.md`. It shows one summary and asks before the first push, pull request or merge |
+| `/almanac` | `git add .workspace/shared/ CLAUDE.md .gitignore` exactly, the files it sets up. `/autopsy`, `/conjure`, `/inscribe` and `/magic` ask before staging the file they wrote |
+| `/almanac`, `/autopsy`, `/conjure`, `/inscribe`, `/magic` | `git commit -m` with any message and any further arguments, such as `-a`, `--amend` or `--no-verify` |
+| `/portal` | `git worktree add` with any arguments |
+| `/sentinel` | Dependency auditors in report mode only: `npm audit`, `pip-audit`, `safety check`, `govulncheck ./...` and `cargo audit` |
+| `/deploy` | Edits to CI configuration in `.github/workflows/`, `.gitlab-ci.yml` and `.circleci/` |
+| `/conjure` | Starting and stopping its local preview server. Opening the preview in your browser asks first |
 
-</details>
+`/knowledge-graph` and `/weave` also run `kg refresh`, which builds or updates the code index in `~/.claude/magician/knowledge-graph/`, and `kg query` and `kg blast` save their results to a cache in that folder. The remaining grants are read-only commands, such as `kg check` and `kg neighbors`, the read commands of `jira` and `confluence`, and `gh` views; creating and editing files inside `.workspace/`, `.claude/skills/` or magician's data folder; and `/almanac`'s edits to `CLAUDE.md` and `.gitignore`.
 
-<img src="assets/divider.svg" alt="" width="100%">
+## Skills
 
-## 🚀 Install
+| Skill | Use it to |
+|---|---|
+| `/almanac` | Set up a project workspace, once per project |
+| `/manifest` | Run the full lifecycle with four approval points |
+| `/magic` | Research a question across documentation, the web and local files |
+| `/conjure` | Agree on a design and spec before writing code |
+| `/blueprint` | Turn an approved spec into a test-first plan |
+| `/portal` | Isolate a feature in its own git worktree |
+| `/orchestrate` | Build a plan with parallel agents |
+| `/weave` | Deliver many related items as one tracked workflow |
+| `/ward` | Build one behaviour at a time, test first |
+| `/unravel` | Debug from a hypothesis and evidence, then add a regression test |
+| `/certify` | Check tests, types, lint and build before calling work done |
+| `/scrutinize` | Review a diff with three reviewers and fix what they confirm |
+| `/divine` | Review a change or pull request in depth, ranked by severity |
+| `/sentinel` | Scan a codebase for security issues without changing it |
+| `/accelerate` | Profile and optimize against a measured baseline |
+| `/seal` | Commit, open a pull request, watch CI and merge |
+| `/deploy` | Create, fix or monitor CI/CD pipelines |
+| `/autopsy` | Write a blameless post-incident review |
+| `/transmute` | Understand an existing feature, then port it or change it in place |
+| `/knowledge-graph` | Build and query the local code index |
+| `/chronicle` | Review session history, saved references and project learnings |
+| `/statusline` | Turn the status line on or off and set the voice |
+| `/jira` | Read, search, create and update Jira issues |
+| `/confluence` | Read, search, create and update Confluence pages |
+| `/inscribe` | Write a new reusable skill for the current repository |
 
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4>Claude Code</h4>
-<pre><code>/plugin marketplace add https://github.com/Alexander-Tyagunov/magician
-/plugin install magician@magician</code></pre>
-Restart if prompted, then initialize your workspace with <code>/almanac</code>.<br>
-Updates install automatically; force one with <code>/plugin marketplace update</code> then <code>/plugin update magician@magician</code>.
-</td>
-<td width="50%" valign="top">
-<h4>Codex</h4>
-<pre><code>codex plugin marketplace add Alexander-Tyagunov/magician
-codex plugin add magician@magician</code></pre>
-Restart or open a new task, then: <i>“Use $almanac to set up Magician in this workspace.”</i><br>
-<b>Update later</b> with <code>codex plugin marketplace upgrade</code> (Codex has no auto-update), then re-run <code>codex plugin add magician@magician</code> if prompted.<br>
-Codex also ships <code>$project-context</code>, a read-only stack detector that progressively loads
-only relevant lore cores and task-matched deep dives.
-</td>
-</tr>
-</table>
+## Agents
 
-<sub>Codex installs a self-contained package with 25 shared adapters plus the Codex-only <code>$project-context</code> skill under <code>skills/</code>. Use <code>codex plugin list</code> to confirm it is installed and enabled; an enable flag alone does not install package contents.</sub>
+Skills start these agents; you rarely call them yourself. Most are read-only: `fixer` can edit files and run shell commands, and `gatekeeper` can run shell commands.
 
-<img src="assets/divider.svg" alt="" width="100%">
+| Agent | Role |
+|---|---|
+| `reviewer` | Finds bugs, logic errors and missed edge cases |
+| `sentinel` | Finds vulnerabilities and attack surfaces |
+| `simplifier` | Finds unnecessary complexity |
+| `verifier` | Checks that the tests actually prove the change |
+| `guardian` | Audits agent-specific risks such as prompt injection and over-broad tool access |
+| `fixer` | Makes the smallest change that resolves a confirmed finding, then reruns the check |
+| `gatekeeper` | Runs the release checks and returns go or no-go with evidence |
 
-## 🗂 Workspace — team memory
+## Bundled commands
 
-<table>
-<tr>
-<td width="58%" valign="top">
-<pre><code>.workspace/
-├── shared/         ← git-committed (whole team)
-│   ├── specs/       design specs   (/conjure)
-│   ├── plans/       impl plans      (/blueprint)
-│   ├── research/    findings        (/magic)
-│   ├── decisions/   ADRs
-│   └── postmortems/ (/autopsy)
-└── local/          ← always gitignored
-    ├── prefs.md     personal prefs
-    └── session.md   pre-compaction state</code></pre>
-</td>
-<td width="42%" valign="top">
-Teammates share <code>shared/</code> via git; each machine keeps its own <code>local/</code>. A machine-global reference store loads into every session, so context follows you across repos.
-<br><br>
-Subagents never inherit your conversation — every handoff ships a <b>self-contained context contract</b> (goal · scope · inputs-by-path · constraints · return format), so nothing is lost across agents, workflows, or teams.
-</td>
-</tr>
-</table>
+While magician is enabled, these commands are on the PATH of the shell Claude uses, not your own terminal. Skills call them for you. To run one yourself, ask Claude, for example "run magician-ui status".
 
-<img src="assets/divider.svg" alt="" width="100%">
+| Command | What it does | Network |
+|---|---|---|
+| `kg` | Builds a local SQLite index of your code and answers queries with `file:line` results and change impact. An optional helper that keeps the index loaded starts only when you agree and exits after 15 idle minutes | None |
+| `ctx` | Stores project learnings and reports how full the context is, reading only token counts and the model name from this session's transcript file | None |
+| `jira` | REST client for your Jira site | Your Jira site only, over HTTPS |
+| `confluence` | REST client for your Confluence site | Your Confluence site only, over HTTPS |
+| `magician-ui` | Turns the status line, voice and lore on or off, and removes settings earlier versions added | None |
+| `magician-statusline` | Draws the status line from the data Claude Code passes to it | None |
+| `magician-scan` | Scans a folder for security issues and prints each match with its file, line and a short snippet; credential values are redacted | None |
 
-## 🧰 Bundled CLIs &nbsp;<sub>(on <code>PATH</code> when the plugin is enabled)</sub>
+## Configuration
 
-<table>
-<tr>
-<td width="50%" valign="top">
-<h4><code>kg</code></h4>
-Local code knowledge-graph + cache — <code>kg init</code> → <code>kg query "&lt;topic&gt;"</code> / <code>kg blast &lt;file&gt;</code>. Stdlib, no network.
-</td>
-<td width="50%" valign="top">
-<h4><code>jira</code> · <code>confluence</code></h4>
-MCP-free Atlassian REST clients — throttle-aware, bulk-safe, one command per call.
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<h4><code>magician-ui</code></h4>
-Manage the CLI UI status line + <code>allow</code> (read-only auto-approve) + <code>automode</code> (auto mode) + <code>voice</code> (output brevity) — safe, backed-up <code>settings.json</code> edits.
-</td>
-<td width="50%" valign="top">
-<h4><code>magician-scan</code> · <code>ctx</code></h4>
-Standalone security scan for CI · self-managed context (size tracking + pre-compaction resume capsule).
-</td>
-</tr>
-</table>
+### Jira and Confluence
 
-<img src="assets/divider.svg" alt="" width="100%">
+1. Run `/plugin configure magician` and fill in the site URL, the token and, for Cloud, your account email. Site URLs must start with `https://`, except for a site on your own computer.
+2. Start a new session, because the values load at session start.
+3. Check the connection with `/jira` or `/confluence`, or ask Claude to run `jira myself` or `confluence whoami`.
 
-<div align="center">
+Claude Code keeps the two tokens in your system keychain, or in its credentials file where no keychain is available, and saves the other values in its settings. Leave the options empty if you don't use Jira or Confluence.
 
-### ❤ Support this work
+At session start, a hook copies the non-empty Jira and Confluence values, tokens included, into the session environment file that Claude Code loads before each shell command. If the hook creates that file, it makes it readable only by you; either way, every command Claude runs in the session can read the tokens from its environment. Use a token with the narrowest access your site allows, or leave the options empty if that exposure is not acceptable.
 
-If magician saves you time, consider sponsoring — it funds new skills, broader framework lore, and community support.
+### Options
 
-**[❤ Sponsor on GitHub →](https://github.com/sponsors/Alexander-Tyagunov)**
+| Option | Default | What it does |
+|---|---|---|
+| `jira_base_url` | empty | Your Jira site, for example `https://your-site.atlassian.net` |
+| `jira_email` | empty | Account email for Jira Cloud; leave it empty for Server or Data Center |
+| `jira_api_token` | empty | Cloud API token, or a personal access token for Server or Data Center; kept in the keychain |
+| `confluence_base_url` | empty | Your Confluence site; Cloud URLs end in `/wiki` |
+| `confluence_email` | empty | Account email for Confluence Cloud; leave it empty for Server or Data Center |
+| `confluence_api_token` | empty | Cloud API token or Server/Data Center personal access token; kept in the keychain. Leave it empty on the same Cloud site to reuse the Jira token |
+| `auto_format` | off | After Claude writes or edits a file, runs ruff (or black), gofmt, rustfmt or shfmt if already installed |
+| `auto_format_prettier` | off | Also runs prettier, which loads the project's config and plugins and so can run code from the repository |
+| `desktop_notifications` | off | Shows a desktop notification when a background session finishes or needs input |
+| `session_history` | on | Keeps a short record of each session: time, folder, branch, commit count, changed file names and a one-line summary |
 
-<br>
+### Voice
 
-<sub>MIT © <a href="https://github.com/Alexander-Tyagunov">Alexander Tyagunov</a> · built for Claude Code &amp; Codex</sub>
+Voice is the output-brevity level, meaning how much prose Claude writes around the facts. `warrior` gives the shortest complete answer, `scribe` (the default) is leaner than usual, and `bard` leaves Claude at its normal length. Code, commands, paths and error text are never shortened.
 
-<img src="assets/divider.svg" alt="" width="100%">
+Set it with `/statusline`, by asking Claude to run `magician-ui voice warrior` (or another name), with a `.magician/voice` file in the project, or with the `MAGICIAN_VOICE` environment variable. The environment variable wins, then the project file, then the saved setting. A change applies from the next session.
 
-</div>
+### Status line
+
+The status line stays off until you turn it on with `/statusline`. It shows how full the context is, with a warning as it fills and a small chart of recent use, plus the model, git branch and cost, the active skill, the reasoning effort, and the lore and voice state. Turning it on edits one key in your settings, as described in [Settings it can change](#settings-it-can-change).
+
+## What runs on your machine
+
+### Hooks
+
+Hooks are scripts Claude Code runs on session events. They make no network calls and don't read your conversation transcript. All of them, the safety guard included, are plain bash.
+
+| Event | Script | What it does | How to turn it off |
+|---|---|---|---|
+| Session start | `session-start.sh` | Detects the stack and adds matching lore, the voice note, a note from the last session in this folder, recent learnings, saved references, a code-index hint and the detected log platform | Turn off lore, voice or `session_history`; the hook itself only by disabling the plugin |
+| Session start | `userconfig-env.sh` | Copies non-empty Jira and Confluence options into the session environment, with the path of magician's data folder and a marker showing the hook ran | Leave those options empty; the folder path and marker are always written |
+| After compaction | `compact-context.sh` | Restates the branch, uncommitted files, this session's commits and shared workspace files; writes nothing | Disable the plugin |
+| Each prompt | `pattern-detect.sh` | Adds at most one line naming a matching skill; stores nothing from the prompt | Disable the plugin |
+| Before shell commands | `destructive-guard.sh` | Blocks a fixed list of dangerous commands, see [Safety guard](#safety-guard) | Not possible, by design |
+| After writes and edits | `format.sh` | Runs an installed formatter on the edited file | Off by default (`auto_format`) |
+| Notifications | `notify.sh` | Shows a desktop notification when a background session finishes or needs input, through your terminal or, on Linux, `notify-send` | Off by default (`desktop_notifications`) |
+| Session stop | `chronicle-stop.sh` | Saves a short session record from git and adds decision-style commit subjects to project learnings | Turn off `session_history` |
+
+At session start magician also shows you two notices of its own: a one-time hint to run `/almanac` in a new project, and, if 4.14 or earlier recorded adding permission rules or auto mode, a weekly reminder that repeats until you run `magician-ui cleanup`. It records each session's start time in its data folder, and writes status markers only when the status line is on.
+
+### Background monitor
+
+The first time you run `/deploy` in a session, a monitor starts checking GitHub Actions every 90 seconds, for up to three hours, for new failed runs on the current branch. It uses your installed `gh` login, prints only the run ID and stores nothing. It stays silent when `gh`, a git repository, an `origin` remote or a branch is missing.
+
+### Files it writes
+
+Claude Code gives each plugin a data folder, usually `~/.claude/plugins/data/magician-<marketplace>/`, where the last part is the name of the marketplace you installed from. It deletes that folder when you uninstall the plugin. If Claude Code provides no data folder, magician uses `~/.local/share/magician/` instead.
+
+| Location | Contents | Kept for |
+|---|---|---|
+| Data folder | Session records: time, folder, branch, commit count, changed file names and a one-line summary | Newest 50 |
+| Data folder | Session start times | 30 days |
+| Data folder | Project learnings, the detected log platform and references you save with `/chronicle` | Until you remove them or uninstall |
+| Data folder | Jira and Confluence memory: names of the people, projects, boards, epics, spaces and pages you work with | Until you edit the file or uninstall |
+| Data folder | Integration opt-outs, your `/almanac` workspace choice, the pull request versions `/divine` has reviewed, a 30-second Jira and Confluence cache, and pacing and marker files | Until you uninstall |
+| `~/.claude/magician/` | Preferences in `cli-ui.json`, the status line renderer, status markers, the code index | Status markers 7 days; the rest until you delete it |
+| `~/.claude/settings.json.bak-magician-ui-*` | Backups taken before `magician-ui` edits your settings | Newest 3 |
+| `.workspace/` in your project | Specs, plans, research, decisions, post-mortems, `/conjure` designs and mockups, the design preview's chat log, `/divine` review diffs and `/transmute` session state | Until you delete it |
+| `.magician/` in your project | Optional `voice` and `lore.off` files you create | Until you delete it |
+
+The `/jira` and `/confluence` skills add to their memory files, `jira-memory.md` and `confluence-memory.md`, without asking, and say "Remembered" when they do. Edit or delete those files to clear them.
+
+### What leaves your machine
+
+- `jira` and `confluence` send requests only to the site URLs you configure, over HTTPS, and don't follow redirects.
+- `/seal`, `/deploy`, `/divine`, `/autopsy`, `/jira` and the CI monitor use your own `gh` login, and `/divine` can use `glab`, to talk to GitHub or GitLab. `/seal` also pushes to your git remote.
+- Research skills use Claude Code's web tools, which follow your permission settings. If you added the Context7 documentation MCP server, `/magic`, `/divine` and `/transmute` may query it without a prompt.
+- `/transmute` can open pages on hosts you name in your Chrome browser, through the Claude in Chrome tools, and read their text and network requests into the conversation. Each browser action goes through your normal permission prompt, the skill is told to stay read-only and mask secrets, and it asks in chat before typing into a page.
+- The `/conjure` preview server listens on `127.0.0.1` only. Its page loads one pinned diagram library, mermaid 10.9.3, from jsDelivr in your browser, with an integrity hash so the browser rejects any other file, and hosted web fonts only if you ask for them. `/conjure` can also use a Playwright MCP server, if you have one, to screenshot its design pages; opening a page in that browser asks first.
+- `/sentinel` may run a dependency auditor: `npm audit` sends the dependency list to the npm registry; `pip-audit` sends package names and versions to PyPI (or OSV, if you choose it); `safety check` downloads Safety's vulnerability database and, when you use a Safety API key, sends the package list to Safety's servers; `govulncheck` asks the Go vulnerability database at vuln.go.dev about the modules you use, and the go command downloads any module missing from its cache from your module proxy (proxy.golang.org by default); and `cargo audit` downloads the RustSec advisory database from GitHub and, to spot yanked versions, fetches the crates.io index entry of each crate in Cargo.lock.
+- `/magic`, `/conjure`, `/autopsy`, `/accelerate`, `/scrutinize` and `/divine` can offer to publish a result as a Claude Artifact, and do so only if you accept.
+
+Nothing goes to the author, and there is no telemetry. Text magician adds to your session is part of your conversation, so Claude Code sends it to your model provider like any other text.
+
+### Settings it can change
+
+magician never changes Claude Code settings on its own. These commands edit `~/.claude/settings.json` only when you or `/statusline` run them, and each one saves a backup first.
+
+| Command | Change | Undo |
+|---|---|---|
+| `magician-ui enable` | Points the `statusLine` key at magician's renderer, replacing any status line you had | `magician-ui disable`, then restore your earlier status line from the backup |
+| `magician-ui disable` | Removes `statusLine` if it runs magician; a status line of your own is left alone | `magician-ui enable` |
+| `magician-ui cleanup` | Removes the permission rules, auto-mode setting and old data files that 4.14 and earlier recorded adding | Add rules yourself with `/permissions` |
+
+`/almanac` edits `.gitignore`, `CLAUDE.md` and `.workspace/` in your project and, in Shared mode, commits them. It writes no Claude Code settings.
+
+## Safety guard
+
+Before each Bash or PowerShell command runs, a hook checks the command text against a fixed list of catastrophic forms:
+
+- recursive deletion of the filesystem root, system folders or your home folder
+- raw writes to disk devices, and formatting a filesystem
+- overwriting critical system files such as the password database
+- recursive permission or ownership changes on system folders
+- a fork bomb: a shell function that pipes into itself and runs in the background
+- piping downloaded or base64-decoded content into a shell or interpreter, or evaluating a downloaded script
+- a forced git clean that also deletes ignored files (`-x` or `-X` with `-f` or `--force`, also after git options such as `-C`), such as local secrets files
+- in PowerShell, a forced recursive delete of any drive root, anything under `C:\Windows`, or a home folder or its whole contents, and disk-wiping cmdlets
+
+Wrappers such as sudo, env, timeout and nice, and full program paths, are removed before this check. The checks for piping a download into a shell and for fork bombs ignore text inside quotes, so a commit message that only mentions them passes. The other rules split the command at every `;`, `|` and `&`, quoted or not, and at line breaks outside quotes, so a quoted message that holds one of those separators followed by one of the commands above is refused. A match is blocked before Claude Code evaluates permission rules, so no allow rule or permission mode overrides it.
+
+For Bash commands, a second list reads quoted parts too. It blocks a recursive forced delete of a path written from `/`, `eval` of quoted, variable or backquoted content, using `cat` on SSH keys, AWS, gcloud or Azure credentials, or a `.env` or `.env.*` file anywhere in a path (templates such as `.env.example` excepted), and a command that mentions a secret such as a token or password, uses a network tool and pipes into an interpreter.
+
+Bash commands are also refused when they name magician's saved options or the session environment file, read another process's environment through `/proc` (quoted paths included), or print the whole environment with `env`, `printenv`, `set`, `export -p`, `declare -x`, `declare -p` or `compgen -e`, including behind a wrapper such as `sudo` or `timeout` or inside `( )` or `{ }`. During a session that environment holds the Jira and Confluence tokens you entered.
+
+Each line of a multi-line command is checked on its own, and so is a quoted script passed to `sh -c`, `bash -c` or another shell's `-c`, with or without other shell options before it. A command over 50,000 bytes as JSON-escaped in the hook event is refused rather than checked in part: a non-ASCII character counts 2 to 4 bytes, a quote, backslash, tab or line break 2, and another control character 6. The check's running time grows in step with the command's length and stays within a few seconds at that limit, because Claude Code runs a command unchecked if the hook times out.
+
+The guard is one bash script, `scripts/destructive-guard.sh`. It reads the command text and never runs it. It is a denylist and does not sandbox anything. It doesn't block deleting a folder inside your home folder, such as `~/Documents`, or a fork bomb written without both the pipe and the `&`. It can also miss new obfuscations, deletion done from inside a language runtime, and actions taken through tools other than the shell. If the check itself fails, it lets the command through rather than lock up your shell, so keep Claude Code's sandbox and permission prompts on.
+
+## Lore
+
+Lore is magician's bundled guidance for specific technologies: a short core file per topic, with a longer deep-dive file for many of them. At session start magician detects the languages, frameworks, databases and log platform in the project and adds the matching cores within a fixed size budget. When the budget runs short, the security, language, framework and database engine cores are kept ahead of the general guides. Deep dives are read only when the work needs them, and your repository's own conventions always take priority.
+
+| Category | Topics |
+|---|---|
+| Languages and runtimes | 9, including Python, Go, Rust, Java, Kotlin, Swift and TypeScript |
+| Frameworks and libraries | 70, from web frameworks and ORMs to UI styling, data and machine learning |
+| Databases | 30 engines across relational, analytics, document, key-value, vector, graph and search, plus a shared guide |
+| Logging and observability | 6 platforms with their query languages, plus a general logging guide |
+| Infrastructure | 4: Docker, Kubernetes, Terraform and GitHub Actions |
+| Working practices | 12, including security, verification, test-driven development, git and models |
+
+The [lore folder](lore/) holds all 133 core files, and the [deep-dive folder](lore/deep/) holds 110 deep dives. Turn lore off by asking Claude to run `magician-ui lore off`, with a `.magician/lore.off` file in the project, or with `MAGICIAN_LORE=0`.
+
+## Workspace
+
+The workspace is a `.workspace/` folder in your project where skills save specs, plans, research and decisions, so later sessions and teammates can pick them up. `/almanac` creates two parts:
+
+| Folder | In git | Contents |
+|---|---|---|
+| `shared/` | Committed | Team context and roadmap, specs from `/conjure`, plans from `/blueprint`, research from `/magic`, decision records and reviews from `/autopsy` |
+| `local/` | Always ignored | Per-machine preferences and the last session's state |
+
+Teammates share `shared/` through git, and each machine keeps its own `local/`. If you choose Private when `/almanac` asks, it ignores the whole `.workspace/` folder instead, so nothing is shared.
+
+## Model support
+
+magician works with the models Claude Code offers, and nothing in it requires a particular model. Skills check what the session's model supports, such as the available effort levels, and keep the earlier behaviour on older models. The model facts they rely on are in [lore/models.md](lore/models.md).
+
+## Troubleshooting
+
+### Jira or Confluence says it is not configured
+
+Follow the steps in [Jira and Confluence](#jira-and-confluence), and start a new session after saving the options. A site URL that starts with `http://` fails unless the site runs on your own computer.
+
+### The status line does not appear
+
+It is off by default. Run `/statusline`, then send a message or two. After an update, ask Claude to run `magician-ui enable` again to refresh the renderer copy. It keeps the components you chose.
+
+### Files are not formatted
+
+Auto-format is off by default. Turn on `auto_format`, and `auto_format_prettier` for prettier, in the plugin options. The formatter must already be on your `PATH`, because magician never installs one.
+
+### No desktop notifications
+
+Notifications are off by default; turn on `desktop_notifications`. iTerm2, WezTerm, Kitty, Ghostty, Warp and Windows Terminal show their own. Elsewhere on Linux, magician uses notify-send if it is installed. Other macOS terminals, such as Terminal.app, the VS Code and JetBrains terminals, Alacritty and plain tmux, show none, because reaching Notification Center would take an AppleScript program and the hooks run only bash.
+
+### The safety guard blocked a command
+
+The message names the rule that matched, and there is no override. If you intend the command, run it yourself in a terminal outside Claude Code. If the block looks wrong, open an issue with the command text so the pattern can be fixed.
+
+### Leftover permission rules from older versions
+
+Ask Claude to run `magician-ui status` to list what 4.14 and earlier added, then `magician-ui cleanup` to remove it. Cleanup removes a rule only if it is on the fixed list those versions used and magician's records show they added their list. A rule on that list that you also added yourself, such as `Bash(git status:*)`, can't be told apart and is removed too, so add it back with `/permissions` if you want it. The exceptions are `Bash(jira:*)` and `Bash(confluence:*)`: 4.4 and later removed those on every update, so if the record comes from one of those versions, cleanup keeps them. Without that record, cleanup keeps every rule and names the ones that match the list. Run cleanup before `magician-ui disable --purge`, which deletes the record. Purge refuses while the record still lists entries for cleanup to remove; `magician-ui disable --purge --force` deletes it anyway and leaves those entries in your settings.
+
+### Hooks do not run or show errors
+
+The hooks need bash 3.2 or later. On Windows, run Claude Code with Git Bash installed or inside WSL. Run `/hooks` to confirm magician's entries are listed, check that no settings file sets `disableAllHooks`, and start Claude Code with `--debug` to see each hook's output.
+
+## Upgrading from 4.14
+
+- magician no longer adds permission rules or sets auto mode. Ask Claude to run `magician-ui cleanup` once to remove what earlier versions added.
+- In Claude Code, Jira and Confluence settings moved into the plugin options, and the shell environment variables 4.14 read are ignored (the Codex package still reads them). Set the values with `/plugin configure magician`, then delete the old entries from your settings file yourself, because they hold the token in plain text.
+- Auto-format and desktop notifications are plugin options now, and both are off by default. The old notification environment variable is ignored.
+- Hooks that tracked file reads, suggested searches or MCP servers, logged agent activity, prepared worktrees or summarized the transcript before compaction were removed. After compaction, magician restates the working state from git.
+- The Codex package moved to the codex-plugin branch, as described in [Add the plugin](#add-the-plugin).
+- If you use the status line, ask Claude to run `magician-ui enable` once to refresh it. Your chosen components are kept.
+
+## Turn it off
+
+To pause magician, disable it. Its hooks, skills and commands stop until you enable it again.
+
+```text
+/plugin disable magician@magician
+```
+
+To remove it, first ask Claude to run these, in this order, while the plugin is still enabled:
+
+- `magician-ui cleanup` removes permission rules and auto mode left by 4.14 and earlier.
+- `magician-ui disable --purge` removes the status line entry, the renderer copy, the status markers and your saved preferences. It refuses while cleanup still has recorded entries to remove; add `--force` to purge anyway and keep those entries.
+
+Then uninstall:
+
+```text
+/plugin uninstall magician@magician
+```
+
+Claude Code deletes the plugin data folder on uninstall. Delete `~/.claude/magician/` to remove the code index, `~/.local/share/magician/` if it exists, and `.workspace/` or `.magician/` in a project if you no longer want them.
+
+## Privacy and security
+
+magician has no servers and collects no telemetry. [The privacy policy](https://github.com/Alexander-Tyagunov/magician/blob/main/PRIVACY.md) explains what it stores and sends, and [the security policy](https://github.com/Alexander-Tyagunov/magician/blob/main/SECURITY.md) explains how to report a vulnerability.
+
+## Support
+
+For questions and bug reports, [open an issue on GitHub](https://github.com/Alexander-Tyagunov/magician/issues). Report security problems privately as described in [the security policy](https://github.com/Alexander-Tyagunov/magician/blob/main/SECURITY.md), not in a public issue. For anything else, email tyagunov.alex@gmail.com.
+
+## License
+
+MIT, see [LICENSE](LICENSE). If magician saves you time, you can [sponsor its development on GitHub](https://github.com/sponsors/Alexander-Tyagunov).

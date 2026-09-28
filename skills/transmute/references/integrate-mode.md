@@ -38,26 +38,29 @@ seam in the parity contract's `<boundary>`.
 - **Rollback**: the flag is the kill-switch; the old path and strangler facade are retained; revert
   steps are documented. The removal of the old path is a **separate** follow-up, tracked (G8).
 
-## Delivery (INTEGRATE) — worked example: an address-validation vendor swap
+## Delivery (INTEGRATE) — worked example: a transactional-email provider swap
 
-A common case: change how the app talks to its address-validation vendor behind the scenes, preserve
-the checkout / account-creation UX unchanged, then produce the whole delivery.
+A common case: change which provider sends the app's transactional email (sign-up confirmation,
+password reset, order receipt) behind the scenes, keep every message users receive unchanged, then
+produce the whole delivery.
 
-1. **Comprehend** (Phase A): drive the current flow read-only, capture the vendor calls (network
-   layer), fingerprint the current vendor, `kg` the call sites, mask secrets → dossier + behavioral
-   golden of the current address-validation UX.
-2. **Contract** (Phase B, variant b): parity contract = *UX identical*, behavioral golden = the
-   validation outcomes users see; `<boundary>` = an ACL in front of address validation; upgrade
-   decision = the new vendor; cost gate on per-call pricing × volume; rollback via flag.
-3. **Tickets** (C3): `/jira` epic ("Address validation vendor migration") + stories (ACL interface,
-   new-vendor adapter, parallel-run harness, flag + config, cutover, old-path removal follow-up),
-   linked to any existing epic.
+1. **Comprehend** (Phase A): drive the current flows read-only, capture the provider calls (network
+   layer), fingerprint the current provider SDK, `kg` the send sites, mask secrets → dossier +
+   behavioral golden of the messages users receive today.
+2. **Contract** (Phase B, variant b): parity contract = *messages identical*, behavioral golden = the
+   rendered subject/body/recipients and the delivery outcomes (sent, bounced, retried);
+   `<boundary>` = an ACL (a `MailSender` interface) in front of sending; upgrade decision = the new
+   provider; cost gate on per-message pricing × volume; rollback via flag.
+3. **Tickets** (C3): `/jira` epic ("Transactional email provider migration") + stories (ACL
+   interface, new-provider adapter, parallel-run harness, flag + config, cutover, old-path removal
+   follow-up), linked to any existing epic.
 4. **Design** (C1, if any UI shifts): `/conjure` — usually none for a pure backend swap (UX preserved).
 5. **Build** (C4): `/weave` with the created **stories as `args.units`**; the parity loop diffs the new
-   adapter's behavioral outputs against the golden; ACL keeps call sites unchanged.
-6. **Cutover**: flag + parallel-run (return control) + canary.
-7. **Gateways** (Phase D): parity, perf, **cost** (vendor pricing delta), **security** (new creds /
-   PII crossing the ACL — `/sentinel`), UX-identical (G5), rollback (G6), toggle-removal filed (G8).
+   adapter's rendered messages against the golden; the ACL keeps send sites unchanged.
+6. **Cutover**: flag + parallel-run (shadow-send to a sink, compare) + canary.
+7. **Gateways** (Phase D): parity, perf, **cost** (provider pricing delta), **security** (new creds /
+   recipient addresses crossing the ACL — `/sentinel`), UX-identical (G5), rollback (G6),
+   toggle-removal filed (G8).
 8. **Ship** (`/seal`, gated).
 
 ## Gateways (INTEGRATE emphasis)

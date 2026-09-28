@@ -13,7 +13,7 @@ DON'T leak stack traces — set `setErrorHandler`; log via built-in pino, not `c
 
 Commands: `npm i fastify @fastify/helmet @fastify/cors @fastify/rate-limit` · `fastify start -l info app.js`.
 
-Deep dive when writing non-trivial fastify — read lore/fastify/{schema-and-serialization,plugins-hooks-and-lifecycle,performance-and-testing}.md
+Deep dive when writing non-trivial fastify — read lore/deep/fastify.md#{schema-and-serialization,plugins-hooks-and-lifecycle,performance-and-testing}
 
 ## Sources
 fastify.dev/docs/latest/ · /Reference/Validation-and-Serialization/ · /Guides/Migration-Guide-V5/

@@ -9,6 +9,6 @@ Modern: `Object.groupBy`/`Map.groupBy` (ES2024), `Array.fromAsync` (ES2026); `ar
 Version cue: latest spec ES2025 (16th ed.); Node 24 Active LTS + 22 Maintenance LTS (20 EOL Apr 2026, 18 EOL 2025); prefer ESM.
 Commands: install `npm i` / `pnpm i`; run `npm run <s>` / `pnpm <s>`; test `npm test`; lint `npm run lint`.
 
-Deep dive when writing non-trivial javascript — read lore/javascript/{language-and-idioms,async,types-and-coercion,errors-and-resources}.md
+Deep dive when writing non-trivial javascript — read lore/deep/javascript.md#{language-and-idioms,async,types-and-coercion,errors-and-resources}
 
 Sources: developer.mozilla.org/en-US/docs/Web/JavaScript; tc39.es/ecma262; nodejs.org/en/about/previous-releases

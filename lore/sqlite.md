@@ -14,7 +14,7 @@ DON'T expect date/bool enforcement — no DATE/BOOLEAN class; use TEXT ISO8601, 
 DON'T pool writers for parallelism — writes serialize; one writer, scale readers.
 DON'T forget `-wal`/`-shm` sidecars when copying a live DB, or exceed the param cap on big `IN(...)`/inserts.
 
-Deep dive when writing non-trivial SQLite — read lore/sqlite/{pragmas-and-usage,concurrency-and-wal,types-and-limits,performance}.md
+Deep dive when writing non-trivial SQLite — read lore/deep/sqlite.md#{pragmas-and-usage,concurrency-and-wal,types-and-limits,performance}
 
 ## Sources
 sqlite.org/{wal,pragma,datatype3,limits}.html

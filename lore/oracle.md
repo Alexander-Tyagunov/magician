@@ -9,7 +9,7 @@ DO default READ COMMITTED (readers never block writers); SERIALIZABLE + retry OR
 DON'T treat `''` as a value (it's NULL) — test `IS NULL`; expect lock escalation — row-locks only, never escalate, ORA-00060 auto-rollback one stmt, retry.
 DON'T hold a tx open across app calls — readers hit `ORA-01555`; assume `FLOAT(p)` is decimal (it's binary) or `DATE`/`SYSDATE` lacks time.
 
-Deep dive for non-trivial Oracle — read lore/oracle/{connection-and-pooling,plsql-and-types,optimizer-and-indexing,transactions-and-locking,performance}.md
+Deep dive for non-trivial Oracle — read lore/deep/oracle.md#{connection-and-pooling,plsql-and-types,optimizer-and-indexing,transactions-and-locking,performance}
 
 ## Sources
 docs.oracle.com/en/database/oracle/oracle-database/26/ (cncpt, sqlrf, tgsql, jjdbc) · 26ai GA blog

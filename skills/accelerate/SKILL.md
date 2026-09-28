@@ -1,8 +1,8 @@
 ---
 name: accelerate
 description: Systematic performance profiling and optimization with a mandatory baseline-first gate — measure before changing, re-measure after. Use when something is slow or you need to hit a latency/throughput target.
-allowed-tools: Bash, Read, Edit, Monitor
-argument-hint: [what is slow] [target, e.g. p99<500ms]
+allowed-tools: Read, Grep, Glob, Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *)
+argument-hint: "[what is slow] [target, e.g. p99<500ms]"
 ---
 
 # /accelerate — Performance Profiling
@@ -30,9 +30,9 @@ Ask both questions in one message:
 
 ## Autonomy — approve the plan, then run
 
-After the Phase 1 gate (the two target answers — what's slow, and the acceptable target), run **Phases 2–5 autonomously**: reading, searching, `kg query`/`blast`, read-only git, and every profiling read, baseline, and benchmark NEVER pause for permission. After baseline + profiling, show the proposed **Phase 4 targeted fix** ONCE for approval; the bounded evaluator-optimizer loop then iterates without per-round prompts.
+After the Phase 1 gate (the two target answers — what's slow, and the acceptable target), run **Phases 2–5 autonomously**: reading, searching, `kg query`/`blast`, read-only git, and every profiling read, baseline, and benchmark go ahead without a confirmation question from you. Claude Code still shows its own permission prompt for commands this skill does not pre-approve (benchmarks, profilers) unless the session is in auto mode or the user already allowed them. After baseline + profiling, show the proposed **Phase 4 targeted fix** ONCE for approval; the bounded evaluator-optimizer loop then iterates without per-round prompts.
 
-Re-gate **only** on real side effects — applying the fix (`Edit`/Write) and any `git add`/`commit`/`push`. See [lore/autonomy.md](../../lore/autonomy.md).
+Re-gate **only** on real side effects — applying the fix (file edits) and any `git add`/`commit`/`push`. See [lore/autonomy.md](../../lore/autonomy.md).
 
 ### Phase 2: Baseline
 Measure current performance using the appropriate tool:
@@ -44,8 +44,9 @@ wrk -t4 -c100 -d30s http://localhost:8080/api/endpoint
 ```
 
 **Web (browser):**
+Use the Lighthouse CLI if it is already installed (or the project's own Lighthouse script):
 ```bash
-npx lighthouse http://localhost:3000 --output json --output-path baseline.json
+lighthouse http://localhost:3000 --output json --output-path baseline.json
 ```
 
 **Python:**
@@ -80,7 +81,7 @@ Fix ONLY the identified bottleneck. Common fixes:
 ### Phase 5: Measure Again
 Run the same benchmark as Phase 2. Compare: baseline vs. optimized.
 
-This is a **bounded evaluator-optimizer loop**: if the target isn't met, return to Phase 3 and attack the next bottleneck — but stop after a few rounds, when a round's marginal gain is negligible, or when the `/effort`/token budget is exhausted, then report the best result with the target marked met/not-met. Never loop indefinitely. For long benchmarks or load tests, run them via the **Monitor tool** so results stream back as they finish instead of blocking the turn.
+This is a **bounded evaluator-optimizer loop**: if the target isn't met, return to Phase 3 and attack the next bottleneck — but stop after a few rounds, when a round's marginal gain is negligible, or when the `/effort`/token budget is exhausted, then report the best result with the target marked met/not-met. Never loop indefinitely. For long benchmarks or load tests, start them with the Bash tool's background option and read the output when Claude Code reports the command finished, instead of blocking the turn.
 
 ## Circulate the result (optional)
 

@@ -12,7 +12,7 @@ DON'T expect CREATE INDEX; the one optional extra is the OSGP lab-mode index (ne
 DON'T create supernodes — model hubs with intermediate nodes or dedicated edge types.
 DON'T exceed the 150 MB HTTP limit or 55 MB per value (blobs -> S3); no null chars; deletes never reclaim storage — split big txns.
 
-Deep dive when writing non-trivial Neptune — read lore/neptune/{query-languages-gremlin-opencypher-sparql,data-loading-and-modeling,performance}.md
+Deep dive when writing non-trivial Neptune — read lore/deep/neptune.md#{query-languages-gremlin-opencypher-sparql,data-loading-and-modeling,performance}
 
 ## Sources
 docs.aws.amazon.com/neptune/latest/userguide/intro.html · feature-overview-data-model.html · limits.html

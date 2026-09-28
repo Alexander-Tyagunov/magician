@@ -103,8 +103,9 @@ For a big migration you want to run across turns unattended:
   transcript** each turn, or the evaluator can't see progress. Keep it a **compact per-turn summary**
   (pass/fail counts · p95 vs budget · parity-diff count) — full logs stay in `.workspace/` artifacts
   so the transcript doesn't balloon across turns.
-- **`/loop [interval]`** — time-paced polling for batch/CI waits. **Honest limit:** on Vertex there's
-  no Monitor push, so this is a fixed-interval tick (seconds+), not instant reaction; say so.
+- **`/loop [interval]`** — time-paced polling for batch/CI waits. **Honest limit:** it is a
+  fixed-interval tick (seconds+), not instant reaction; say so. For a single long command, a
+  background Bash run notifies you when it exits.
 
 ---
 

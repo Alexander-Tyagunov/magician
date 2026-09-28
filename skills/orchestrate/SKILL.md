@@ -1,8 +1,8 @@
 ---
 name: orchestrate
 description: Drives full multi-agent implementation from a blueprint — fans out parallel-safe tasks into waves, runs sequential tasks in order, resolves conflicts, then verifies. Use to execute an approved plan.
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Task, AskUserQuestion
-argument-hint: [plan-file]
+allowed-tools: Read, Glob, Grep, Task, AskUserQuestion, Bash(kg query *), Bash(kg blast *), Edit(./.workspace/local/session-state.md)
+argument-hint: "[plan-file]"
 ---
 
 # /orchestrate — Multi-Agent Implementation
@@ -29,7 +29,7 @@ Scale `/effort` to plan size — high for most plans, your model's deepest level
 1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan via **AskUserQuestion** (one option per candidate plan file, most-recent first); **end your turn at the call** and proceed with the chosen plan.
 2. **Build the execution graph** — group PARALLEL-annotated tasks into waves; SEQUENTIAL tasks are singletons that run in order.
 3. **Execute wave by wave.** For each parallel wave, dispatch all its tasks in ONE message (multiple `Task` calls) so they run concurrently. Wait for the whole wave before the next. Run sequential tasks one at a time. As each task's implementer returns, run the **Per-task quality loop** (below) before you mark that task done — completion is confirmed from the VCS diff, not the agent's report.
-4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session capsule so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).
+4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session-state file so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).
 5. **After all waves** — run /certify. If it fails, fix and re-certify (bounded evaluator-optimizer loop) before reporting complete — never report done on a red certify.
 6. **Report** — completed tasks and any blockers.
 
@@ -37,7 +37,7 @@ Scale `/effort` to plan size — high for most plans, your model's deepest level
 
 ## Autonomy — approve the plan, then run
 
-The blueprint is the gate. Once it's approved (step 1), run the rest — **Execute wave by wave**, the per-wave sanity checks, and the capsule refresh — **autonomously**: reading, searching, `kg query`/`blast`, and read-only git (the `git status`/`git log --oneline` checks in steps 4–5) NEVER pause for permission, and never re-gate between waves. Re-gate **only** on real side effects: the writes/`git add`·`commit`·`push`/PR actions the dispatched agents perform, a merge conflict surfaced by **Conflict detection**, and the final **/certify**. Optionally show the wave graph + rough agent/token cost once for a go-ahead before the first fan-out. See [lore/autonomy.md](../../lore/autonomy.md).
+The blueprint is the gate. Once it's approved (step 1), run the rest — **Execute wave by wave**, the per-wave sanity checks, and the session-state refresh — **autonomously**: don't stop to ask the owner before reading, searching, `kg query`/`blast`, or read-only git (the `git status`/`git log --oneline` checks in steps 4–5), and never re-gate between waves. Claude Code's built-in read-only commands don't prompt; this skill pre-approves `kg query`/`blast` and edits to `.workspace/local/session-state.md`; anything else the agents run goes through the normal permission prompt unless the user runs in auto mode or approves it. Re-gate **only** on real side effects: the writes/`git add`·`commit`·`push`/PR actions the dispatched agents perform, a merge conflict surfaced by **Conflict detection**, and the final **/certify**. Optionally show the wave graph + rough agent/token cost once for a go-ahead before the first fan-out. See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Agent prompt — context contract (no context loss)
 
@@ -62,7 +62,7 @@ Return: STATUS: DONE | BLOCKED | NEEDS_CONTEXT, then a one-paragraph summary of 
 
 A subagent reporting `STATUS: DONE` is a claim, not evidence. Before you mark any task complete, confirm it from the VCS diff and put it through a **two-stage review** — see [lore/verification.md](../../lore/verification.md).
 
-1. **Confirm from the diff, not the report.** Run `git show`/`git diff` for the task's commit(s) and read the actual change. The diff is the evidence a task landed — a subagent's "success" is not. If the diff is empty, or doesn't match the deliverable, the task is not done: re-dispatch with the gap named. (These reads are read-only git and never pause — see **Autonomy** above.)
+1. **Confirm from the diff, not the report.** Run `git show`/`git diff` for the task's commit(s) and read the actual change. The diff is the evidence a task landed — a subagent's "success" is not. If the diff is empty, or doesn't match the deliverable, the task is not done: re-dispatch with the gap named. (These are read-only git reads, which Claude Code doesn't prompt for — see **Autonomy** above.)
 2. **Stage 1 — spec compliance.** Against the task's full text and `.workspace/shared/specs/<feature>.md`, does the change do *exactly* what the task specified — no more, no less? Flag missing requirements, scope creep, and silent deviations.
 3. **Stage 2 — code quality.** Judge correctness, simplicity, and tests: does it hold on edge cases, is it the simplest thing that works, and are the tests real (proven RED→GREEN) and green? Prefer a fresh reviewer subagent (or [`/scrutinize`](../scrutinize/SKILL.md)) so no author bias carries over.
 4. **Fix, then re-review.** For any **Critical** or **Important** finding, dispatch a *fresh* fix-subagent — self-contained prompt, same context contract — to resolve it, then re-run this loop on the new diff. Minor findings can be recorded and batched. A task counts as DONE only once its diff is clean on both stages.

@@ -1,321 +1,204 @@
 #!/usr/bin/env bash
-# UserPromptSubmit hook: context self-management (size warnings + post-compaction
-# resume capsule) ALWAYS, plus intent routing (/magic, /divine, /jira, /confluence)
-# and repeat-pattern → /inscribe nudges.
+# UserPromptSubmit — keyword-based skill hint, plus two optional Magician status line markers.
+#   * Hint: at most one per prompt. When the prompt matches a skill's keywords, one factual line
+#     ("Magician: the magician:divine skill covers code review ...") is added to Claude's context.
+#     No hint when the prompt already contains a slash command. Jira / Confluence are mentioned only
+#     when the prompt itself names /jira or /confluence.
+#   * Status line markers (only while the Magician status line is enabled in cli-ui.json):
+#     status/<session>.json records the hinted skill name; status/<session>.effort.json records
+#     "ultracode" when the prompt switches that mode on, and is removed when it is switched off.
+# Nothing derived from the prompt is stored (no prompt text or excerpt), and the transcript is
+# never read. Plain bash; always exits 0.
+export LC_ALL=C
 
-set -euo pipefail
+INPUT=$(cat 2>/dev/null) || exit 0
+INPUT=${INPUT:0:262144}
 
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.local/share/magician}"
-PATTERNS_FILE="$PLUGIN_DATA/patterns.json"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+re_sid='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9_-]{1,64})"'
+SID=""
+[[ $INPUT =~ $re_sid ]] && SID=${BASH_REMATCH[1]}
 
-mkdir -p "$PLUGIN_DATA"
+re_prompt='"prompt"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)'
+[[ $INPUT =~ $re_prompt ]] || exit 0
+P=${BASH_REMATCH[1]}
+P=${P:0:4000}
 
-INPUT=$(cat)
+# JSON string -> plain text for matching (newlines, tabs and other escapes become spaces).
+sq="'"; rsq=$'\xe2\x80\x99'; ph=$'\001'
+case $P in *\\*)
+  P=${P//\\\\/$ph}
+  P=${P//\\u2019/$sq}
+  P=${P//\\u????/ }
+  P=${P//\\n/ }; P=${P//\\t/ }; P=${P//\\r/ }; P=${P//\\b/ }; P=${P//\\f/ }
+  P=${P//\\\"/\"}; P=${P//\\\//\/}
+  P=${P//\\/}
+  P=${P//$ph/\\} ;;
+esac
+P=${P//$rsq/$sq}
+PL=$(printf '%s' "$P" | tr '[:upper:]' '[:lower:]')
 
-# Payload ($INPUT = the user prompt) on STDIN (not python argv): a large prompt can
-# trip an argv limit and abort the hook under `set -e`. Small paths stay as argv.
-PYCODE=""; IFS= read -r -d '' PYCODE <<'PYEOF' || true
-import json, re, sys, os, subprocess
+# ---- regex building blocks (POSIX ERE has no \b: boundaries are spelled out) ----
+B='(^|[^[:alnum:]_])'                 # left word boundary
+E='([^[:alnum:]_]|$)'                 # right word boundary
+W='[[:alnum:]_]'
+S='[[:space:]]'
+N='[^[:alnum:]_.?!]'                  # a non-word character inside one sentence
+G14="$N([^.?!]{0,12}$N)?"             # Gnn: word boundary, then up to nn characters of the
+G16="$N([^.?!]{0,14}$N)?"             # same sentence, then a word boundary
+G18="$N([^.?!]{0,16}$N)?"
+G20="$N([^.?!]{0,18}$N)?"
+G24="$N([^.?!]{0,22}$N)?"
+G25="$N([^.?!]{0,23}$N)?"
+G30="$N([^.?!]{0,28}$N)?"
+G40="$N([^.?!]{0,38}$N)?"
+G45="$N([^.?!]{0,43}$N)?"
+G50="$N([^.?!]{0,48}$N)?"
+G55="$N([^.?!]{0,53}$N)?"
+G60="$N([^.?!]{0,58}$N)?"
 
-patterns_file = sys.argv[1] if len(sys.argv) > 1 else ""
-raw_input = sys.stdin.read()
-plugin_root = sys.argv[2] if len(sys.argv) > 2 else ""
+any() {  # any <regex>... : true when the lowercased prompt matches one of them
+  local r
+  for r in "$@"; do [[ $PL =~ $r ]] && return 0; done
+  return 1
+}
 
-try:
-    hook_data = json.loads(raw_input)
-except Exception:
-    hook_data = {}
+# ---- status line markers (only when the status line is enabled) ----
+MHOME=${MAGICIAN_HOME:-}
+if [ -z "$MHOME" ] && [ -n "${HOME:-}" ]; then MHOME="$HOME/.claude/magician"; fi
+UI_ON=0
+if [ -n "$SID" ] && [ -n "$MHOME" ] && [ -f "$MHOME/cli-ui.json" ]; then
+  CFG=$(head -c65536 "$MHOME/cli-ui.json" 2>/dev/null)
+  re_on='"state"[[:space:]]*:[[:space:]]*"enabled"'
+  [[ $CFG =~ $re_on ]] && UI_ON=1
+fi
+put_marker() {  # put_marker <file> <json>
+  mkdir -p "$MHOME/status" 2>/dev/null || return 0
+  printf '%s\n' "$2" > "$MHOME/status/$1.$$" 2>/dev/null && mv -f "$MHOME/status/$1.$$" "$MHOME/status/$1" 2>/dev/null
+  return 0
+}
 
-prompt = hook_data.get("prompt", "") or hook_data.get("message", "")
-session_id = hook_data.get("session_id", "default") or "default"
-transcript = hook_data.get("transcript_path", "") or ""
+if [ "$UI_ON" = 1 ]; then
+  # Ultracode reports as xhigh on the status line input; this overlay lets the bar show the mode.
+  if any "${B}(exit|stop|leave|end|disable|turn off|no more|out of)${G14}ultracode${E}"; then
+    rm -f "$MHOME/status/$SID.effort.json" 2>/dev/null
+  elif any "${B}ultracode${E}"; then
+    put_marker "$SID.effort.json" "{\"mode\":\"ultracode\",\"ts\":$(date +%s)}"
+  elif any "${B}(set|switch|change|go back|reset|revert)${G24}(mode|effort|reasoning)${G16}(default|normal|standard|off|low|medium|high|xhigh|max)${E}" \
+           "/effort${S}+(low|medium|high|xhigh|max)${E}"; then
+    rm -f "$MHOME/status/$SID.effort.json" 2>/dev/null
+  fi
+fi
 
-# --- Context self-management: run EVERY prompt (independent of prompt content) ---
-# bin/ctx hook re-injects a resume capsule after compaction (once) and emits a
-# size-band warning (once per band). Failure is swallowed so the hook never breaks.
-ctx_note = ""
-if plugin_root:
-    try:
-        p = subprocess.run([os.path.join(plugin_root, "bin", "ctx"), "hook",
-                            "--session", session_id, "--transcript", transcript],
-                           capture_output=True, text=True, timeout=10)
-        ctx_note = (p.stdout or "").strip()
-    except Exception:
-        ctx_note = ""
+[ "${#P}" -ge 10 ] || exit 0
 
-pending = [ctx_note] if ctx_note else []
+# ---- keyword triggers ----
+t_review() { any \
+  "${B}(code review|do a (code )?review)${E}" \
+  "${B}(review|audit|evaluat${W}+|assess${W}*|critiqu${W}+|look at|go over)${G40}(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes|branch|commit|this code)${E}" \
+  "${B}(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes)${G40}(review|audit|evaluat${W}+|assess${W}*|critiqu${W}+)${E}"; }
+t_autopsy() { any \
+  "${B}(post-?mortem|rca|root cause analysis|blameless|incident (review|report|retro(spective)?)|write up the (incident|outage))${E}"; }
+t_audit() { any \
+  "${B}(walk|go|going)${S}+(me${S}+)?(through|to)${G30}(flow|page|feature|journey|checkout|screen|experience)${G60}(recommend|suggest|improv${W}+|slow(ness)?|issues?|problems?|friction|awkward|better)${E}" \
+  "${B}(be|act as|as)${S}+(a${S}+)?user${G50}(recommend|suggest|improv${W}+|issues?|friction|slow(ness)?|problems?)${E}" \
+  "${B}(check out|check|look at)${G25}(this|the)${G20}(flow|page|journey|checkout|experience)${G55}(recommend|suggest|improv${W}+|friction|slow(ness)?)${E}"; }
+t_debug() { any \
+  "${B}(bugs?|debug|broken|crash${W}*|stack ?trace|tracebacks?|exceptions?|regressions?|defects?|segfaults?|panic)${E}" \
+  "exception${E}" \
+  "${B}(not working|isn'?t working|doesn'?t work|won'?t work|stopped working|something('s| is) wrong)${E}" \
+  "${B}(throw${W}*|getting|hit(ting)?|raises?)${S}+an?${S}+${W}*(error|exception)${E}" \
+  "${B}(production|prod|deploy${W}*)${G30}(issues?|outage|incident|down|broken|failing|errors?|problems?|not working)${E}" \
+  "${B}(issues?|problems?|outage|incident|errors?|bug)${G30}(production|prod|deploy${W}*)${E}" \
+  "${B}(report${W}*|there('s| is| was))${G30}(bug|defect|problem|issue|error)${E}" \
+  "${B}(problem|issue)${G20}(report${W}*|happening|occurr${W}*|in prod${W}*|persist${W}*)${E}"; }
+t_weave() { any \
+  "${B}(implement|deliver|build|ship|complete|do|finish)${G40}(all|these|every|each|the (whole )?(epic|batch|backlog|list|set))${G30}(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules|files)${E}" \
+  "${B}(implement|deliver|build|ship)${G20}([0-9]+|several|multiple|many)${G20}(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules)${E}" \
+  "${B}migrat${W}+${G40}(across|everywhere|all|the (whole )?(codebase|repo)|every (file|module|component))${E}" \
+  "${B}(for each of|one (per|each)|batch (of|process))${G30}(stories|tickets|tasks|features|items|files|components|modules)${E}"; }
+t_security() {
+  # A negated mention ("no security changes", "don't need security") is not a security request.
+  any "${B}(no|not|never|without|none|cannot|lack|[a-z]+n't|dont|doesnt|didnt|isnt|arent|wasnt|werent|wont|cant|shouldnt)${G25}security${E}" && return 1
+  any \
+  "${B}(security (scan|audit|review|issue|check)|vulnerabilit${W}+|owasp|cve|secrets? (leak|expos${W}+|scan)|injection (risk|vuln${W}*|attack)|pen ?test|hardening)${E}" \
+  "${B}expos${W}+ (secret|credential|key|token|api key)s?${E}" \
+  "${B}(secret|credential|api[ -]?key|token)s?${G20}expos${W}+" \
+  "${B}leak${W}+${G20}(secret|credential|api[ -]?key|key|token|password)s?${E}" \
+  "${B}(secret|credential|api[ -]?key|token|password)s?${G20}leak${W}+" \
+  "${B}is${G25}secure${E}" \
+  "${B}secure${G20}(against|from|injection|xss|csrf|attack|exploit)${E}"; }
+t_perf() { any \
+  "${B}(slow|sluggish|too slow|laggy|latency|bottleneck|memory leak|high (cpu|memory)|throughput|p9[59])${E}" \
+  "${B}performance (issue|problem|bottleneck|regression)${E}" \
+  "${B}optimi[sz]e (the )?(speed|performance|latency|throughput)${E}" \
+  "${B}speed (it|this|things) up${E}"; }
+t_deploy() { any \
+  "${B}(ci/cd|ci pipeline|deployment pipeline|github actions|gitlab ci|circleci|jenkins)${E}" \
+  "${B}set up (a |the )?(ci|pipeline|deploy${W}*)${E}" \
+  "${B}deploy${W}*${G20}(pipeline|config|workflow|to (prod|staging))${E}" \
+  "${B}pipeline${G30}(staging|prod|production|deploy${W}*)${E}" \
+  "${B}the (ci|build) (is )?(failing|red|broken)${E}"; }
+t_transmute() { any \
+  "${B}(port|re-?implement|recreate|replicate|clone)${G40}(feature|flow|search|widget|component|functionality|module|page|screen)${E}" \
+  "${B}(port|re-?implement|recreate|replicate|clone|copy)${G40}(into|onto|to)${G25}(our|another|a (new|different)|the other|this)${G18}(app|application|codebase|project|service|stack|site)${E}" \
+  "${B}(swap|replace|migrat${W}+|switch)${G40}(vendor|3rd[- ]?party|third[- ]?party|provider|supplier)${E}" \
+  "${B}chang${W}+${G25}how${G45}(vendor|provider|3rd[- ]?party|third[- ]?party|supplier|api|backend|service)${E}" \
+  "${B}(behind the scenes|under the hood)${G40}(keep|preserv${W}+|same)${G20}(ux|user experience|experience|behavio${W}+)${E}" \
+  "${B}(keep|preserv${W}+|same)${G20}(ux|user experience)${G45}(swap|replace|migrat${W}+|switch|vendor|provider|3rd[- ]?party)${E}" \
+  "${B}(comprehend|understand how|figure out how|reverse[- ]?engineer)${G45}(works?|working)${G45}(rebuild|recreate|re-?implement|port)${E}"; }
+t_statusline() { any \
+  "${B}magician${S}+(ui|bar)${E}" \
+  "${B}cli ui${E}" \
+  "${B}status[[:space:]-]?(line|bar)${E}" \
+  "${B}(enable|turn on|turn off|disable|show|hide|configure|set up|customi[sz]e)${G30}the bar${E}" \
+  "${B}(context|tokens?)${G24}(footer|the bar)${E}"; }
+t_magic() {
+  case $PL in *"find out"*|*"look into"*|*"dig into"*|*"find information"*|*"tell me about"*|*"learn about"*) return 0 ;; esac
+  any "${B}(research|investigate|analy[sz]e|explore|examine|assess|evaluate|discover|audit|study|survey|probe|benchmark)${E}"; }
 
+set -f; set -- $PL; NWORDS=$#; set +f
+SHORT=0; [ "$NWORDS" -lt 4 ] && SHORT=1
+TM=""
+transmute_hit() { [ -n "$TM" ] || { if t_transmute; then TM=1; else TM=0; fi; }; [ "$TM" = 1 ]; }
 
-def flush(extra=None):
-    notes = list(pending)
-    if extra:
-        notes.append(extra)
-        # best-effort: record the routed skill for the Magician CLI UI "skill" component.
-        # Never fails the hook; the status line reads this marker only if fresh (<15 min).
-        try:
-            m = re.search(r'magician:([a-z]+)', extra)
-            if m:
-                import time as _t
-                home = os.environ.get("MAGICIAN_HOME") or os.path.join(
-                    os.path.expanduser("~"), ".claude", "magician")
-                sd = os.path.join(home, "status")
-                os.makedirs(sd, exist_ok=True)
-                sid = str(session_id).replace("/", "_")[:64]
-                json.dump({"skill": m.group(1), "ts": _t.time()},
-                          open(os.path.join(sd, sid + ".json"), "w"))
-        except Exception:
-            pass
-    if notes:
-        print(json.dumps({"additionalContext": "\n\n".join(notes)}))
-    sys.exit(0)
+SKILL=""; MSG=""
+LEAD=${PL#"${PL%%[![:space:]]*}"}
+case $LEAD in /*) ;;                                           # the prompt is a slash command
+*)
+  if any "(^|[[:space:](])/(magician:)?jira([^[:alnum:]_-]|$)"; then
+    SKILL=jira
+    MSG="Magician: the prompt mentions /jira. The magician:jira skill uses the bundled jira CLI. If the user prefers another installed Jira integration, use that."
+  elif any "(^|[[:space:](])/(magician:)?confluence([^[:alnum:]_-]|$)"; then
+    SKILL=confluence
+    MSG="Magician: the prompt mentions /confluence. The magician:confluence skill uses the bundled confluence CLI. If the user prefers another installed Confluence integration, use that."
+  elif any "(^|[[:space:]])/[a-z][a-z0-9_:-]*([[:space:]]|$|[.,;!?)])" "magician:"; then
+    :                                                          # the user already named a command
+  elif t_review; then
+    SKILL=divine;     MSG="Magician: the magician:divine skill covers code review (change context first, then a multi-lens review)."
+  elif t_autopsy; then
+    SKILL=autopsy;    MSG="Magician: the /magician:autopsy command covers post-mortems and root-cause write-ups (timeline, 5 Whys, blameless action items). It runs when the user types it."
+  elif [ "$SHORT" = 0 ] && t_audit; then
+    SKILL=transmute;  MSG="Magician: the /magician:transmute command has an AUDIT mode that walks a flow as a user, read-only, and ranks recommendations. It runs when the user types it."
+  elif t_debug && ! transmute_hit; then
+    SKILL=unravel;    MSG="Magician: the magician:unravel skill covers systematic debugging (hypotheses first, evidence before any change)."
+  elif t_weave; then
+    SKILL=weave;      MSG="Magician: the magician:weave skill covers delivering many similar items (tickets, files, features) as one guarded workflow."
+  elif t_security && ! transmute_hit; then
+    SKILL=sentinel;   MSG="Magician: the magician:sentinel skill covers read-only security review (OWASP Top 10, secrets, injection surfaces, dependencies)."
+  elif t_perf && ! transmute_hit; then
+    SKILL=accelerate; MSG="Magician: the magician:accelerate skill covers performance work (measure a baseline, change, then re-measure)."
+  elif t_deploy && ! transmute_hit; then
+    SKILL=deploy;     MSG="Magician: the /magician:deploy command covers CI/CD pipelines (GitHub Actions, GitLab CI, CircleCI). It runs when the user types it."
+  elif [ "$SHORT" = 0 ] && transmute_hit; then
+    SKILL=transmute;  MSG="Magician: the /magician:transmute command covers understanding an existing feature, then porting it to another app or integrating a change behind a parity check. It runs when the user types it."
+  elif t_statusline; then
+    SKILL=statusline; MSG="Magician: the magician:statusline skill covers the Magician status line (enable, configure, disable) through the bundled magician-ui CLI."
+  elif [ "$SHORT" = 0 ] && t_magic; then
+    SKILL=magic;      MSG="Magician: the magician:magic skill covers research and analysis requests."
+  fi ;;
+esac
 
-
-# --- CLI UI 'effort' component: record magician modes the effort.level field can't distinguish ---
-# Ultracode is not a distinct effort level (it reports as xhigh on the statusLine stdin), so we mark
-# it here and the status bar shows "ultracode" in place of xhigh. The live low/medium/high/xhigh/max
-# default + any /effort change already come from effort.level — magician only overlays named modes.
-# Runs regardless of routing; fully wrapped so it can never break the hook.
-try:
-    _pl = (prompt or "").lower()
-    _home = os.environ.get("MAGICIAN_HOME") or os.path.join(os.path.expanduser("~"), ".claude", "magician")
-    _sd = os.path.join(_home, "status")
-    _ef = os.path.join(_sd, str(session_id).replace("/", "_")[:64] + ".effort.json")
-    if re.search(r"\b(exit|stop|leave|end|disable|turn off|no more|out of)\b[^.!?]{0,14}\bultracode\b", _pl):
-        try:
-            os.remove(_ef)
-        except Exception:
-            pass
-    elif re.search(r"\bultracode\b", _pl):
-        import time as _te
-        os.makedirs(_sd, exist_ok=True)
-        json.dump({"mode": "ultracode", "ts": _te.time()}, open(_ef, "w"))
-    elif (re.search(r"\b(set|switch|change|go back|reset|revert)\b[^.!?]{0,24}\b(mode|effort|reasoning)\b[^.!?]{0,16}\b(default|normal|standard|off|low|medium|high|xhigh|max)\b", _pl)
-          or re.search(r"/effort\s+(low|medium|high|xhigh|max)\b", _pl)):
-        try:
-            os.remove(_ef)   # switching to a raw effort level → drop the mode overlay, show the level
-        except Exception:
-            pass
-except Exception:
-    pass
-
-if not prompt or len(prompt) < 10:
-    flush()
-
-# load pattern store
-if os.path.exists(patterns_file):
-    try:
-        store = json.load(open(patterns_file))
-    except Exception:
-        store = {"patterns": []}
-else:
-    store = {"patterns": []}
-patterns = store.get("patterns", [])
-
-STOP = {"this", "that", "with", "from", "have", "will", "been", "they",
-        "were", "when", "what", "your", "just", "also", "then", "than",
-        "more", "some", "make", "need", "want", "like", "only"}
-words = [w for w in re.findall(r'\b[a-z]{4,}\b', prompt.lower()) if w not in STOP]
-fingerprint = list(dict.fromkeys(words[:25]))
-if not fingerprint:
-    flush()
-
-prompt_lower = prompt.lower()
-
-
-def _neg(svc):
-    return bool(re.search(r"(?:\b(?:no|not|never|without|none|cannot|lack)\b|n['’]?t)[^.!?]{0,25}\b" + svc + r"\b", prompt_lower))
-
-
-def _has(*pats):
-    return any(re.search(p, prompt_lower) for p in pats)
-
-
-def _invoking(*names):
-    return any(t in prompt_lower for t in names)
-
-
-# --- intent triggers (computed here; routed below in STRICT precedence — exactly one wins) ---
-review_trigger = _has(
-    r'\b(code review|do a (?:code )?review)\b',
-    r'\b(review|audit|evaluat\w+|assess\w*|critiqu\w+|look at|go over)\b[^.?!]{0,40}\b(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes|branch|commit|this code)\b',
-    r'\b(prs?|mrs?|pull requests?|merge requests?|diffs?|changesets?|changes)\b[^.?!]{0,40}\b(review|audit|evaluat\w+|assess\w*|critiqu\w+)\b',
-)
-autopsy_trigger = _has(
-    r'\b(post-?mortem|\brca\b|root cause analysis|blameless|incident (?:review|report|retro(?:spective)?)|write up the (?:incident|outage))\b',
-)
-debug_trigger = _has(
-    r'\b(bugs?|debug|broken|crash\w*|stack ?trace|tracebacks?|exceptions?|regressions?|defects?|segfaults?|panic)\b',
-    r'\w*exception\b',  # CamelCase class names, e.g. NullPointerException
-    r"\b(not working|isn'?t working|doesn'?t work|won'?t work|stopped working|something(?:'s| is) wrong)\b",
-    r'\b(throw\w*|getting|hit(?:ting)?|raises?)\s+an?\s+\w*(error|exception)\b',
-    r'\b(production|prod|deploy\w*)\b[^.?!]{0,30}\b(issues?|outage|incident|down|broken|failing|errors?|problems?|not working)\b',
-    r'\b(issues?|problems?|outage|incident|errors?|bug)\b[^.?!]{0,30}\b(production|prod|deploy\w*)\b',  # reversed order
-    r'\b(report\w*|there(?:\'s| is| was))\b[^.?!]{0,30}\b(bug|defect|problem|issue|error)\b',
-    r'\b(problem|issue)\b[^.?!]{0,20}\b(report\w*|happening|occurr\w*|in prod\w*|persist\w*)\b',
-)
-security_trigger = (not _neg("security")) and _has(
-    r'\b(security (?:scan|audit|review|issue|check)|vulnerabilit\w+|owasp|\bcve\b|secrets? (?:leak|expos\w+|scan)|injection (?:risk|vuln\w*|attack)|pen ?test|hardening)\b',
-    r'\bexpos\w+ (?:secret|credential|key|token|api key)s?\b',                 # "exposed secrets"
-    r'\b(secret|credential|api[ -]?key|token)s?\b[^.?!]{0,20}\bexpos\w+',       # "secrets ... exposed"
-    r'\bleak\w+\b[^.?!]{0,20}\b(secret|credential|api[ -]?key|key|token|password)s?\b',   # "leaking keys/secrets"
-    r'\b(secret|credential|api[ -]?key|token|password)s?\b[^.?!]{0,20}\bleak\w+',          # "keys ... leaking"
-    r'\bis\b[^.?!]{0,25}\bsecure\b',                                            # "is this code secure"
-    r'\bsecure\b[^.?!]{0,20}\b(against|from|injection|xss|csrf|attack|exploit)\b',
-)
-# A described multi-step PIPELINE (numbered steps, first/then/finally, "here's the flow",
-# for-each). Soft fallback: nudge to DECIDE the engine, only when no specific action fired.
-flow_shape = _has(
-    r"\b(here(?:'s| is| are)|this is|below is)\b[^.?!]{0,24}\b(the )?(flow|steps|plan|pipeline|process|sequence|stages|phases)\b",
-    r'\bthe (flow|steps|plan|pipeline|process|sequence|stages|phases)\b\s+(is|are)\b',  # "the steps are …"
-    r'\b(steps|plan|flow|process|pipeline|sequence|stages|phases)\b\s*(?:are|is)?\s*:',  # "steps:", "plan is:"
-    r'(^|\n)\s*1[.)]\s+\S.*\n\s*2[.)]\s+',                                  # numbered list 1. .. 2. ..
-    r'\bstep\s*1\b[^.?!]{0,90}\bstep\s*2\b',
-    r'\bfirst\b[^.?!]{0,90}\b(then|next)\b[^.?!]{0,140}\b(then|next|finally|lastly|after that|and then)\b',
-    r'\bfor each\b[^.?!]{0,40}\b(then|do|implement|create|run|build|generate|process)\b',
-)
-weave_trigger = _has(
-    r'\b(implement|deliver|build|ship|complete|do|finish)\b[^.?!]{0,40}\b(all|these|every|each|the (?:whole )?(?:epic|batch|backlog|list|set))\b[^.?!]{0,30}\b(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules|files)\b',
-    r'\b(implement|deliver|build|ship)\b[^.?!]{0,20}\b(\d+|several|multiple|many)\b[^.?!]{0,20}\b(stories|tickets|tasks|features|items|endpoints|jiras?|issues|components|modules)\b',
-    r'\bmigrat\w+\b[^.?!]{0,40}\b(across|everywhere|all|the (?:whole )?(?:codebase|repo)|every (?:file|module|component))\b',
-    r'\b(for each of|one (?:per|each)|batch (?:of|process))\b[^.?!]{0,30}\b(stories|tickets|tasks|features|items|files|components|modules)\b',
-)
-perf_trigger = _has(
-    r'\b(slow|sluggish|too slow|laggy|latency|bottleneck|memory leak|high (?:cpu|memory)|throughput|p9[59])\b',
-    r'\bperformance (?:issue|problem|bottleneck|regression)\b',
-    r'\boptimi[sz]e (?:the )?(?:speed|performance|latency|throughput)\b',
-    r'\bspeed (?:it|this|things) up\b',
-)
-deploy_trigger = _has(
-    r'\b(ci/cd|ci pipeline|deployment pipeline|github actions|gitlab ci|circleci|jenkins)\b',
-    r'\bset up (?:a |the )?(?:ci|pipeline|deploy\w*)\b',
-    r'\bdeploy\w*\b[^.?!]{0,20}\b(pipeline|config|workflow|to (?:prod|staging))\b',
-    r'\bpipeline\b[^.?!]{0,30}\b(staging|prod|production|deploy\w*)\b',
-    r'\bthe (?:ci|build) (?:is )?(?:failing|red|broken)\b',
-)
-# Comprehend an existing feature → PORT it elsewhere or INTEGRATE/transform it in place.
-# The PORT/INTEGRATE route sits after security/perf/deploy, but those symptom triggers carry a
-# `not transmute_trigger` guard: a PURE symptom ("it's slow / leaking keys") goes to the specialist,
-# while an EXPLICIT transmute verb ("swap the vendor …, it's slow") wins here and covers the symptom
-# via its gateways (G2 perf / G4 security). Routed before weave-flow-shape/magic.
-# (The AUDIT trigger below is routed EARLIER — see its note.)
-transmute_trigger = _has(
-    r'\b(port|re-?implement|recreate|replicate|clone)\b[^.?!]{0,40}\b(feature|flow|search|widget|component|functionality|module|page|screen)\b',
-    r'\b(port|re-?implement|recreate|replicate|clone|copy)\b[^.?!]{0,40}\b(into|onto|to)\b[^.?!]{0,25}\b(our|another|a (?:new|different)|the other|this)\b[^.?!]{0,18}\b(app|application|codebase|project|service|stack|site)\b',
-    r'\b(swap|replace|migrat\w+|switch)\b[^.?!]{0,40}\b(vendor|3rd[- ]?party|third[- ]?party|provider|supplier)\b',
-    r'\bchang\w+\b[^.?!]{0,25}\bhow\b[^.?!]{0,45}\b(vendor|provider|3rd[- ]?party|third[- ]?party|supplier|api|backend|service)\b',
-    r'\b(behind the scenes|under the hood)\b[^.?!]{0,40}\b(keep|preserv\w+|same)\b[^.?!]{0,20}\b(ux|user experience|experience|behavio\w+)\b',
-    r'\b(keep|preserv\w+|same)\b[^.?!]{0,20}\b(ux|user experience)\b[^.?!]{0,45}\b(swap|replace|migrat\w+|switch|vendor|provider|3rd[- ]?party)\b',
-    r'\b(comprehend|understand how|figure out how|reverse[- ]?engineer)\b[^.?!]{0,45}\b(works?|working)\b[^.?!]{0,45}\b(rebuild|recreate|re-?implement|port)\b',
-)
-# AUDIT sub-mode ("walk this flow as a user and recommend …"). Routed BEFORE debug/perf so a
-# walk-and-recommend audit isn't stolen by /unravel ("broken") or /accelerate ("slow") — the user's
-# audit intent explicitly includes "recommendations on slowness or anything else".
-transmute_audit_trigger = _has(
-    r'\b(walk|go|going)\b\s*(?:me\s+)?(?:through|to)\b[^.?!]{0,30}\b(flow|page|feature|journey|checkout|screen|experience)\b[^.?!]{0,60}\b(recommend|suggest|improv\w+|slow(?:ness)?|issues?|problems?|friction|awkward|better)\b',
-    r'\b(be|act as|as)\b\s+(?:a\s+)?user\b[^.?!]{0,50}\b(recommend|suggest|improv\w+|issues?|friction|slow(?:ness)?|problems?)\b',
-    r'\b(check out|check|look at)\b[^.?!]{0,25}\b(this|the)\b[^.?!]{0,20}\b(flow|page|journey|checkout|experience)\b[^.?!]{0,55}\b(recommend|suggest|improv\w+|friction|slow(?:ness)?)\b',
-)
-jira_trigger = (not _neg("jira")) and _has(r'\bjira\b', r'\b(my|the)\s+(board|sprint|backlog)\b', r'\btickets?\b')
-confluence_trigger = (not _neg("confluence")) and _has(r'\bconfluence\b', r'\bwiki\s+(page|space|doc)\b')
-statusline_trigger = _has(
-    r'\bmagician\s+(ui|bar)\b', r'\bcli ui\b',
-    r'\bstatus[\s-]?(line|bar)\b',
-    r'\b(enable|turn on|turn off|disable|show|hide|configure|set up|customi[sz]e)\b[^.?!]{0,30}\b(status[\s-]?(line|bar)|magician\s+(ui|bar)|cli ui|the bar)\b',
-    r'\b(context|tokens?)\b[^.?!]{0,24}\b(status[\s-]?(line|bar)|console|terminal|footer|the bar)\b',
-)
-
-MAGIC_KEYWORDS = {"research", "investigate", "analyze", "analyse", "explore", "examine",
-                  "assess", "evaluate", "discover", "audit", "study", "survey", "probe", "benchmark"}
-MAGIC_PHRASES = ["find out", "look into", "dig into", "find information", "tell me about", "learn about"]
-words_in_prompt = set(re.findall(r'\b[a-z]+\b', prompt_lower))
-magic_hit = bool(words_in_prompt & MAGIC_KEYWORDS) or any(ph in prompt_lower for ph in MAGIC_PHRASES)
-matched_magic = list(words_in_prompt & MAGIC_KEYWORDS)[:2] or [ph for ph in MAGIC_PHRASES if ph in prompt_lower][:1]
-is_short = len(prompt.split()) < 4
-
-# --- route: STRICT precedence, first match flushes & exits → never multi-skill ---
-if review_trigger and not _invoking("/divine", "magician:divine", "/scrutinize"):
-    flush("[MAGICIAN] Code-review intent detected. Auto-activating /divine — establish change context, ask the user "
-          "how deep via AskUserQuestion, then run the multi-lens review. Invoke magician:divine before responding.")
-if autopsy_trigger and not _invoking("/autopsy", "magician:autopsy"):
-    flush("[MAGICIAN] Post-mortem/RCA intent detected. Use magician:autopsy — gather facts, reconstruct the timeline, "
-          "run 5-Whys, write blameless action items.")
-if transmute_audit_trigger and not is_short and not _invoking("/transmute", "magician:transmute", "/accelerate", "/unravel"):
-    flush("[MAGICIAN] Feature AUDIT intent detected (walk a flow → recommend). Use magician:transmute in AUDIT mode — "
-          "walk the flow as a user READ-ONLY, measure perf/UX/a11y/cost (baseline-first), then emit ranked "
-          "recommendations (each tagged port-able / integrate-able + the gateway it must clear) and offer to hand off "
-          "to PORT or INTEGRATE. Nothing changes until you say go. Invoke magician:transmute before responding.")
-if debug_trigger and not transmute_trigger and not _invoking("/unravel", "magician:unravel"):
-    flush("[MAGICIAN] Bug/problem-report intent detected. Auto-activating /unravel (systematic debugging: hypothesis "
-          "preflight, evidence before any change). Ground it comprehensively with /magic and the knowledge graph "
-          "(kg query / kg blast on the affected area) for root-cause research; invoke magician:unravel before responding.")
-if weave_trigger and not _invoking("/weave", "magician:weave"):
-    flush("[MAGICIAN] Large multi-item delivery detected. Use /weave — compose ONE native Workflow that delivers all "
-          "units with magician's guardrails (TDD per unit, kg grounding, certify, parallel multi-lens review + "
-          "adversarial verify, write gates) instead of hand-rolling many agents. Invoke magician:weave before responding.")
-if security_trigger and not transmute_trigger and not _invoking("/sentinel", "magician:sentinel"):
-    flush("[MAGICIAN] Security intent detected. Use magician:sentinel — OWASP Top 10, secret/credential scan, injection "
-          "surfaces, dependency + git-history audit (read-only).")
-if perf_trigger and not transmute_trigger and not _invoking("/accelerate", "magician:accelerate"):
-    flush("[MAGICIAN] Performance intent detected. Use magician:accelerate — baseline-first: measure before changing, "
-          "re-measure after; use the knowledge graph (kg blast) to scope hot paths.")
-if deploy_trigger and not transmute_trigger and not _invoking("/deploy", "magician:deploy"):
-    flush("[MAGICIAN] CI/CD intent detected. Use magician:deploy — create/update/monitor the pipeline "
-          "(GitHub Actions / GitLab CI / CircleCI).")
-if transmute_trigger and not is_short and not _invoking("/transmute", "magician:transmute"):
-    flush("[MAGICIAN] Feature comprehend→port/integrate intent detected. Use magician:transmute — "
-          "comprehend the existing feature FIRST (live usage read-only via the Chrome plugin / codebase "
-          "via kg / docs via /magic → a confidence-tagged dossier + parity baseline), then PORT it into "
-          "another app (optionally upgrading the vendor) or INTEGRATE/transform it in place (swap the "
-          "3rd-party preserving the UX, redesign, or add a capability) behind a parity contract + the "
-          "gateway checklist (parity·perf·cost·security·a11y·rollback·sanity). Invoke magician:transmute "
-          "before responding.")
-if jira_trigger and not _invoking("/jira", "magician:jira"):
-    flush("[MAGICIAN] Jira intent detected. Use the magician:jira skill (direct HTTP REST, no MCP; it runs first-time "
-          "setup if Jira isn't configured) for this request.")
-if confluence_trigger and not _invoking("/confluence", "magician:confluence"):
-    flush("[MAGICIAN] Confluence intent detected. Use the magician:confluence skill (direct HTTP REST, no MCP; it runs "
-          "first-time setup if Confluence isn't configured) for this request.")
-if statusline_trigger and not _invoking("/statusline", "magician:statusline"):
-    flush("[MAGICIAN] Status-line / CLI-UI intent detected. Use magician:statusline to enable/configure/disable the "
-          "Magician CLI UI via the bundled `magician-ui` CLI (`magician-ui enable [--only context,rot,…]` / `set` / "
-          "`disable` / `status`) — it's a built-in magician feature, do NOT research it. Invoke magician:statusline before responding.")
-if flow_shape and not is_short and len(prompt.split()) >= 12 and not _invoking("/weave", "magician:weave", "/manifest", "magician:manifest", "/orchestrate"):
-    flush("[MAGICIAN] This reads like a multi-step delivery. Decide the engine before diving in: if it's N similar "
-          "units (tickets/files/features) → run it via /weave as ONE guarded Workflow (TDD per unit, kg grounding, "
-          "certify, multi-lens review + adversarial verify, write gates); if it's distinct SDLC stages → /manifest. "
-          "Either way, don't hand-roll many ad-hoc agents.")
-if magic_hit and not is_short and not _invoking("/magic", "magician:magic", "/conjure"):
-    flush("[MAGICIAN] Research/analysis intent detected ({}). Auto-activating /magic skill. Invoke magician:magic "
-          "before responding to this request.".format(", ".join(str(m) for m in matched_magic)))
-
-# repeat-pattern detection → /inscribe nudge
-best_match, best_score = None, 0.0
-cur = set(fingerprint)
-for p in patterns:
-    stored_fp = set(p.get("fingerprint", []))
-    if not stored_fp:
-        continue
-    score = len(stored_fp & cur) / max(len(stored_fp | cur), 1)
-    if score > 0.55 and score > best_score:
-        best_score, best_match = score, p
-
-inscribe_msg = None
-if best_match:
-    best_match["count"] = best_match.get("count", 1) + 1
-    if best_match["count"] == 3:
-        inscribe_msg = "I've seen this type of request 3 times now. Would you like me to create a reusable skill for it using /inscribe?"
-    elif best_match["count"] == 5:
-        inscribe_msg = "This pattern has come up 5 times. I'll draft a skill — invoke /inscribe to review and save it."
-else:
-    patterns.append({"fingerprint": fingerprint, "count": 1, "sample": prompt[:120]})
-
-store["patterns"] = patterns
-try:
-    json.dump(store, open(patterns_file, "w"), indent=2)
-except Exception:
-    pass
-
-flush(inscribe_msg)
-PYEOF
-printf '%s' "$INPUT" | python3 -c "$PYCODE" "$PATTERNS_FILE" "$PLUGIN_ROOT" || true
+[ -n "$MSG" ] || exit 0
+[ "$UI_ON" = 1 ] && put_marker "$SID.json" "{\"skill\":\"$SKILL\",\"ts\":$(date +%s)}"
+printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$MSG"
+exit 0

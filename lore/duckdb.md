@@ -12,7 +12,7 @@ DON'T add PK/UNIQUE/CREATE INDEX before bulk load (2-4x slower) — add ART inde
 DON'T open one .duckdb from multiple writers — one writer, many READ_ONLY readers; retry MVCC conflicts.
 DON'T scatter tiny writes or per-row UPDATEs — stage & batch.
 
-Deep dive when writing non-trivial DuckDB — read lore/duckdb/{usage-and-ingestion,performance,performance-and-memory,extensions-and-formats}.md
+Deep dive when writing non-trivial DuckDB — read lore/deep/duckdb.md#{usage-and-ingestion,performance,performance-and-memory,extensions-and-formats}
 
 ## Sources
 duckdb.org/docs/current/guides/performance/{import,schema,indexing} · connect/concurrency · release_calendar

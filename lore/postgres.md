@@ -13,7 +13,7 @@ DON'T assume world-writable public: grant CREATE explicitly (15+).
 DON'T run giant single-shot DML or blocking ALTER/index builds; batch + CREATE INDEX CONCURRENTLY + lock_timeout.
 DON'T trust serial; prefer identity/bigint or uuidv7() (18) keys.
 
-Deep dive when writing non-trivial PostgreSQL — read lore/postgres/{connection-and-pooling,types-and-jsonb,indexing-mvcc-and-vacuum,transactions-and-locking,partitioning-and-scale,performance}.md
+Deep dive when writing non-trivial PostgreSQL — read lore/deep/postgres.md#{connection-and-pooling,types-and-jsonb,indexing-mvcc-and-vacuum,transactions-and-locking,partitioning-and-scale,performance}
 
 ## Sources
 postgresql.org/docs/18 · support/versioning

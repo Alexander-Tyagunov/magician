@@ -21,13 +21,26 @@ SKILLS = ROOT / "skills"
 
 REQUIRED_FIELDS = {"name", "description", "tools", "model"}
 
-# Tool identifiers a subagent may request. `*` = all tools. MCP tools are namespaced `mcp__…`.
-VALID_TOOLS = {
-    "Read", "Write", "Edit", "NotebookEdit",
-    "Bash", "Grep", "Glob",
-    "Task", "WebFetch", "WebSearch", "AskUserQuestion",
-    "Monitor", "Workflow", "*",
+# Tool identifiers a magician subagent may request. MCP tools are namespaced `mcp__…`.
+VALID_TOOLS = {"Read", "Write", "Edit", "Bash", "Grep", "Glob"}
+
+# Never in an agent's `tools:` list: the wildcard would hand an agent every tool, and the rest are
+# unscoped network egress or background execution no magician agent needs.
+FORBIDDEN_TOOLS = {"*", "Monitor", "WebFetch", "WebSearch", "NotebookEdit"}
+
+# `tools:` limits what an agent may use. Read-only is the default; an agent gets more only when
+# its job cannot be done without it, and that exception is spelled out here so widening an agent
+# is a deliberate, reviewed change to this map.
+READ_ONLY = {"Read", "Grep", "Glob"}
+MAX_TOOLS = {
+    # Applies one verified fix and reruns the acceptance check: must edit and run commands.
+    "fixer": {"Read", "Edit", "Write", "Grep", "Glob", "Bash"},
+    # Runs the repo's gates and reads their exit codes; writes nothing.
+    "gatekeeper": {"Read", "Grep", "Glob", "Bash"},
 }
+
+# Review lenses report findings; they never mutate code or run commands.
+REVIEW_LENSES = ("guardian", "reviewer", "sentinel", "simplifier", "verifier")
 
 # Model aliases Claude Code accepts in agent frontmatter (plus `inherit` and concrete claude-* ids).
 VALID_MODEL_ALIASES = {"opus", "sonnet", "haiku", "fable", "inherit"}
@@ -35,6 +48,11 @@ VALID_MODEL_ALIASES = {"opus", "sonnet", "haiku", "fable", "inherit"}
 
 def agent_files() -> list[Path]:
     return sorted(AGENTS.glob("*.md"))
+
+
+def agent_tools(path: Path) -> set[str]:
+    fields, _ = read_frontmatter(path)
+    return {t.strip() for t in fields["tools"].split(",") if t.strip()}
 
 
 class AgentDefinitionTests(unittest.TestCase):
@@ -71,25 +89,50 @@ class AgentDefinitionTests(unittest.TestCase):
     def test_tools_are_a_known_least_privilege_set(self) -> None:
         for path in agent_files():
             with self.subTest(agent=path.name):
-                fields, _ = read_frontmatter(path)
-                tools = [t.strip() for t in fields["tools"].split(",") if t.strip()]
+                tools = agent_tools(path)
                 self.assertTrue(tools, f"{path.name} declares no tools")
                 for tool in tools:
+                    self.assertNotIn(tool, FORBIDDEN_TOOLS,
+                                     f"{path.name} requests forbidden tool {tool!r}")
                     if tool.startswith("mcp__"):
+                        self.assertNotIn("*", tool, f"{path.name} requests a wildcard MCP grant")
                         continue
                     self.assertIn(tool, VALID_TOOLS, f"{path.name} requests unknown tool {tool!r}")
 
+    def test_tools_stay_within_each_agents_ceiling(self) -> None:
+        """Read-only unless the agent is a named exception in MAX_TOOLS. A new agent that asks
+        for Bash/Edit/Write fails here until the exception is added on purpose."""
+        for path in agent_files():
+            with self.subTest(agent=path.name):
+                ceiling = MAX_TOOLS.get(path.stem, READ_ONLY)
+                extra = {t for t in agent_tools(path) if not t.startswith("mcp__")} - ceiling
+                self.assertFalse(extra, f"{path.name} exceeds its tool ceiling with {sorted(extra)}")
+
     def test_read_only_review_agents_cannot_write(self) -> None:
-        """A review lens that can Write/Edit could 'fix' code mid-review — review agents must be
-        read-only so their findings stay observations, not silent mutations."""
-        for name in ("reviewer", "sentinel", "simplifier", "verifier"):
+        """A review lens that can Write/Edit could 'fix' code mid-review, and Bash can write files
+        too — review agents must be read-only so their findings stay observations, not silent
+        mutations."""
+        for name in REVIEW_LENSES:
             path = AGENTS / f"{name}.md"
             with self.subTest(agent=name):
-                fields, _ = read_frontmatter(path)
-                tools = {t.strip() for t in fields["tools"].split(",")}
-                self.assertNotIn("Write", tools)
-                self.assertNotIn("Edit", tools)
-                self.assertNotIn("*", tools)
+                self.assertTrue(path.exists(), f"review lens {name} is missing")
+                tools = agent_tools(path)
+                for tool in ("Write", "Edit", "Bash", "*"):
+                    self.assertNotIn(tool, tools, f"review lens {name} must not have {tool}")
+
+    def test_write_capable_agents_document_why(self) -> None:
+        """An agent that keeps write tools must say why in its own body, and bound them, so the
+        exception is visible to anyone reading the agent rather than only to this test."""
+        fixer = AGENTS / "fixer.md"
+        _, body = read_frontmatter(fixer)
+        lowered = body.lower()
+        self.assertIn("why this agent has write tools", lowered)
+        self.assertIn("never touch tests", lowered)
+        self.assertIn("acceptance check", lowered)
+
+        _, gate_body = read_frontmatter(AGENTS / "gatekeeper.md")
+        self.assertIn("you do not write code", gate_body.lower(),
+                      "gatekeeper keeps Bash only to run gates; its body must say it writes no code")
 
     def test_model_is_a_valid_value(self) -> None:
         for path in agent_files():

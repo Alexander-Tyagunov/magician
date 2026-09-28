@@ -12,7 +12,7 @@ DON'T look for built-in migrations — sqlx has none. Bring goose / golang-migra
 
 Commands: `go get github.com/jmoiron/sqlx github.com/jackc/pgx/v5` · `go test ./...` · migrate via `goose`/`migrate`.
 
-Deep dive when writing non-trivial sqlx — read lore/sqlx/{database-sql-and-pgx}.md
+Deep dive when writing non-trivial sqlx — read lore/deep/sqlx.md#{database-sql-and-pgx}
 
 ## Sources
 jmoiron.github.io/sqlx · pkg.go.dev/github.com/jmoiron/sqlx · pkg.go.dev/database/sql · github.com/jackc/pgx

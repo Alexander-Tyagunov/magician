@@ -17,7 +17,7 @@ Version: v3.0.0 GA Feb 2025 (needs Go 1.25+); v2 (v2.52.x) still maintained — 
 
 Commands: go get github.com/gofiber/fiber/v3 ; upgrade v2→v3 with the fiber CLI migration tool.
 
-Deep dive when writing non-trivial fiber — read lore/fiber/{routing-and-v2-vs-v3}.md
+Deep dive when writing non-trivial fiber — read lore/deep/fiber.md#{routing-and-v2-vs-v3}
 
 ## Sources
 docs.gofiber.io (v3 What's New / config / middleware); github.com/gofiber/fiber/releases

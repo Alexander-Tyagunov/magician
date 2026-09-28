@@ -8,6 +8,6 @@ Version cue: 1.26 stable (1.25 supported). **1.22**: per-iteration loop vars + n
 
 Commands: `go build ./...` · `go test -race ./...` · `go vet ./...` · `golangci-lint run`. Format with `gofmt`/`goimports`.
 
-Deep dive when writing non-trivial Go — read lore/go/{language-and-idioms,errors,concurrency,http-and-servers,testing,modules-and-tooling,performance}.md
+Deep dive when writing non-trivial Go — read lore/deep/go.md#{language-and-idioms,errors,concurrency,http-and-servers,testing,modules-and-tooling,performance}
 
 Sources: go.dev/doc/effective_go, go.dev/ref/spec, go.dev/doc/go1.{22,26}, pkg.go.dev.

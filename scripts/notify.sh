@@ -1,49 +1,72 @@
 #!/usr/bin/env bash
-# Notification hook — surfaces long-run agent lifecycle pings (Claude Code `Notification` event,
-# 2.1.198: agent_completed / agent_needs_input). So a long /weave, /orchestrate, /loop, or /goal
-# run tells you when it finishes or needs you, instead of you watching it.
-#
-# SAFETY: fully fail-safe — any error exits 0, never blocks the session. Non-spammy — it ignores
-# permission/idle notifications and only reacts to agent lifecycle ones.
-# CONFIG (env): MAGICIAN_NOTIFY=desktop → OS notification (macOS/Linux) + bell;
-#               MAGICIAN_NOTIFY=off → silent; unset (default) → one concise stderr line.
-set -uo pipefail
+# Notification(agent_completed|agent_needs_input) — OPT-IN desktop notification when a background
+# session finishes or starts waiting for input. Off unless the user enables the
+# `desktop_notifications` plugin option. Delivery:
+#   * terminals with a notification escape (iTerm2, WezTerm, Windows Terminal, ConEmu, Kitty,
+#     Ghostty, Warp): a terminal notification sequence (OSC 9 / 99 / 777) that Claude Code writes;
+#   * other terminals on Linux with notify-send installed: notify-send;
+#   * otherwise: an OSC 777 terminal notification sequence. Terminals without a notification escape
+#     (macOS Terminal.app, the VS Code and JetBrains terminals, Alacritty, plain tmux) ignore it, so
+#     they show no notification (reaching Notification Center would take an AppleScript program, and
+#     hook scripts run no second language).
+# The notification text is the event's message with control characters removed, capped at 160 bytes.
+# Nothing is stored.
+# Plain bash; always exits 0.
+export LC_ALL=C
+case "${CLAUDE_PLUGIN_OPTION_DESKTOP_NOTIFICATIONS:-false}" in true|1|yes|on) ;; *) exit 0 ;; esac
+INPUT=$(cat 2>/dev/null) || exit 0
 
-INPUT=$(cat 2>/dev/null || true)
-
-# Only react to agent lifecycle notifications; stay silent for everything else.
-case "$INPUT" in
-  *agent_completed*|*agent_needs_input*) : ;;
+re_type='"notification_type"[[:space:]]*:[[:space:]]*"([a-z_]+)"'
+[[ $INPUT =~ $re_type ]] || exit 0
+case ${BASH_REMATCH[1]} in
+  agent_completed)   KIND="run complete" ;;
+  agent_needs_input) KIND="needs your input" ;;
   *) exit 0 ;;
 esac
-[ "${MAGICIAN_NOTIFY:-}" = "off" ] && exit 0
 
-KIND="agent update"
-case "$INPUT" in
-  *agent_needs_input*) KIND="needs your input" ;;
-  *agent_completed*)   KIND="run complete" ;;
+MSG=""
+re_msg='"message"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+if [[ $INPUT =~ $re_msg ]]; then
+  MSG=${BASH_REMATCH[1]}
+  p=$'\001'
+  MSG=${MSG//\\\\/$p}
+  MSG=${MSG//\\\"/\"}; MSG=${MSG//\\\//\/}
+  MSG=${MSG//\\u????/ }
+  MSG=${MSG//\\n/ }; MSG=${MSG//\\t/ }; MSG=${MSG//\\r/ }
+  MSG=${MSG//\\/}
+  MSG=${MSG//$p/\\}
+  MSG=$(printf '%s' "$MSG" | tr -d '\000-\037\177' | cut -c1-160)
+  case $MSG in                                        # drop a UTF-8 character split by the cut
+    *[$'\xc0'-$'\xff']) MSG=${MSG%?} ;;
+    *[$'\xe0'-$'\xff'][$'\x80'-$'\xbf']) MSG=${MSG%??} ;;
+    *[$'\xf0'-$'\xff'][$'\x80'-$'\xbf'][$'\x80'-$'\xbf']) MSG=${MSG%???} ;;
+  esac
+fi
+[ -n "$MSG" ] || MSG=$KIND
+case $MSG in -*) MSG=" $MSG" ;; esac
+
+OSC=""
+if [ -n "${KITTY_WINDOW_ID:-}" ]; then
+  OSC=99
+elif [ -n "${WT_SESSION:-}" ] || [ -n "${ConEmuPID:-}" ]; then
+  OSC=9
+else
+  case "${TERM_PROGRAM:-}" in
+    iTerm.app|WezTerm)     OSC=9 ;;
+    ghostty|WarpTerminal)  OSC=777 ;;
+  esac
+fi
+
+if [ -z "$OSC" ] && [ "$(uname -s 2>/dev/null)" = "Linux" ] && command -v notify-send >/dev/null 2>&1; then
+  notify-send -- "Magician: $KIND" "$MSG" >/dev/null 2>&1
+  exit 0
+fi
+
+J=${MSG//\\/\\\\}; J=${J//\"/\\\"}                  # control characters were stripped above
+case $OSC in
+  99) SEQ="\\u001b]99;;Magician: $J\\u001b\\\\" ;;
+  9)  SEQ="\\u001b]9;Magician: $J\\u0007" ;;
+  *)  SEQ="\\u001b]777;notify;Magician;$J\\u0007" ;;
 esac
-
-MSG=$(printf '%s' "$INPUT" | python3 -c '
-import json,sys
-try: d=json.loads(sys.stdin.read())
-except Exception: print(""); sys.exit()
-m=d.get("message") or d.get("notification") or d.get("body") or ""
-if isinstance(m,dict): m=m.get("message") or m.get("text") or ""
-print(str(m)[:160])
-' 2>/dev/null || true)
-
-case "${MAGICIAN_NOTIFY:-}" in
-  desktop|1|on|true|yes)
-    if command -v osascript >/dev/null 2>&1; then
-      osascript -e "display notification \"${MSG:-$KIND}\" with title \"✦ Magician\" subtitle \"${KIND}\"" >/dev/null 2>&1 || true
-    elif command -v notify-send >/dev/null 2>&1; then
-      notify-send "✦ Magician — ${KIND}" "${MSG:-}" >/dev/null 2>&1 || true
-    fi
-    printf '\a' >&2 2>/dev/null || true
-    ;;
-  *)
-    printf '✦ magician — %s%s\n' "$KIND" "${MSG:+: $MSG}" >&2 2>/dev/null || true
-    ;;
-esac
+printf '{"terminalSequence":"%s"}\n' "$SEQ"
 exit 0

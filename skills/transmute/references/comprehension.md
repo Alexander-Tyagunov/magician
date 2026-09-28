@@ -93,7 +93,7 @@ and **A3 vendor ID**. Do not reason about payloads before they're masked.
 
 ### code-layer — the implementation truth  (kg, if a codebase exists)
 Objective: entry points, data flow, the feature's boundary/interfaces, where the 3rd-party is called,
-tests-as-spec. Ground via `kg`: `kg check` → `kg init` if unindexed → `kg query "<feature>"`,
+tests-as-spec. Ground via `kg`: `kg check` → if unindexed, offer `kg init` (build only on the user's yes) → `kg query "<feature>"`,
 `kg neighbors`, `kg blast <file>` and `Read` only the ranked `file:line` ranges — do **not** grep
 broadly or paste whole files. `kg` owns its own opt-out; if the user opted out, fall back to
 targeted `Grep`/`Read`.
@@ -177,7 +177,7 @@ signs off on the comprehension.
 Each layer writes its own dossier section and returns a summary + path. Downstream stages
 (`/blueprint`, `/weave`, `/conjure`) receive the dossier + parity **paths**, never dumps.
 
-**Write the capsule as a step, not a wish.** At the end of **every** phase/gate — explicitly at the
+**Write the session-state file as a step, not a wish.** At the end of **every** phase/gate — explicitly at the
 A6 dossier confirm, the Phase B contract approval, and after each Phase C stage — WRITE/refresh
 `.workspace/local/session-state.md` (goal · mode · tier · done/remaining · decisions · artifact
 paths). It is the compaction safety-net: if it isn't written each phase, a mid-run compaction loses

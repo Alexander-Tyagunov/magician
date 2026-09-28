@@ -28,7 +28,7 @@ Mechanics (enforced throughout the skill):
   sees none of the parent conversation and needs none.
 - **Distilled returns.** Workers return ~1–2k-token summaries + paths, not raw output, so the parent
   (and the next stage) integrate without re-reading.
-- **A running capsule.** `.workspace/local/session-state.md` (goal · mode · tier · done/remaining ·
+- **A running session-state file.** `.workspace/local/session-state.md` (goal · mode · tier · done/remaining ·
   decisions · artifact paths) is refreshed each phase, so a mid-run compaction loses nothing and no
   stage restarts from zero.
 

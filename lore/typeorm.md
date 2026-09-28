@@ -11,7 +11,7 @@ DO scope via `dataSource.getRepository(E)`/`manager`; wrap write batches in `dat
 
 Commands: `typeorm migration:generate -d <datasource> <Name>` · `migration:run -d <ds>` · `migration:revert -d <ds>` · `schema:sync` (dev only).
 
-Deep dive when writing non-trivial typeorm — read lore/typeorm/{entities-and-repositories,migrations-and-pitfalls}.md
+Deep dive when writing non-trivial typeorm — read lore/deep/typeorm.md#{entities-and-repositories,migrations-and-pitfalls}
 
 ## Sources
 typeorm.io/docs/getting-started · /data-source · /query-builder/select-query-builder · /working-with-entity-manager/repository-api · /migrations/generating

@@ -2,7 +2,7 @@
   {
     "name": "ci-watch",
     "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/ci-watch.sh",
-    "description": "Watches GitHub Actions for newly failed runs (CI red) on this repo and pings Claude",
+    "description": "Checks GitHub Actions every 90 s (for up to 3 h) for new failed runs on the current branch and reports the run ID",
     "when": "on-skill-invoke:deploy"
   }
 ]

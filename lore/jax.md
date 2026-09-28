@@ -13,6 +13,6 @@ KNOW default is float32. Enable 64-bit at startup only: `jax.config.update("jax_
 DO seed all randomness via keys for reproducibility. Vectorize with `vmap`, not Python row loops. `pmap` is legacy → prefer `jit` + sharding/`shard_map`.
 DEBUG NaNs: `jax.config.update("jax_debug_nans", True)`.
 
-Deep dive when writing non-trivial jax — read lore/jax/{transforms-and-pitfalls}.md
+Deep dive when writing non-trivial jax — read lore/deep/jax.md#{transforms-and-pitfalls}
 
 Sources: docs.jax.dev (Common_Gotchas, random-numbers, changelog 0.10.2)

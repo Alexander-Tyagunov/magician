@@ -14,7 +14,7 @@ DON'T assume read-after-write: serverless is eventually consistent — poll desc
 DON'T store blobs as metadata (40KB cap) or use it as source of truth.
 DON'T combine raw sparse+dense scores — normalize (alpha) for single-index hybrid.
 
-Deep dive when writing non-trivial Pinecone — read lore/pinecone/{indexes-and-upsert,metadata-and-namespaces,query-and-hybrid-search,performance}.md
+Deep dive when writing non-trivial Pinecone — read lore/deep/pinecone.md#{indexes-and-upsert,metadata-and-namespaces,query-and-hybrid-search,performance}
 
 ## Sources
 docs.pinecone.io/guides/index-data · reference/api/database-limits · guides/search/{rerank-results,hybrid-search}

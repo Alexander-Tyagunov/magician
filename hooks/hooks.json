@@ -5,7 +5,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/session-start.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/userconfig-env.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/compact-context.sh"
           }
         ]
       }
@@ -15,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pattern-detect.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/pattern-detect.sh"
           }
         ]
       }
@@ -26,25 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/destructive-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Grep|Glob|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/kg-nudge.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__.*(jira|confluence|atlassian).*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/jira-mcp-nudge.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/destructive-guard.sh"
           }
         ]
       }
@@ -55,36 +51,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/format.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/access-tracker.sh"
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/format.sh"
           }
         ]
       }
     ],
     "Notification": [
       {
+        "matcher": "agent_completed|agent_needs_input",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notify.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/notify.sh"
           }
         ]
       }
@@ -94,37 +72,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/chronicle-stop.sh"
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/agent-lifecycle.sh start"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/agent-lifecycle.sh stop"
-          }
-        ]
-      }
-    ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-init.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/chronicle-stop.sh",
+            "async": true
           }
         ]
       }

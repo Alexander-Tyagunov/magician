@@ -20,7 +20,7 @@ DON'T
 
 Commands: `alembic init`, `revision --autogenerate -m "msg"`, `upgrade head`, `downgrade -1`, `current`, `history`, `heads`, `merge`, `stamp head`, `check`, `upgrade --sql` (offline).
 
-Deep dive when writing non-trivial alembic — read lore/alembic/{migration-patterns}.md
+Deep dive when writing non-trivial alembic — read lore/deep/alembic.md#{migration-patterns}
 
 ## Sources
 alembic.sqlalchemy.org/en/latest/ (autogenerate, batch, cookbook, api/commands)

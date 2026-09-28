@@ -14,7 +14,7 @@ DO `preflight: false` to skip reset. DON'T use `resetCss`.
 
 Commands: `npm i @chakra-ui/react @emotion/react` · `npx @chakra-ui/cli snippet add` (Node 20+, tsconfig `@/*` alias).
 
-Deep dive when writing non-trivial chakra — read lore/chakra/{v2-vs-v3}.md
+Deep dive when writing non-trivial chakra — read lore/deep/chakra.md#{v2-vs-v3}
 
 ## Sources
 chakra-ui.com/docs/get-started {migration, installation} (v3.x, 2026)

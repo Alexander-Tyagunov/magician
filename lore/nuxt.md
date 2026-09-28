@@ -15,7 +15,7 @@ Nuxt 4: `srcDir=app/`, `~`=app/, serverDir=`<root>/server`, `shared/` for app+se
 
 Commands: `npm create nuxt@latest`; `nuxt dev`; `nuxt build`; `nuxt generate` (static); `nuxt preview`; `nuxt module add <name>`.
 
-Deep dive when writing non-trivial nuxt — read lore/nuxt/{rendering-and-routing,data-and-state,config-and-modules}.md
+Deep dive when writing non-trivial nuxt — read lore/deep/nuxt.md#{rendering-and-routing,data-and-state,config-and-modules}
 
 ## Sources
 nuxt.com/docs/4.x: upgrade, data-fetching, state-management, installation, api/commands

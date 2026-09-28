@@ -13,7 +13,7 @@ DON'T over-filter: excluding most candidates wrecks HNSW recall — add filterab
 DON'T change dims or vectorizer after load — reindex.
 DON'T ship defaults at scale: raise ef, size vectorCacheMaxObjects, choose quantization.
 
-Deep dive when writing non-trivial Weaviate — read lore/weaviate/{schema-and-vectorizers,indexing-hnsw-and-compression,query-and-hybrid-search,performance}.md
+Deep dive when writing non-trivial Weaviate — read lore/deep/weaviate.md#{schema-and-vectorizers,indexing-hnsw-and-compression,query-and-hybrid-search,performance}
 
 ## Sources
 docs.weaviate.io/weaviate/config-refs/schema/vector-index · /search/hybrid · /config-refs/distances · /release-notes

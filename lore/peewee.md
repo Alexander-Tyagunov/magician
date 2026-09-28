@@ -19,6 +19,6 @@ DON'T
 
 Commands: `pip install peewee`; introspect → `python -m pwiz -e sqlite app.db`; migrate via `playhouse.migrate`.
 
-Deep dive when writing non-trivial peewee — read lore/peewee/{patterns}.md
+Deep dive when writing non-trivial peewee — read lore/deep/peewee.md#{patterns}
 
 Sources: docs.peewee-orm.com/en/latest (querying, writing, query_operators, api, pwasyncio); pypi.org/project/peewee

@@ -5,6 +5,143 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.0] — 2026-09-27
+
+**Directory compliance release.** Every hook, the safety guard included, is plain bash, no hook writes a
+settings file, Jira and Confluence credentials come from the plugin's own options, and everything the
+plugin runs, stores and sends is documented in the README and PRIVACY.md.
+
+### Added
+- **Plugin options** (`/plugin configure magician`, or `/plugin` → magician → Configure options): Jira and
+  Confluence base URL, account email (Cloud only) and API token or personal access token, plus
+  `auto_format`, `auto_format_prettier`, `desktop_notifications` (off by default) and `session_history`
+  (on by default). Claude Code stores the tokens in the system keychain (or its credentials file) and
+  the other values under `pluginConfigs` in settings.json.
+- **`userconfig-env.sh` SessionStart hook.** Copies the Jira/Confluence values you set into the session
+  environment file Claude Code provides, so the bundled `jira` and `confluence` CLIs can read them. The
+  tokens are therefore in the Bash environment of that session. Start a new session after configuring.
+- **`compact-context.sh` SessionStart hook (matcher `compact`).** After a compaction it restates the git
+  branch, uncommitted files, this session's commits and `.workspace/shared` pointers. It reads no
+  transcript. A per-session start stamp in the plugin data folder (pruned after 30 days) supports it.
+- **`magician-ui cleanup`** removes the allow rules and the `defaultMode: "auto"` that 4.14 and earlier
+  recorded adding to ~/.claude/settings.json, plus obsolete magician data files, and prints each
+  removal. Without that record it keeps matching rules and names them, since a rule you added yourself
+  looks the same; it also keeps `Bash(jira:*)` and `Bash(confluence:*)` when the record is from 4.4 or
+  later, which removed them on every update. **`magician-ui disable --purge`** also deletes the
+  status-line renderer copy, status markers and cli-ui.json. It refuses while cli-ui.json still records
+  entries for cleanup to remove, since cleanup needs that record; `--purge --force` deletes the record
+  anyway and leaves those entries. `magician-ui status` reports leftovers, a plain `magician-ui enable`
+  keeps the components you chose, and a subcommand given an argument it doesn't take (or `enable`/`set`
+  given no known component) stops without changing anything.
+- **Docs:** rewritten README (what runs, what is stored, what leaves your machine, which settings can
+  change, troubleshooting, example prompts), a static banner and a plugin icon, PRIVACY.md, SECURITY.md.
+- `--max N` on `jira search|mine|sprint` (default 50), `confluence search|cql` (25), `confluence children` (50).
+
+### Changed
+- **Every hook rewritten in plain bash, the safety guard included** (bash 3.2 or later; no
+  interpreters, no eval). The bundled CLIs and the status line still need python3.
+- **SessionStart** injects short stack guidance as factual statements, capped at 9,500 characters. The
+  previous-session note uses only a record from the same folder and honours `session_history`. Stack
+  detection no longer reads `.env` files and takes about 0.2 s. Status-line markers are written only if
+  you enabled the status line. The plugin root is written once and lore paths are relative to it, and
+  when the lore budget runs short the security, language, framework and database engine cores are tried
+  before the general guides.
+- **pattern-detect** adds at most one keyword-based skill suggestion per prompt and stores nothing from it.
+- **Auto-format is opt-in** (`auto_format`; prettier also needs `auto_format_prettier`, because it loads
+  the project's own config and plugins). **Desktop notifications are opt-in** (`desktop_notifications`
+  replaces the `MAGICIAN_NOTIFY` variable) and use terminal notification sequences where supported.
+- **Chronicle** runs async and keeps one local record per session (branch, commit count, changed file
+  names), newest 50; turn it off with `session_history`.
+- **ci-watch monitor** watches the current branch only, reports newly failed runs by their GitHub run
+  ID, never treats a failed `gh` call as "no failures", and stops after 120 polls (about 3 hours).
+- **Lore:** each topic's deep dives are consolidated into one file with one section and a stable anchor
+  per former file (311 files → 110). Content is unchanged.
+- **Skills and agents:** strict YAML frontmatter and scoped `allowed-tools` in every skill (no bare
+  Bash, Write, WebFetch, WebSearch or Monitor; no interpreter or whole-CLI grants; writes only through
+  path-scoped `Edit(...)`). Commands outside a skill's rules get a normal permission prompt. The fixer
+  agent keeps shell and edit access and the gatekeeper agent keeps shell access; the other agents,
+  including sentinel and verifier, are read-only. /deploy, /divine, /seal and /unravel use background
+  Bash instead of the Monitor tool. /magic shows the `claude mcp add` command instead of adding MCP
+  servers, /almanac no longer writes Claude Code settings, /conjure pins its mermaid build with an
+  integrity hash and uses system fonts, no skill pre-approves `open` or `xdg-open`, browser navigation or
+  Chrome page reads, and /certify and /accelerate no longer run npx. Commands a skill runs with fixed
+  text are pre-approved exactly: /sentinel's auditors in report mode only, /certify's lint, build and
+  vet commands without fix modes, /seal's `git push -u origin HEAD` (it names the branch, so git's push
+  settings can't widen it), and /almanac's setup `git add`; /autopsy, /conjure, /inscribe and /magic ask
+  before staging the file they wrote.
+- **magician-ui:** settings backups are mode 0600 and only the newest 3 are kept; an edit that changes
+  nothing writes nothing; the renderer prunes status files older than 7 days.
+- **The Codex package moved to the `codex-plugin` branch;** the Codex marketplace entry on main points there.
+  Install with `codex plugin marketplace add Alexander-Tyagunov/magician --sparse .agents/plugins`,
+  then `codex plugin add magician@magician`; existing installs run
+  `codex plugin marketplace upgrade magician` first, and installs made from a local checkout remove and
+  re-add the marketplace (see the branch's INSTALL.md). Run `/hooks` afterwards to trust the guard again.
+  Codex still reads Jira and Confluence credentials from `JIRA_*` and `CONFLUENCE_*` environment
+  variables, and now also needs an https base URL and does not follow redirects.
+- **CI runs the offline gates only.** The behavioral eval tier runs locally; CI holds no API key.
+
+### Removed
+- Hooks: worktree-init (WorktreeCreate), access-tracker, agent-lifecycle, the PreCompact capsule,
+  jira-mcp-nudge and kg-nudge. `bin/ctx` loses `capsule`, `resume` and `hook`.
+- The session greeting, the first-run prompt asking Claude to write deny rules, transcript capsules and
+  stored prompt samples.
+- All automatic settings writes: `magician-ui reconcile` is a no-op stub, the allow-list and auto-mode
+  writers are gone (their `--off` forms now run `cleanup`), and the status line is never auto-enabled.
+- The plugin's root settings.json, whose permission rules Claude Code does not apply from a plugin.
+
+### Fixed
+- **Hook context is now delivered.** Earlier versions printed a top-level `additionalContext`, which
+  Claude Code ignores; hooks now use `hookSpecificOutput.additionalContext`.
+- **Worktree creation works again:** the removed WorktreeCreate hook printed no path, which blocked it.
+  Use Claude Code's `.worktreeinclude` for untracked files.
+- The old `automode --off` switched `defaultMode` to `acceptEdits`, which grants more than the default;
+  cleanup deletes the key instead, and only when magician recorded setting it.
+- SessionStart: Kotlin/Scala projects get the backend archetype and Terraform projects get devops; no
+  crash on unset variables; truncation no longer cuts a multi-byte character.
+- The status-line renderer fallback picks the newest cached version by number (4.15 over 4.9).
+
+### Security
+- **The destructive-command guard is now one bash script** that blocks every catastrophic form 4.14
+  blocked, and the README lists what it blocks and where it falls short. It gained one hard block: a
+  Bash command that names magician's saved options or the session environment file, reads another
+  process's environment, or prints the whole environment, also behind a wrapper such as `sudo` or
+  `timeout` or inside `( )` or `{ }`. It also catches a self-replicating function declared with the
+  `function` keyword or one that backgrounds itself before the pipe, a `git clean` that deletes ignored
+  files written with `--force`, `-X` or git options before `clean`, and a `sh -c` script with other
+  shell options before the `-c`. The README's second list now also blocks reading a `.env` or `.env.*`
+  file anywhere in a path, gcloud or Azure credentials, and `eval` of single-quoted text, and no longer
+  blocks a commit message that only mentions piping a download into a shell or reading a template such
+  as `.env.example`. In PowerShell, a forced recursive delete of a project deeper inside a home folder
+  (`C:\Users\<name>\proj`, `~\proj`) is no longer refused; a drive root, anything under `C:\Windows`,
+  and a home folder or its whole contents still are. A command over 50,000 bytes as JSON-escaped in the
+  hook event (a non-ASCII character counts 2 to 4, a quote, backslash, tab or line break 2, another
+  control character 6) is now refused rather than checked, and the check's time grows linearly with
+  length, so it finishes in seconds, well within the hook timeout; a timeout would let the command run
+  unchecked. It is a safety net, not a sandbox, and lets a command through if its own check fails.
+- **The Notification hook no longer runs AppleScript.** Hook scripts run no second language, so on macOS
+  only terminals with their own notification escape still notify (iTerm2, WezTerm, Kitty, Ghostty and
+  Warp); Terminal.app, the VS Code and JetBrains terminals, Alacritty and plain tmux, which 4.14's
+  `MAGICIAN_NOTIFY=desktop` reached through Notification Center, now show none. Windows Terminal still
+  shows its own, and Linux still uses notify-send when it is installed.
+- The Jira/Confluence CLIs read credentials only from the plugin options, still send the auth header to
+  curl over stdin, require an https base URL (localhost exempt) and no longer follow redirects.
+- /sentinel's git-history secret check lists commits and file names only, never secret values.
+- `magician-scan` redacts credential and private-key values in its output and shows only the key name.
+
+### Migration
+- **Jira/Confluence:** run `/plugin configure magician`, start a new session, and check with
+  `jira myself` or `confluence whoami`. Then delete the `JIRA_*` / `CONFLUENCE_*` entries you added for
+  magician to the `env` block of ~/.claude/settings.json; they hold the token in plain text. Edit that
+  file yourself rather than asking Claude, which would have to read the token. A non-local http base
+  URL now fails; use the https URL.
+- **Permissions and leftovers:** run `magician-ui cleanup` once; it also deletes files left by removed
+  features, and `magician-ui status` shows what remains. Manual or acceptEdits sessions may then prompt
+  more; add your own rules with /permissions or choose auto mode with Shift+Tab or /config. A user-only
+  notice appears at most weekly until cleanup has run.
+- **Other:** turn on `auto_format` or `desktop_notifications` if you relied on them. Status-line users run
+  `magician-ui enable` once to refresh the renderer. Before uninstalling, run `magician-ui cleanup`, then
+  `magician-ui disable --purge`.
+
 ## [4.14.0] — 2026-09-19
 
 ### Added
@@ -234,7 +371,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced the symlink-only Codex marketplace package with a generated, self-contained `plugins/magician/` archive: canonical root `skills/` adapters, immutable `source-skills/`, shared adapter references, lore, CLIs, and the curated Codex hook/runtime. A deterministic builder plus tests reject stale packages and any symlink.
 - Added a separate Codex-only destructive guard and regression matrix. It handles executable paths, wrappers/options, normalized roots, HOME globs, substitutions, quoted critical redirections/devices, and `git clean` variants; permits documented benign lookalikes; uses a five-second hook timeout; and honestly documents POSIX/`write_stdin` limits. Claude's existing hook and matcher are untouched.
 - Aligned all 25 Codex adapters: `$skill` syntax, available agent/process primitives, explicit-only invocation metadata, safe commit/staging gates, Codex state paths, manual lifecycle fallbacks, capability detection, and no Claude-settings writes.
-- Corrected Codex install/update/uninstall instructions and replaced the dangerous live `rm -rf /` test with a direct JSON-to-matcher simulation.
+- Corrected Codex install/update/uninstall instructions and replaced the dangerous live root-deletion test with a direct JSON-to-matcher simulation.
 
 ### Verification
 - Added Codex package, adapter, and guard contract tests plus an isolated marketplace install/cache smoke check. The release gate verifies 25 adapters, a non-empty self-contained cache, hook discovery inputs, executable CLIs, and zero changes to Claude-owned runtime files.
@@ -244,7 +381,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Fix: the Codex destructive-guard hook now actually installs.** Live Codex testing surfaced `/hooks → PreToolUse: Installed 0 / Active 0` — Codex's marketplace plugin root (`plugins/magician/`, a relative-symlink layout) exposed only `.codex-plugin` and `skills`, so the manifest's `./hooks/codex-hooks.json` and the hook's `$PLUGIN_ROOT/scripts/…` (and `$PLUGIN_ROOT/bin/…` for the CLIs) resolved to nothing.
 
 ### Fixed
-- **`plugins/magician/` now also symlinks `hooks/`, `scripts/`, and `bin/`** (relative, matching the existing `.codex-plugin`/`skills` symlinks) → Codex discovers `destructive-guard` (`Installed 1`), the hook resolves to the real guard, and the bundled CLIs are reachable at `$PLUGIN_ROOT/bin/<cli>`. Verified with `PLUGIN_ROOT` set to the actual install root (`plugins/magician`): `dd`→device and `rm -rf /` → exit-2 deny; safe commands pass.
+- **`plugins/magician/` now also symlinks `hooks/`, `scripts/`, and `bin/`** (relative, matching the existing `.codex-plugin`/`skills` symlinks) → Codex discovers `destructive-guard` (`Installed 1`), the hook resolves to the real guard, and the bundled CLIs are reachable at `$PLUGIN_ROOT/bin/<cli>`. Verified with `PLUGIN_ROOT` set to the actual install root (`plugins/magician`): a raw write to a disk device and a recursive delete of the filesystem root → exit-2 deny; safe commands pass.
 
 Codex A (skills load) and D (only the curated hook) passed on 4.7.0; this unblocks B (guard fires after `/hooks` trust) and C (CLI resolves by absolute path).
 
@@ -253,11 +390,11 @@ Codex A (skills load) and D (only the curated hook) passed on 4.7.0; this unbloc
 **The destructive-command hard gate now covers Codex too.** Verified against the current Codex model: Codex supports the same `PreToolUse` hook contract as Claude Code (deny via `permissionDecision: "deny"` / `{"decision":"block"}` / **exit code 2**, reading `tool_input.command`), and plugins can bundle hooks. Previously magician's `.codex-plugin` shipped skills only, so the guard did **not** run under Codex — users there relied solely on Codex's sandbox.
 
 ### Added
-- **Codex destructive-guard** — `hooks/codex-hooks.json` (declared via the `hooks` field in `.codex-plugin/plugin.json`, so Codex uses this curated set, not the full Claude `hooks/hooks.json`) wires a `PreToolUse(Bash)` hook that runs `"$PLUGIN_ROOT/scripts/destructive-guard.sh"` — using **Codex's own native `$PLUGIN_ROOT`** (set for every plugin hook, **no Claude required**), reusing the same matcher, which already speaks Codex's exit-2 deny contract. Verified with Codex-shaped payloads: `rm -rf /` · `~` · `$HOME` · `dd` to a device → denied (exit 2); safe commands pass.
+- **Codex destructive-guard** — `hooks/codex-hooks.json` (declared via the `hooks` field in `.codex-plugin/plugin.json`, so Codex uses this curated set, not the full Claude `hooks/hooks.json`) wires a `PreToolUse(Bash)` hook that runs `"$PLUGIN_ROOT/scripts/destructive-guard.sh"` — using **Codex's own native `$PLUGIN_ROOT`** (set for every plugin hook, **no Claude required**), reusing the same matcher, which already speaks Codex's exit-2 deny contract. Verified with Codex-shaped payloads: recursive deletes of the filesystem root, `~`, or `$HOME`, and a raw write to a disk device → denied (exit 2); safe commands pass.
 - **Codex CLI resolution** — Codex has no `bin`-on-`PATH`, so `codex-adapter.md` now instructs adapters to invoke the bundled CLIs (`jira`/`confluence`/`kg`/`ctx`/`magician-scan`/`magician-ui`) by **absolute path** (`<plugin-root>/bin/<cli>`, resolved from the skill's base directory) instead of by bare name. Wherever a skill says "on PATH when the plugin is enabled," Codex reads it as `<plugin-root>/bin/<cli>`.
 
 ### Note
-Codex does **not** auto-trust a plugin's hooks — after enabling magician, run `/hooks` once to trust `destructive-guard`, or Codex skips it. Independently, Codex's `workspace-write`/`read-only` **sandbox** already blocks writes/deletes outside the workspace root (so `rm -rf ~` fails there regardless); the hook adds a deterministic layer that also covers `danger-full-access`. Docs: `.codex-plugin/references/codex-adapter.md`, `.codex/INSTALL.md`. Also fixed a stale "21 skills" count in the Codex install guide (now 25).
+Codex does **not** auto-trust a plugin's hooks — after enabling magician, run `/hooks` once to trust `destructive-guard`, or Codex skips it. Independently, Codex's `workspace-write`/`read-only` **sandbox** already blocks writes/deletes outside the workspace root (so a recursive delete of the home directory fails there regardless); the hook adds a deterministic layer that also covers `danger-full-access`. Docs: `.codex-plugin/references/codex-adapter.md`, `.codex/INSTALL.md`. Also fixed a stale "21 skills" count in the Codex install guide (now 25).
 
 **Codex compatibility is under active end-to-end validation on a live Codex install** (skill loading, hook trust + firing, absolute-path CLI resolution). The wiring is verified in simulation; any gaps found on real Codex will ship as **4.7.1**.
 
@@ -266,10 +403,10 @@ Codex does **not** auto-trust a plugin's hooks — after enabling magician, run 
 **An absolute destructive-command hard gate — plus a rebuilt, animated README.**
 
 ### Added
-- **Destructive-command guard** (`scripts/destructive-guard.sh` → `destructive_guard.py`) — a `PreToolUse(Bash|PowerShell)` hook that **unconditionally blocks catastrophic commands**: filesystem wipes (`rm -rf /` · `~` · `$HOME` · `--no-preserve-root` · system roots), disk/device destruction (`dd of=/dev/…` · `mkfs` · `wipefs` · `blkdiscard` · `shred /dev/…` · `diskutil erase…`), block-device / critical-file overwrite (`> /dev/sd*` · over `/etc/passwd|shadow|sudoers|fstab`), fork bombs, recursive `chmod`/`chown` on system roots, opaque download-and-execute (`curl|bash` · `base64 -d|sh` · `eval "$(…)"`), and `git clean -x`. It exits 2, so the block lands **before permission rules are evaluated** — overriding `allow` rules in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Wrappers (`sudo`/`env`/`timeout`/…) and `sh -c '…'` payloads are unwrapped; a dangerous command merely *named* in a quoted argument is not mistaken for execution. Honest scope (CWE-78): a deterministic floor layered under OS sandboxing + auto-mode's classifier + model judgment — not a complete sandbox. Verified against a 90-case block/allow matrix; runs first in the PreToolUse chain; documented in `/sentinel`.
+- **Destructive-command guard** (`scripts/destructive-guard.sh` → `destructive_guard.py`) — a `PreToolUse(Bash|PowerShell)` hook that **unconditionally blocks catastrophic commands**: filesystem wipes (recursive deletes of the filesystem root, the home directory, or system roots, including the no-preserve-root override), disk/device destruction (raw writes to disk devices, filesystem creation, signature wiping, block discard, secure erase), block-device / critical-file overwrite (redirecting output onto a disk device, or over the password, shadow, sudoers, or fstab files), fork bombs, recursive `chmod`/`chown` on system roots, opaque download-and-execute (piping a network download straight into a shell or interpreter, decoding base64 straight into a shell, and evaluating a downloaded command substitution), and a forced git clean that also removes ignored files. It exits 2, so the block lands **before permission rules are evaluated** — overriding `allow` rules in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Wrappers (`sudo`/`env`/`timeout`/…) and `sh -c '…'` payloads are unwrapped; a dangerous command merely *named* in a quoted argument is not mistaken for execution. Honest scope (CWE-78): a deterministic floor layered under OS sandboxing + auto-mode's classifier + model judgment — not a complete sandbox. Verified against a 90-case block/allow matrix; runs first in the PreToolUse chain; documented in `/sentinel`.
 
 ### Changed
-- **Rebuilt README** — an animated hero + SDLC-pipeline SVG (`assets/`), a consistent card-grid layout end-to-end, badges, and GitHub-faithful HTML throughout (no markdown-in-cells that GitHub would render literally).
+- **Rebuilt README** — an animated hero and SDLC-pipeline illustration, a consistent card-grid layout end-to-end, badges, and GitHub-faithful HTML throughout (no markdown-in-cells that GitHub would render literally).
 
 ## [4.5.0] — 2026-07-10
 
@@ -378,7 +515,7 @@ Ambient MCP tools carry a **user-specific server name**, so magician does not (a
 
 ### Added
 - **Selection/click callback (#1):** the browser streams clicks + selections (with a stable `data-mid`/id/CSS-path locator) to `state/events.jsonl` (append-only, **never wiped** — the old bug that lost selections is fixed); the session reads them by cursor via `GET …/events.json?since=` and reacts.
-- **In-prototype companion chat (#6, opt-in):** a floating ✦ bubble lets you talk to the CURRENT session ("move the title up") without leaving the design — `POST …/chat` → session reacts (**pull** via the Chrome plugin, or **poll** via `/loop`) → replies stream back through `state/outbox.jsonl`. Asked once at GATE 0; off by default. Honest limit: reactions occur while the session is engaged/looping — on Vertex it's poll-latency, not instant push (Monitor tool unavailable there).
+- **In-prototype companion chat (#6, opt-in):** a floating ✦ bubble lets you talk to the CURRENT session ("move the title up") without leaving the design — `POST …/chat` → session reacts (**pull** via the Chrome plugin, or **poll** via `/loop`) → replies stream back through `state/outbox.jsonl`. Asked once at GATE 0; off by default. Honest limit: reactions occur while the session is engaged/looping — where the Monitor tool is unavailable it's poll-latency, not instant push.
 - **Design tokens + variation + one-design themes + responsive (#2/#3/#5):** new `references/design-tokens.md` — a two-tier CSS-custom-property system (primitives → semantics). **Seeded multi-archetype** generation so runs genuinely vary (no more same house look); **light & dark are two tonal maps of the SAME tokens on ONE layout** (with a `[data-theme]` toggle), not two different designs; GATE 3 asks target **viewports** and renders the same design responsively. Emits `design-tokens.css` + `brand.md` (archetype + reproducible **seed**) to `.workspace/shared/` so `/blueprint`→`/ward` build against the exact tokens.
 
 ### Changed
@@ -439,7 +576,7 @@ Ambient MCP tools carry a **user-specific server name**, so magician does not (a
 ## [3.5.2] — 2026-06-30
 
 ### Fixed
-- **Jira & Confluence CLIs are now throttle-aware and bulk-safe.** After a bulk epic/story/dependency-link session hit Jira's rate limits, the agent hand-rolled `urllib` loops that re-introduced corporate-CA TLS failures *and* hammered the API. Both `bin/jira` and `bin/confluence` now: retry **429/503 with bounded exponential backoff** then emit a clear **STOP** message (no tight-loop retries); cache **GET** responses briefly (cleared on any write) so repeated identical queries are free and fresh-after-writes; **self-pace bulk loops** across separate calls; and add a **connect-timeout** so a throttled endpoint can't hang the session. New **`jira create`** / **`jira link`** bulk helpers so loops use the CLI instead of hand-rolled HTTP. Skill guidance hardened: never hand-roll `urllib`/MCP — use the CLI; on 429 stop and pace; re-query before retrying an interrupted write. Env knobs: `JIRA_*`/`CONFLUENCE_*` `TIMEOUT`, `RETRIES`, `CACHE_TTL`, `MIN_INTERVAL_MS`.
+- **Jira & Confluence CLIs are now throttle-aware and bulk-safe.** After a bulk epic/story/dependency-link session hit Jira's rate limits, the agent hand-rolled `urllib` loops that re-introduced custom-CA TLS failures *and* hammered the API. Both `bin/jira` and `bin/confluence` now: retry **429/503 with bounded exponential backoff** then emit a clear **STOP** message (no tight-loop retries); cache **GET** responses briefly (cleared on any write) so repeated identical queries are free and fresh-after-writes; **self-pace bulk loops** across separate calls; and add a **connect-timeout** so a throttled endpoint can't hang the session. New **`jira create`** / **`jira link`** bulk helpers so loops use the CLI instead of hand-rolled HTTP. Skill guidance hardened: never hand-roll `urllib`/MCP — use the CLI; on 429 stop and pace; re-query before retrying an interrupted write. Env knobs: `JIRA_*`/`CONFLUENCE_*` `TIMEOUT`, `RETRIES`, `CACHE_TTL`, `MIN_INTERVAL_MS`.
 
 ## [3.5.1] — 2026-06-30
 
@@ -489,7 +626,7 @@ Performance & ergonomics for the Jira/Confluence CLIs.
 `/jira` and `/confluence` now run through bundled CLIs — quieter, faster, less screen noise.
 
 ### Changed
-- `/jira` and `/confluence` call a bundled **`jira` / `confluence` CLI** (`bin/`, on PATH when the plugin is enabled) instead of composing inline `curl`. Each operation is one clean word-command, so the skills pre-allow them via `allowed-tools: Bash(jira:*)` / `Bash(confluence:*)` — **no per-request permission prompts** (the previous inline `curl | python` was a *compound* command that Claude Code re-prompted on every distinct URL), far less screen space, and faster to compose. The CLI shells out to `curl`, so corporate/self-signed CA trust (system keychain) works where Python's `urllib` failed. Output is compact and formatted; raw REST stays reachable via `jira raw` / `confluence raw`. Setup verifies with `jira myself` / `confluence whoami`.
+- `/jira` and `/confluence` call a bundled **`jira` / `confluence` CLI** (`bin/`, on PATH when the plugin is enabled) instead of composing inline `curl`. Each operation is one clean word-command, so the skills pre-allow them via `allowed-tools: Bash(jira:*)` / `Bash(confluence:*)` — **no per-request permission prompts** (the previous inline HTTP call piped into an interpreter was a *compound* command that Claude Code re-prompted on every distinct URL), far less screen space, and faster to compose. The CLI shells out to `curl`, so custom or self-signed CA trust (system keychain) works where Python's `urllib` failed. Output is compact and formatted; raw REST stays reachable via `jira raw` / `confluence raw`. Setup verifies with `jira myself` / `confluence whoami`.
 
 ## [3.2.1] — 2026-06-26
 
@@ -503,7 +640,7 @@ Respect users who don't use an integration.
 Direct-HTTP **Jira & Confluence** skills (no MCP / no proxy) and the **`/divine`** code-review skill.
 
 ### Added
-- `/jira` and `/confluence` — work with Jira and Confluence over their **REST APIs directly via HTTPS** (no MCP server, no LiteLLM/proxy — fully independent). Support Atlassian **Cloud** (Basic, email + API token) and **Server/Data Center** (Bearer PAT), auto-detected. First-run **setup** flow guides the user to create a token and save it to `~/.claude/settings.json` `env` (the assistant never handles the secret) and verifies connectivity. Jira: read/search (JQL), create/comment/@mention/transition/link/worklog, field discovery, bulk-write playbook, MR investigation, clone, INVEST + Gherkin AC/DoD authoring. Confluence: read/search (CQL), sections, create/update/comment/label, storage/wiki authoring. Both carry per-action write gates, treat ticket/page content as untrusted data, and keep user-specific boards/people/spaces/field-ids in on-demand per-user memory (not in the plugin). Auto-trigger wired into `scripts/pattern-detect.sh`; `/magic` and `/divine` use them for internal grounding (tickets/specs); Codex adapters included.
+- `/jira` and `/confluence` — work with Jira and Confluence over their **REST APIs directly via HTTPS** (no MCP server, no proxy — fully independent). Support Atlassian **Cloud** (Basic, email + API token) and **Server/Data Center** (Bearer PAT), auto-detected. First-run **setup** flow guides the user to create a token and save it to `~/.claude/settings.json` `env` (the assistant never handles the secret) and verifies connectivity. Jira: read/search (JQL), create/comment/@mention/transition/link/worklog, field discovery, bulk-write playbook, MR investigation, clone, INVEST + Gherkin AC/DoD authoring. Confluence: read/search (CQL), sections, create/update/comment/label, storage/wiki authoring. Both carry per-action write gates, treat ticket/page content as untrusted data, and keep user-specific boards/people/spaces/field-ids in on-demand per-user memory (not in the plugin). Auto-trigger wired into `scripts/pattern-detect.sh`; `/magic` and `/divine` use them for internal grounding (tickets/specs); Codex adapters included.
 - `/divine` — standalone, research-grounded **code-review** skill. Auto-triggers on review intent ("review this PR/MR", "do a code review"). Establishes change context (GitHub PR / GitLab MR / branch / working tree, with intent from the PR description + linked tickets and CI/merge-gate status), gates **depth** via AskUserQuestion (Quick / Standard / Deep / Exhaustive), grounds via `/magic` when the change needs external/domain evidence, dispatches the four specialist agents in parallel under the subagent context contract, **adversarially verifies** Critical/High findings (and lists dropped false positives), and produces a severity-ranked report with impact + fix + requirement traceability. Can post the review back to the PR/MR with explicit confirmation. Depth spans a Quick simple-logic pass through an Exhaustive review that grounds in PRDs/docs/external+internal data and maps **blast radius** (affected downstream services & infrastructure). Can optionally **spin an agent to implement Critical/High fixes and commit/push** (gated), and runs **unattended via `/loop`** to monitor repos for new PRs/MRs (idempotent by head SHA, review-only). Fully stack- and company-agnostic. Complements the pipeline-internal `/scrutinize`. Auto-trigger wired into `scripts/pattern-detect.sh`; Codex adapter included.
 
 ## [3.1.0] — 2026-06-25
