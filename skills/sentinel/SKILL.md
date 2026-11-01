@@ -1,7 +1,8 @@
 ---
 name: sentinel
-description: Security scan — OWASP Top 10, credential/secret detection, injection surfaces, dependency audit, git-history secret scan, auth spot-check. Never modifies code; produces a severity-ranked report. Use to audit a codebase for vulnerabilities.
-allowed-tools: Read, Grep, Glob, Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit)
+description: Security scan — OWASP Top 10, secrets, injection surfaces, dependency audit, git-history secrets, auth spot-check. Never modifies code; severity-ranked report. Use to audit a codebase for vulnerabilities.
+effort: high
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(mkdir -p .workspace/local), Bash(touch .workspace/local/security-scan.active), Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit)
 context: fork
 background: false
 argument-hint: "[path]"
@@ -13,7 +14,7 @@ argument-hint: "[path]"
 
 Run a comprehensive security scan of the codebase. Available as CLI: `magician-scan` (plugin-provided; on PATH when the plugin is enabled).
 
-For very large repos, raise /effort so the analysis stays thorough across the codebase (your model's deepest level — `xhigh`, or `max` where unsupported). See [lore/models.md](../../lore/models.md).
+For very large repos, raise /effort so the analysis stays thorough across the codebase (`xhigh`; `max` only as an opt-in for a frontier problem). See [lore/models.md](../../lore/models.md).
 
 ## The scan can change models under you
 
@@ -30,6 +31,13 @@ See [lore/models.md](../../lore/models.md#safety-classifiers-change-which-model-
 Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook, `scripts/destructive-guard.sh` (self-contained plain bash — no other interpreter), that **unconditionally blocks catastrophic commands**: recursive deletes of system or home roots, raw writes to disk devices, fork bombs, piping a network download straight into a shell or interpreter, decoding base64 straight into a shell, evaluating a downloaded command substitution, and a Bash command that could expose the secrets saved in magician's plugin options (one that names any of those options or the session environment file, reads another process's environment through the proc filesystem, or prints the whole environment with `env`, `set` or one of the other listing commands the guard checks). It exits 2, so the block lands **before permission rules are evaluated** — it overrides `allow` rules and fires in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Common command wrappers (`sudo`, `timeout`, `nohup`, `command`, ...), `( )`/`{ }` grouping and inline `sh -c` payloads (other shell options before the `-c` included) are unwrapped before the check. If a Bash or PowerShell call is refused with a `magician destructive-guard: refused` message, do **not** retry, rephrase, or obfuscate — the human must run it themselves outside the agent. Honest limit (CWE-78): a denylist can't catch every obfuscation, so this is a deterministic net layered under OS sandboxing + auto-mode's classifier + model judgment, not a complete sandbox.
 
 ## Process
+
+### 0. Mark the scan active
+```bash
+mkdir -p .workspace/local && touch .workspace/local/security-scan.active
+```
+
+While this marker exists, magician's PreModelSwitch hook (`scripts/pre-model-switch.sh`) holds any model switch for confirmation, because a safety-classifier fallback would otherwise change the model tier in the middle of the scan. Remove it at the end (`rm -f .workspace/local/security-scan.active`), and also when the scan is abandoned or fails; `.workspace/local/` is never committed.
 
 ### 1. Static Analysis (via magician-scan)
 ```bash
@@ -107,21 +115,10 @@ For CI pipeline use: `magician-scan` exits 0 (clean), 1 (issues) or 2 (unknown o
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
+
+Remove the marker first (`rm -f .workspace/local/security-scan.active`), so model switches are no longer held; then:
 
 "Sentinel complete. <N total findings>. Review report above and run /scrutinize for systematic remediation."

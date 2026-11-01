@@ -1,6 +1,6 @@
 ---
 name: knowledge-graph
-description: Local code knowledge-graph + cache for fast, cheap, targeted retrieval — "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of this file", "what depends on this file or symbol", "find the code for X". A per-repo SQLite graph of symbols + relationships at ~/.claude/magician/knowledge-graph; query it for ranked file:line instead of grepping and reading whole files. No MCP, no network, stdlib by default.
+description: Local per-repo code knowledge graph (bundled `kg` CLI; no MCP, no network). Use for graph status, index/refresh/reset, blast radius, what depends on X, or finding the code for X as file:line.
 allowed-tools: Read, AskUserQuestion, mcp__visualize__show_widget, Bash(kg check), Bash(kg status *), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Bash(kg stale), Bash(kg refresh), Bash(kg cache stats)
 argument-hint: "[status · init · refresh · reset · query \"<text>\" · blast <file>]"
 ---
@@ -15,6 +15,10 @@ A per-repo **knowledge graph** of symbols and their relationships, plus a conten
 - **Building & keeping it fresh (init / refresh / parser cascade / monorepos)** → [references/indexing.md](references/indexing.md)
 - **Querying (query / neighbors / blast) and how `/magic` & `/divine` use it** → [references/retrieval.md](references/retrieval.md)
 - **Status view, the visual widget, and reset** → [references/status-and-reset.md](references/status-and-reset.md)
+
+## When to use
+
+Trigger phrases: "knowledge graph status", "kg status", "index this repo / build the code graph", "refresh/rebuild the graph", "reset the knowledge graph", "graph stats", "blast radius of this file", "what depends on this file or symbol", "find the code for X". The graph lives at `~/.claude/magician/knowledge-graph` (SQLite, stdlib by default). Not for research outside the codebase (`/magic`).
 
 ## Phase 0 — Check presence & opt-out
 
@@ -61,20 +65,7 @@ If the user asks to *see / visualize* the graph, run `kg status --json` and rend
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

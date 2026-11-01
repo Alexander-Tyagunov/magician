@@ -14,7 +14,7 @@ Stay silent — report a clean status and omit the block — when the task fully
 
 ## Rule: the producer block — a fixed, distilled shape
 
-An agent/dispatched skill that hits a non-clean run returns this, in addition to whatever it did complete (return partial work + the block, never nothing):
+This is the **canonical Obstacles block**; it lives only here. Skills and agents do not paste it — they carry a two-line pointer in their `## Obstacles` section: "On a non-clean run return the Obstacles block from lore/obstacles.md (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT)." The field names stay on the pointer so a dispatched worker that never read this file can still fill the block. An agent/dispatched skill that hits a non-clean run returns this, in addition to whatever it did complete (return partial work + the block, never nothing):
 
 ```
 STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT

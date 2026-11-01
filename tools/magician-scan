@@ -14,8 +14,12 @@ Usage: magician-scan [path]
 
 Walks every file under path and reports each match of a fixed pattern list — hardcoded
 credentials, private keys, AWS keys, eval(), os.system(), subprocess shell=True, %-formatted
-SQL, innerHTML and dangerouslySetInnerHTML — with its file, line and a short snippet.
-Credential and private-key values are shown as <redacted>, never printed. Skips .git,
+SQL, innerHTML and dangerouslySetInnerHTML — with its file, line and a short snippet. In
+Dockerfiles and docker-compose files it also reports ENV/ARG and environment entries whose
+name looks like a key and whose value is a literal, in LiteLLM config files (litellm*.yaml,
+config.yaml) a literal api_key, and in unpacked mobile bundles (strings.xml, Info.plist) a
+key-named string with a literal value. Credential, key and private-key values are shown as
+<redacted>, never printed. Skips .git,
 node_modules, __pycache__, .venv, dist, build and vendor folders, and image, font,
 source-map and lock files.
 
@@ -68,7 +72,25 @@ PATTERNS = [
     (r'dangerouslySetInnerHTML', "dangerouslySetInnerHTML — XSS risk"),
 ]
 
-REDACTED_LABELS = {"hardcoded credential", "private key in file", "AWS credential"}
+# Credential sprawl in deployment and bundle files (keys harvested from Docker images, LiteLLM
+# deployments and unpacked mobile bundles). Each entry: (file name regex, pattern, label). A value
+# counts when it looks like a key (16+ characters of key alphabet) and is not a variable reference.
+NAMEISH = r'[A-Za-z0-9_.-]*(?i:key|token|secret|password|passwd|credential)[A-Za-z0-9_.-]*'
+KEYVAL = r'(?!\$\{|\$[A-Za-z_]|os\.environ|<|https?://)["\']?[A-Za-z0-9_\-./+=:]{16,}'
+FILE_PATTERNS = [
+    (r'(?i)^Dockerfile(\..*)?$|\.dockerfile$',
+     r'(?im)^\s*(?:ENV|ARG)\s+(' + NAMEISH + r')(?:=|\s+)' + KEYVAL, "key in Dockerfile ENV/ARG"),
+    (r'(?i)^(docker-)?compose(\..*)?\.ya?ml$',
+     r'(?im)^\s*-?\s*(' + NAMEISH + r')\s*[:=]\s*' + KEYVAL, "key in docker-compose environment"),
+    (r'(?i)^(litellm.*|config)\.ya?ml$',
+     r'(?im)^\s*(api_key)\s*:\s*' + KEYVAL, "key in LiteLLM config"),
+    (r'(?i)^strings\.xml$',
+     r'(?is)<string\s+name\s*=\s*"(' + NAMEISH + r')"\s*>\s*' + KEYVAL, "key in Android strings.xml"),
+    (r'(?i)^Info\.plist$',
+     r'(?is)<key>\s*(' + NAMEISH + r')\s*</key>\s*<string>\s*' + KEYVAL, "key in iOS Info.plist"),
+]
+
+REDACTED_LABELS = {"hardcoded credential", "private key in file", "AWS credential"} | {l for _, _, l in FILE_PATTERNS}
 
 SKIP_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg',
                    '.woff', '.ttf', '.eot', '.map', '.lock', '.sum'}
@@ -89,13 +111,20 @@ for root, dirs, files in os.walk(target):
                 content = f.read()
         except Exception:
             continue
-        for pattern, label in PATTERNS:
+        active = list(PATTERNS)
+        for name_re, pattern, label in FILE_PATTERNS:
+            if re.search(name_re, fname):
+                active.append((pattern, label))
+        for pattern, label in active:
             for m in re.finditer(pattern, content):
                 line_no = content[:m.start()].count('\n') + 1
                 snippet = m.group(0)
                 if label in REDACTED_LABELS:
                     # Never print the secret itself: keep the key name, drop the value.
-                    snippet = re.split(r'\s*=', snippet, maxsplit=1)[0] + " = <redacted>" if "=" in snippet else "<redacted>"
+                    if m.groups() and m.group(1):
+                        snippet = m.group(1) + " = <redacted>"
+                    else:
+                        snippet = re.split(r'\s*=', snippet, maxsplit=1)[0] + " = <redacted>" if "=" in snippet else "<redacted>"
                 issues.append({
                     "file": fpath,
                     "line": line_no,

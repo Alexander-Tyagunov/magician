@@ -1,6 +1,6 @@
 ---
 name: jira
-description: Work with Jira over its REST API — "check/fetch/get jira", "look up a ticket", "search jira / JQL", "my board / my sprint", "the X team's board", "create a jira / story / bug", "comment on a ticket", "@mention / tag someone on a ticket", "ask a clarifying question on a ticket", "transition / move / change status", "log time", "is there an MR/PR for this ticket", "clone the repo for this ticket". Any read/search/create/update/transition on Jira issues, including references to a remembered board, project, epic, or person. Uses the bundled `jira` CLI (Jira REST over HTTPS).
+description: Jira via the bundled `jira` CLI — read, search (JQL), boards/sprints, create, comment, transition, log time, find a ticket's PR. Use for any Jira issue request, incl. a remembered board or person.
 allowed-tools: Read, AskUserQuestion, Bash(jira myself), Bash(jira mine *), Bash(jira sprint *), Bash(jira get *), Bash(jira comments *), Bash(jira board *), Bash(jira search *), Bash(jira jql *), Bash(jira transitions *), Bash(jira url *), Bash(jira raw GET *), Bash(gh pr list *), Bash(gh pr view *), Edit(~/.claude/plugins/data/magician-*/jira-memory.md)
 argument-hint: "[ticket key · JQL · 'my board' · 'create …' · setup]"
 ---
@@ -17,6 +17,10 @@ This skill uses the bundled `jira` CLI. If the user prefers another installed Ji
 - **Issue/comment formatting, wiki markup, Gherkin AC / DoD templates** → [authoring.md](authoring.md)
 - **First-time setup (`/plugin configure magician`, then a new session)** → [setup.md](setup.md)
 - **The user's boards, projects, epics, people** → resolution memory (see *Memory*)
+
+## When to use
+
+Trigger phrases: "check/fetch/get jira", "look up a ticket", "search jira / JQL", "my board / my sprint", "the X team's board", "create a jira / story / bug", "comment on a ticket", "@mention / tag someone on a ticket", "ask a clarifying question on a ticket", "transition / move / change status", "log time", "is there an MR/PR for this ticket", "clone the repo for this ticket". Any read/search/create/update/transition on Jira issues. Not for Confluence pages (`/confluence`).
 
 ## Phase 0 — Check access & opt-out
 
@@ -83,20 +87,7 @@ Read it at the start of a Jira task to resolve "my board", a team, an epic short
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

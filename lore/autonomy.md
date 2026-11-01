@@ -25,9 +25,10 @@ Steps 1–4 are a *posture*, not enforcement. What actually stops the prompts is
 writes, deploys, force-push, mass-deletion, and other escalations — honoring boundaries you state in chat
 ("don't push until I review"). That is exactly "reads proceed, writes gate."
 
-Since **2026-08-14** auto mode is the default permission mode for new Pro/Max/Team sessions. A plugin
-**cannot** change the permission mode, and magician writes no permission settings (no allow rules, no
-`defaultMode`). The user picks the mode:
+Since **2026-08-14** auto mode is the default permission mode for new Pro/Max/Team sessions, and from
+v2.1.283 it is the built-in default in the terminal and VS Code on every plan and provider (`claude -p` and
+SDK sessions default to manual since v2.1.302). A plugin **cannot** change the permission mode, and magician
+writes no permission settings (no allow rules, no `defaultMode`). The user picks the mode:
 
 - **Shift+Tab** cycles the mode of the running session; `claude --permission-mode auto` starts a session in it.
 - **`/config`** sets the default mode for new sessions. Claude Code honors a default of `auto` only from the
@@ -40,6 +41,28 @@ Since **2026-08-14** auto mode is the default permission mode for new Pro/Max/Te
 - `acceptEdits` mode only auto-approves file edits + `mkdir/mv/cp/sed`; **every other Bash, MCP, and skill
   call still prompts.** A run stuck in acceptEdits *feels* un-autonomous because it is not auto mode.
 
+### Which grants matter in which mode
+
+- **Auto mode — the classifier decides.** Rules resolve first (deny rules always win; explicit `ask` rules,
+  critical-path removals and flagged `rm` never auto-approve); read-only calls and working-directory edits are
+  auto-approved; everything else goes to the classifier. A skill's `allowed-tools` adds little here, and
+  entering auto mode **drops broad allow rules** (`Bash(*)`, `Bash(python*)`, package-manager run commands,
+  `Agent`, `Monitor`). Subagents are checked at spawn, per action and on completion. Three consecutive or
+  twenty total blocks pause auto mode.
+- **Manual / acceptEdits — the allow rules decide.** Only a skill's `allowed-tools` for its turn and the
+  user's own `/permissions` rules pre-approve anything; everything else prompts.
+- **Hook allow decisions are not answers for MCP calls in Cowork cloud auto mode** (2.1.314): a PreToolUse
+  hook that returns `allow` does not pre-approve an `mcp__…` call there — the classifier still rules. Don't
+  design a skill around a hook "auto-allowing" MCP tools.
+
+### Subagent defaults are suggestions, never settings
+
+`CLAUDE_CODE_SUBAGENT_MODEL` and `CLAUDE_CODE_SUBAGENT_EFFORT` (2.1.316) set the default model and effort
+for every subagent whose frontmatter names none (frontmatter wins; `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`
+makes the env win). magician's own agents pin `model:`/`effort:` in frontmatter and **never write these
+variables**; `/almanac` lists them next to the permission suggestions for the user to adopt — see
+[models.md](models.md) for which tier fits which subtask.
+
 ## Reads outside auto mode (the user's own allow rules)
 
 A skill's `allowed-tools` pre-approves only the narrow commands it lists, for that skill's turn; every other
@@ -49,6 +72,15 @@ with **"Yes, and don't ask again"**, or adding rules with **`/permissions`**, re
 owns and controls. Magician versions up to 4.14 added a read-only allow list (and possibly
 `defaultMode: "auto"`) to the user settings; `magician-ui cleanup` removes those entries only where magician's
 `cli-ui.json` records adding them, and keeps matching rules it has no record of.
+
+**`Glob` and `Grep` are not default tools on macOS, Linux and WSL.** Claude searches with the embedded
+`bfs`/`ugrep` binaries **through Bash**; the `Glob`/`Grep` tools come back only via `--tools`/`--allowedTools`,
+when Bash is denied, or in a subagent's `tools:` list. Consequence: a skill whose `allowed-tools` says
+`Read, Grep, Glob` pre-approves nothing Claude actually runs for a search, so in manual mode every `ugrep`/
+`bfs`/`rg`/`grep`/`find` call prompts (auto mode is unaffected — reads are auto-approved). Skills therefore
+carry read-only `Bash(ugrep *)`, `Bash(bfs *)`, `Bash(rg *)`, `Bash(grep *)`, `Bash(find *)` grants next to
+`Grep, Glob` (kept for sessions that restore the tools), and the destructive guard still screens `-exec`
+and redirect shapes. Agents are unaffected: a subagent `tools:` list that names `Grep`/`Glob` restores them.
 
 **Retrieve, don't grind.** When a repository has a **knowledge-graph** index, `kg query`/`blast`/`neighbors`
 return targeted `file:line` results — far fewer tokens than broad searches and whole-file reads, and shared

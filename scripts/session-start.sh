@@ -95,6 +95,43 @@ _in() { [[ $HAY =~ $1 ]]; }
 _arch() { [ "$ARCHETYPE" = unknown ] && ARCHETYPE=$1; }   # archetype only when nothing set one yet
 _any() { compgen -G "$1" >/dev/null; }                     # glob has at least one match (builtin)
 
+# ── Stack cache ──────────────────────────────────────────────────────────────
+# Detection below reads every manifest with many cat/grep calls. Its result (archetype, stack
+# techs, detected log SDKs) is kept per project under the plugin data folder, keyed by the git HEAD
+# commit and the sizes of the manifest files, and is reused while no manifest is newer than the
+# cache. Outside a git commit, or with MAGICIAN_LORE=eager, detection always runs.
+MANIFESTS="package.json pyproject.toml go.mod Cargo.toml pom.xml build.gradle build.gradle.kts Gemfile composer.json Dockerfile"
+STACK_CACHED=0; CACHE_FILE=""; CACHE_KEY=""
+OBS_MATCHES=""
+case "$(printf '%s' "${MAGICIAN_LORE:-}" | tr '[:upper:]' '[:lower:]')" in eager) ;; *)
+  if [ -n "$PROJ_DIR" ]; then
+    _head=$(git rev-parse HEAD 2>/dev/null)
+    re_head='^[0-9a-f]{40,64}$'
+    if [[ $_head =~ $re_head ]]; then
+      _sizes=""
+      for _m in $MANIFESTS *.csproj; do
+        [ -f "$_m" ] && _sizes="$_sizes $_m:$(wc -c < "$_m" 2>/dev/null | tr -d ' ')"
+      done
+      CACHE_KEY="$_head$_sizes"
+      CACHE_FILE="$PROJ_DIR/stack-cache"
+      if [ -f "$CACHE_FILE" ]; then
+        _newer=$(find ./ -maxdepth 1 \( -name package.json -o -name pyproject.toml -o -name go.mod -o -name Cargo.toml \
+          -o -name pom.xml -o -name 'build.gradle*' -o -name Gemfile -o -name composer.json -o -name '*.csproj' \
+          -o -name Dockerfile \) -newer "$CACHE_FILE" -print 2>/dev/null | head -1)
+        if [ -z "$_newer" ]; then
+          _k=""; _a=""; _t=""; _o=""
+          { IFS= read -r _k; IFS= read -r _a; IFS= read -r _t; IFS= read -r _o; } < "$CACHE_FILE" 2>/dev/null
+          re_val='^[a-z0-9,_ -]*$'
+          if [ "$_k" = "$CACHE_KEY" ] && [[ $_a =~ $re_val ]] && [[ $_t =~ $re_val ]] && [[ $_o =~ $re_val ]] && [ -n "$_a" ]; then
+            ARCHETYPE="$_a"; TECHS="$_t"; OBS_MATCHES="$_o"; STACK_CACHED=1
+          fi
+        fi
+      fi
+    fi
+  fi ;;
+esac
+
+if [ "$STACK_CACHED" != 1 ]; then
 # ── Base ecosystem detection ─────────────────────────────────────────────────
 [ -f "package.json" ]      && { detect_append "javascript"; ARCHETYPE="web"; }
 [ -f "tsconfig.json" ]     && detect_append "typescript"
@@ -270,6 +307,19 @@ if [ -n "$DB_HAY" ]; then
     for d in $DBS; do detect_append "$d"; done      # then the specific engine cores
   fi
 fi
+# ── Log-platform SDKs in the manifests (one match → confident; resolved with the record below) ──
+OBS_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile go.mod go.sum pom.xml build.gradle build.gradle.kts build.sbt docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]')
+obs_try() { if [[ $OBS_HAY =~ $2 ]]; then OBS_MATCHES="${OBS_MATCHES:+$OBS_MATCHES }$1"; fi; }
+obs_try dynatrace     'dynatrace|oneagent'
+obs_try grafana       'grafana|(^|[^a-z0-9_])loki([^a-z0-9_]|$)|promtail|-loki'   # loki as a whole word
+obs_try splunk        'splunk'
+obs_try gcp-logging   'google-cloud-logging|@google-cloud/logging|google\.cloud\.logging|stackdriver'
+obs_try cloudwatch    'cloudwatch|aws-embedded-metrics|watchtower'
+obs_try azure-monitor 'applicationinsights|azure-monitor|opencensus-ext-azure'
+if [ -n "$CACHE_FILE" ] && mkdir -p "$PROJ_DIR" 2>/dev/null; then
+  printf '%s\n%s\n%s\n%s\n' "$CACHE_KEY" "$ARCHETYPE" "$TECHS" "$OBS_MATCHES" > "$CACHE_FILE" 2>/dev/null
+fi
+fi   # end of stack detection (skipped on a cache hit)
 STACK_TECHS="$TECHS"   # what the directory's own markers revealed (before logging/security are added)
 
 # ── Observability / log-platform detection + per-project record ───────────────
@@ -283,15 +333,6 @@ if [ -n "$OBS_FILE" ] && [ -f "$OBS_FILE" ]; then
   case "$KNOWN_OBS" in *" $_op "*) [ -n "$_op" ] && { OBS_PLATFORM="$_op"; OBS_SRC="recorded"; } ;; esac
 fi
 if [ -z "$OBS_PLATFORM" ]; then
-  OBS_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile go.mod go.sum pom.xml build.gradle build.gradle.kts build.sbt docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]')
-  OBS_MATCHES=""
-  obs_try() { if [[ $OBS_HAY =~ $2 ]]; then OBS_MATCHES="${OBS_MATCHES:+$OBS_MATCHES }$1"; fi; }
-  obs_try dynatrace     'dynatrace|oneagent'
-  obs_try grafana       'grafana|(^|[^a-z0-9_])loki([^a-z0-9_]|$)|promtail|-loki'   # loki as a whole word
-  obs_try splunk        'splunk'
-  obs_try gcp-logging   'google-cloud-logging|@google-cloud/logging|google\.cloud\.logging|stackdriver'
-  obs_try cloudwatch    'cloudwatch|aws-embedded-metrics|watchtower'
-  obs_try azure-monitor 'applicationinsights|azure-monitor|opencensus-ext-azure'
   case "$OBS_MATCHES" in ""|*" "*) ;; *) OBS_PLATFORM="$OBS_MATCHES"; OBS_SRC="detected" ;; esac   # exactly one → confident
 fi
 case "$ARCHETYPE" in backend|web|data|mobile|gamedev) OBS_APP=1 ;; *) OBS_APP=0 ;; esac
@@ -431,6 +472,13 @@ elif [ "$OBS_APP" = 1 ] && [ -n "$OBS_FILE" ]; then
 No log platform is recorded for this project. Later sessions read a JSON record at ${OBS_FILE} ({\"platform\":\"<name>\",\"envs\":[…],\"note\":\"…\"}; known platforms: dynatrace, grafana, splunk, gcp-logging, cloudwatch, azure-monitor); logging conventions are in the plugin's logging lore."
 fi
 
+# ── Cloud session: no launchers, no credential bridge ──
+CLOUD_NOTE=""
+if [ "${CLAUDE_CODE_REMOTE:-}" = 1 ]; then
+  CLOUD_NOTE="
+Cloud session (CLAUDE_CODE_REMOTE=1): the launcher and credential hooks are skipped here, so magician's bundled commands run by full path only, as tools/<name> under the plugin root."
+fi
+
 # ── Post-compaction / resume: conventions the compaction may have dropped ──
 DOCTRINE_NOTE=""
 case "$SS_SOURCE" in compact|resume)
@@ -473,11 +521,11 @@ LORE_HDR=" Magician lore (baseline guidance; this repository's own conventions t
 "
 DEEP_TEXT="
 Deep-dive files: lore/deep/<stack>.md under the plugin root, one '## ' section per anchor id a core lists; Grep '^## ' gives line numbers for a Read with offset/limit."
-TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
+TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
 _fixed=$(( ${#HEAD} + 1 + ${#STACK_NOTE} + ${#LORE_HDR} + ${#DEEP_TEXT} + ${#TAIL} ))   # cores add their exact cost below
 if [ "$_fixed" -gt "$BUDGET" ] && [ -n "$REFERENCES_NOTE" ]; then   # references are the first note to go
   _fixed=$(( _fixed - ${#REFERENCES_NOTE} )); REFERENCES_NOTE=""
-  TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
+  TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
 fi
 _room=$(( BUDGET - _fixed ))
 [ "$_room" -lt "$MAX_LORE" ] && MAX_LORE=$_room

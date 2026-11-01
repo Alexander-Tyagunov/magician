@@ -1,0 +1,7 @@
+{
+  "recorded_at": "2026-11-01T20:42:19Z",
+  "offline_always_on_tokens": 1585,
+  "offline_skill_body_tokens": {"accelerate": 1291, "almanac": 1267, "autopsy": 1277, "blueprint": 1777, "certify": 1281, "chronicle": 1655, "confluence": 1431, "conjure": 5071, "deploy": 1443, "divine": 3372, "inscribe": 1050, "jira": 2243, "knowledge-graph": 1486, "magic": 4294, "manifest": 1807, "orchestrate": 3053, "portal": 729, "scrutinize": 2261, "seal": 1459, "sentinel": 2080, "statusline": 1968, "transmute": 4352, "unravel": 1573, "ward": 1772, "weave": 2696},
+  "cli_always_on_tokens": 1474,
+  "cli_on_invoke_tokens": {"manifest": 1800, "knowledge-graph": 1500, "scrutinize": 2200, "statusline": 2000, "magic": 4300, "divine": 3300, "jira": 2200, "deploy": 1400, "inscribe": 1000, "ward": 1800, "autopsy": 1300, "accelerate": 1300, "sentinel": 2100, "conjure": 5000, "confluence": 1400, "unravel": 1600, "almanac": 1200, "chronicle": 1600, "certify": 1300, "blueprint": 1800, "seal": 1500, "transmute": 4300, "weave": 2700, "portal": 730, "orchestrate": 3000, "agent:guardian": 1100, "agent:verifier": 720, "agent:fixer": 860, "agent:reviewer": 610, "agent:simplifier": 640, "sentinel": 760, "agent:gatekeeper": 990}
+}

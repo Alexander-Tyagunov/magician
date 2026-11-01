@@ -346,6 +346,68 @@ class LoreTests(unittest.TestCase):
                 self.assertNotIn("Deep-dive files: ", ctx)
                 self.assertIn("Magician lore is disabled for this session", ctx)
 
+    def test_stack_cache_is_keyed_by_head_and_manifests(self) -> None:
+        """Detection runs once per commit and manifest state; the cached result is reused, a new
+        commit, a changed manifest or MAGICIAN_LORE=eager runs it again, and no git means no cache."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES, git=True)
+            cache = sb.data / "projects" / _proj_hash(proj) / "stack-cache"
+            ctx = _ctx(sb.out(proj, {"session_id": "c1", "source": "startup"}))
+            self.assertIn("Detected stack: python,django,git,tdd,databases,postgres.", ctx)
+            self.assertFalse(cache.exists(), "no commit yet: nothing to key the cache on")
+            sb.git(proj, "add", "-A")
+            sb.git(proj, "commit", "-q", "-m", "init")
+            sb.out(proj, {"session_id": "c2", "source": "startup"})
+            self.assertTrue(cache.is_file())
+            lines = cache.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 4)
+            self.assertRegex(lines[0], r"^[0-9a-f]{40}")
+            self.assertEqual(lines[1:], ["backend", "python,django,git,tdd,databases,postgres", ""])
+            # a hit: the detection is skipped, so a marker file it would otherwise see changes nothing
+            (proj / "go.mod").write_text("module x\n", encoding="utf-8")
+            time.sleep(0.05)
+            (proj / "go.mod").unlink()
+            (proj / "Package.swift").write_text("// swift\n", encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c3", "source": "startup"}))
+            self.assertIn("Detected stack: python,django,git,tdd,databases,postgres.", ctx)
+            self.assertNotIn("swift", ctx)
+            # MAGICIAN_LORE=eager always detects (and does not touch the cache)
+            before = cache.read_text(encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c4", "source": "startup"}, MAGICIAN_LORE="eager"))
+            self.assertIn("swift", ctx)
+            self.assertEqual(cache.read_text(encoding="utf-8"), before)
+            # a changed manifest (size and mtime) misses
+            (proj / "pyproject.toml").write_text("[project]\ndependencies = ['fastapi']\n", encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c5", "source": "startup"}))
+            self.assertIn("fastapi", ctx)
+            self.assertIn("swift", ctx)
+            self.assertNotEqual(cache.read_text(encoding="utf-8"), before)
+            # a new commit misses
+            sb.git(proj, "add", "-A")
+            sb.git(proj, "commit", "-q", "-m", "more")
+            (proj / "Package.swift").unlink()
+            ctx = _ctx(sb.out(proj, {"session_id": "c6", "source": "startup"}))
+            self.assertNotIn("swift", ctx)
+            self.assertRegex(cache.read_text(encoding="utf-8").splitlines()[0], r"^[0-9a-f]{40}")
+            # a corrupt cache is ignored and rewritten
+            cache.write_text(cache.read_text(encoding="utf-8").splitlines()[0] + "\nbackend\nrm -rf /\n\n", encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c7", "source": "startup"}))
+            self.assertIn("Detected stack: python,fastapi,django,git,tdd,databases,postgres.", ctx)
+            self.assertEqual(cache.read_text(encoding="utf-8").splitlines()[2], "python,fastapi,django,git,tdd,databases,postgres")
+
+    def test_stack_cache_keeps_the_detected_log_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("obs", {"package.json": '{"dependencies": {"@splunk/otel": "1"}}\n'}, git=True)
+            sb.git(proj, "add", "-A")
+            sb.git(proj, "commit", "-q", "-m", "init")
+            for sid in ("o1", "o2"):
+                ctx = _ctx(sb.out(proj, {"session_id": sid, "source": "startup"}))
+                self.assertIn("Log platform for this project: splunk (detected)", ctx)
+            cache = sb.data / "projects" / _proj_hash(proj) / "stack-cache"
+            self.assertEqual(cache.read_text(encoding="utf-8").splitlines()[3], "splunk")
+
     def test_kubernetes_detection_survives_odd_yaml_names(self) -> None:
         """File names with spaces, quotes or a leading `--` must neither hide a manifest nor be read as options."""
         manifest = "apiVersion: apps/v1\nkind: Deployment\n"

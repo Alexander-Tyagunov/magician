@@ -3,6 +3,10 @@ name: deploy
 description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
 allowed-tools: Read, Glob, AskUserQuestion, Edit(./.github/workflows/**), Edit(./.gitlab-ci.yml), Edit(./.circleci/**), Bash(gh run list *), Bash(gh run view *), Bash(gh run watch *), Bash(kg query *)
 disable-model-invocation: true
+paths:
+  - ".github/**"
+  - ".gitlab-ci.yml"
+  - ".circleci/**"
 argument-hint: "[create|monitor|fix] [provider]"
 ---
 
@@ -135,20 +139,7 @@ Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

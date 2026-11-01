@@ -1,7 +1,8 @@
 ---
 name: certify
-description: Full verification loop — tests, types, lint, build, and a Playwright browser check for UI projects; collects evidence before any success claim. Use to verify a change is actually green.
-allowed-tools: Read, Glob, Grep, Bash(npm test *), Bash(npm run lint), Bash(npm run build), Bash(pytest *), Bash(mypy *), Bash(ruff check .), Bash(go test ./...), Bash(go vet ./...), Bash(golangci-lint run), Bash(cargo test *), Bash(cargo check), Bash(cargo clippy), Bash(mvn test), Bash(gradle test)
+description: Full verification loop — tests, types, lint, build, and a Playwright browser check for UI projects; collects evidence before any success claim. Use to verify a change is green.
+effort: high
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Grep, Bash(npm test *), Bash(npm run lint), Bash(npm run build), Bash(pytest *), Bash(mypy *), Bash(ruff check .), Bash(go test ./...), Bash(go vet ./...), Bash(golangci-lint run), Bash(cargo test *), Bash(cargo check), Bash(cargo clippy), Bash(mvn test), Bash(gradle test)
 ---
 
 # /certify — Verification Loop
@@ -70,20 +71,7 @@ While you check, re-read the background dev server's output (and the browser con
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

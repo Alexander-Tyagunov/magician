@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] — Unreleased
+
+Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
+(`evals/results/budget.json`) is reset by this release.
+
+### Batch 1 — model and effort currency, token diet, hooks, security refresh
+
+**Added**
+- Hooks: `PreCompact` (asks for `.workspace/local/session-state.md` to be flushed before a summary),
+  `SubagentStop` (records `STATUS: BLOCKED|DEGRADED` returns of magician agents into
+  `.workspace/local/obstacles.jsonl`, reading only the last 4 KiB of the agent transcript),
+  `PreModelSwitch` (holds a safety-fallback model switch while a security scan is active or
+  `MAGICIAN_PIN_MODEL=1`), `PostModelSwitch` (notes the change and the effort/cache consequences),
+  `Setup init` (creates `.workspace/` folders and the ignore line), `StopFailure max_output_tokens`
+  (suggests `/compact`); `Notification` also matches `plugin_notification`.
+- Cloud sessions (`CLAUDE_CODE_REMOTE=1`): session-start, tools-path and userconfig hooks skip
+  launcher installs and credential reads and say that bundled commands run by full path.
+- Token-budget tier in `scripts/gate.sh`: fails when `claude plugin details` reports more than
+  1,500 always-on tokens, any skill body above 6,000 tokens, or more than 10 % growth of the recorded
+  baseline without a CHANGELOG note; `tests/claude/test_guard_latency.py` (median guard run on
+  benign commands under 40 ms).
+- Lore: `lore/research.md` (research sources: OpenAI Docs MCP, Anthropic `mcp-server-dev`,
+  `/claude-api`), `lore/skill-authoring.md` (the vendor-neutral skill standard versus Claude Code
+  extensions, provider-neutral wording), new sections in `lore/deep/llm-sdks.md` (Claude API
+  2026-10-21, MCP 2026-07-28, OpenAI Responses/Codex, deprecations).
+- `magician-scan` patterns for Dockerfile/compose `ENV`/`ARG`, LiteLLM configs and mobile resource
+  strings holding key-like values; README warning about fake installers and resellers.
+- Agents: `simplifier` and `verifier` run on `haiku` (`effort: high`), `fixer` and `gatekeeper` on
+  `sonnet` (`effort: medium`), the review lenses on `opus` (`effort: high`, `autoCompactWindow`
+  200k); the five lenses locate code with `kg` (`check`, `query`, `blast`, `neighbors`).
+- Tests: every `mcp__` grant names a server and a tool; the Obstacles block appears only in lore;
+  descriptions stay within the house budget; search-heavy skills pre-approve the embedded search
+  commands.
+
+**Changed**
+- `lore/models.md` rewritten for the 5.5 generation (Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1:
+  prices, effort defaults, `ultrathink` = `xhigh`, cache rule on effort changes, refusal fallback,
+  deprecation dates). Effort guidance in `/ward`, `/orchestrate`, `/weave`, `/manifest`: `medium`
+  for implementation turns, `high` for certify/review/security turns; one level only on
+  Bedrock/Vertex/gateways. `xhigh` is the deep level; `max` is an opt-in.
+- Token diet: skill descriptions 7,621 → 4,977 chars, agent descriptions one sentence each; the
+  Obstacles block is pasted nowhere — every skill and agent points at `lore/obstacles.md`; always-on
+  cost measured by `claude plugin details` 2,443 → 1,474 tokens.
+- Guard: `onFailure: block`, `timeout: 5`, and a fast path that exits immediately for commands with
+  no dangerous token (verdicts identical to the full parser on the parity corpus).
+- `format.sh` runs asynchronously and skips a file formatted less than 2 s ago; session-start caches
+  the stack fingerprint per commit and manifest sizes (`MAGICIAN_LORE=eager` forces detection).
+- Search grants (`ugrep`, `bfs`, `rg`, `grep`, `find`) on every search-heavy skill, because Glob and
+  Grep are no longer default tools on macOS/Linux/WSL; `paths:` on `/deploy`.
+- `/weave` template and `/orchestrate` task prompts return bounded schemas (summary ≤ 1,200 chars,
+  obstacles, files changed) and document `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS` (first task of a
+  wave alone, then the rest).
+- Security lore: fallback switching made visible, thinking blocks never echoed or moved, which
+  grants matter in auto versus manual mode.
+
 ## [4.18.0] — 2026-11-01
 
 **Static plan walkthrough.** `/blueprint` now writes one plan source, `plan.json`, and renders two

@@ -29,6 +29,18 @@
         ]
       }
     ],
+    "Setup": [
+      {
+        "matcher": "init",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/setup-init.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -45,7 +57,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/destructive-guard.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/destructive-guard.sh",
+            "timeout": 5,
+            "onFailure": "block"
           }
         ]
       }
@@ -56,14 +70,61 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/format.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/format.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "auto|manual",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/pre-compact.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^magician:",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/subagent-stop.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/pre-model-switch.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/post-model-switch.sh",
+            "timeout": 10
           }
         ]
       }
     ],
     "Notification": [
       {
-        "matcher": "agent_completed|agent_needs_input",
+        "matcher": "agent_completed|agent_needs_input|plugin_notification",
         "hooks": [
           {
             "type": "command",
@@ -79,6 +140,18 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/chronicle-stop.sh",
             "async": true
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "max_output_tokens",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/stop-failure.sh",
+            "timeout": 10
           }
         ]
       }

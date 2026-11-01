@@ -1,6 +1,6 @@
 ---
 name: statusline
-description: Enable, configure, or disable the Magician CLI status line ("Magician Claude CLI UI") — a lightweight bar showing live context %, a context-rot warning, a token-flow sparkline, model · git · cost, the active skill/workflow/loop, the reasoning effort/mode, the bundled-lore state, and the output-brevity "voice" level. Also sets the output-brevity voice (warrior/scribe/bard) and removes permission entries left by older magician versions. Use when the user says "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "turn off / disable the status line", "make output shorter/leaner / set the voice", or "clean up magician's old permission rules".
+description: Enable, configure, or disable the Magician CLI status line (context %, model, git, cost, skill, effort, voice), set the output voice, or clean up old permission rules. Use only when the user asks.
 allowed-tools: AskUserQuestion, Bash(magician-ui status), Bash(magician-ui voice status)
 argument-hint: "[enable · disable · status · set <components> · cleanup]"
 ---
@@ -12,6 +12,10 @@ argument-hint: "[enable · disable · status · set <components> · cleanup]"
 A native Claude Code **status line** rendered by magician. It runs **locally, consumes zero API tokens**, updates on each message (debounced), and helps you catch **context rot** before it bites. It's driven by the bundled **`magician-ui`** CLI, which edits `~/.claude/settings.json` **safely** (timestamped backup → validate → atomic write; it never leaves settings broken). Backups are mode 0600 and only the newest 3 are kept; an edit that changes nothing writes nothing. `enable`, `set` and `disable` touch only the `statusLine` key; `cleanup` removes only entries on the fixed list older magician versions used, and only when `cli-ui.json` records that they added them (a matching rule the user added too goes with them; see below). Enabling copies the renderer to `~/.claude/magician/statusline.py`, which the `statusLine` command points at.
 
 The status line is **off until the user asks for it**: magician never enables it on its own. Every command that changes settings (`enable`, `set`, `disable`, `cleanup`, `voice <level>`) goes through the normal permission prompt; only the read-only `status` commands are pre-approved.
+
+## When to use
+
+Trigger phrases: "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "turn off / disable the status line", "make output shorter/leaner / set the voice", "clean up magician's old permission rules". Not for general terminal or theme questions, and never enabled on the skill's own initiative.
 
 ## Components (user-configurable)
 

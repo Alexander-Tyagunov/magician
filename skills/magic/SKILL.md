@@ -1,7 +1,7 @@
 ---
 name: magic
-description: Use when the user asks to research, investigate, analyze, find out, explore, examine, audit, or evaluate something — structured multi-source research with consulting, library-doc search, web search, and guided output delivery.
-allowed-tools: Read, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Edit(./.workspace/shared/research/**), Bash(git commit -m *)
+description: Structured multi-source research (consulting, library docs, web) with guided output delivery. Use when asked to research, investigate, analyze, explore, examine, audit, or evaluate something.
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Edit(./.workspace/shared/research/**), Bash(git commit -m *)
 argument-hint: "[topic or research question]"
 ---
 
@@ -58,7 +58,7 @@ Do NOT ask for anything already clear from the message.
 
 Batch both up-front decisions into a **single** AskUserQuestion call so the user approves scope once — don't drip them as two separate prompts ([lore/autonomy.md](../../lore/autonomy.md): clarify up front, batched). Read [references/questions.md](references/questions.md) → "Phase 0 — Source selection" (pick the variant matching the Step 0.1 classification) **and** "Phase 0 — Research depth", then pass **both** question blocks in the `questions` array of one AskUserQuestion call. Wait for the response before proceeding.
 
-> **Model & effort:** the depth choice maps onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (for exhaustive sweeps, your model's deepest level — `xhigh`, or `max` on models that lack it). If the session is on an older model than ideal, suggest an upgrade rather than switching silently. See [lore/models.md](../../lore/models.md).
+> **Model & effort:** the depth choice maps onto reasoning effort — Quick overview ≈ `/effort low`, Standard depth ≈ `/effort medium`, Deep dive ≈ `/effort high` (for exhaustive sweeps `xhigh`; `max` only as an opt-in for a frontier problem). If the session is on an older model than ideal, suggest an upgrade rather than switching silently. See [lore/models.md](../../lore/models.md).
 
 ---
 
@@ -229,20 +229,7 @@ Keep it brief. No bullet lists. No meta-commentary. Just a clean, friendly close
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

@@ -2,7 +2,7 @@
 
 > On-demand companion to `lore/llm-sdks.md`. **Don't read this whole file.** Grep `^## ` here to list sections with line numbers (each heading carries its `#id`), then Read with `offset`/`limit` for just the section(s) you need.
 
-Sections: [Tool use, structured output & RAG patterns](#tooluse-structured-rag)
+Sections: [Tool use, structured output & RAG patterns](#tooluse-structured-rag) · [Claude API currency (2026-10-21)](#claude-api-2026) · [MCP 2026-07-28](#mcp-2026-07-28) · [OpenAI side: Responses, codex exec, Agents SDK](#openai-2026) · [Deprecations](#deprecations)
 
 ## Tool use, structured output & RAG patterns <a id="tooluse-structured-rag"></a>
 
@@ -123,3 +123,69 @@ OpenAI: `oc.responses.create(..., stream=True)` → iterate events (`async for` 
 - https://github.com/openai/openai-python
 - https://platform.openai.com/docs/api-reference/responses
 - https://platform.openai.com/docs/guides/structured-outputs
+
+## Claude API currency (2026-10-21) <a id="claude-api-2026"></a>
+
+What any Claude API code magician writes or migrates must do on the 5.5 family and Fable 5.1 (sources: anthropic.com/claude-sonnet-5-5, claude.dev "Building with Claude Sonnet 5.5", code.claude.com changelog 2.1.307/2.1.309). Run `/claude-api api-version` to migrate a project to API version **2026-10-21**; `/claude-api migrate this project to claude-sonnet-5-5` automates the model move; `/claude-api prompt-audit` finds prompt waste.
+
+- **Thinking.** `thinking: {type: "disabled"}` returns **400** — thinking cannot be turned off on Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable. Use adaptive thinking with an effort level, or the `between_tools` mode (only at `low`/`medium`/`high`, no extra fields) when reasoning between tool calls is all you need. Per-message effort (beta) varies one turn without invalidating the cache; changing top-level effort does invalidate it.
+- **Tool choice.** Forced `tool_choice` (`any` / a named `tool`) returns **400**. Use `tool_choice: auto` and mark tools `strict: true` with `additionalProperties: false` + `required` so `tool_use.input` is schema-valid.
+- **Histories are append-only.** Preserved thinking (API accounts created on/after 2026-08-31) rejects edits to prior context; never trim, re-order or rewrite earlier assistant turns or thinking blocks — append new turns only, and resend `thinking`/`tool_use` blocks untouched. Sonnet 5.5 reasoning is tied to the originating account.
+- **Refusals are HTTP 200.** Check `stop_reason == "refusal"` and read `stop_details` (`cyber`, `bio`, `frontier_llm`, `reasoning_extraction`, `general_harms`). `fallbacks: "default"` (beta) retries cyber/frontier_llm on a fallback model — opt in deliberately, and surface the switch to the user.
+- **Computer use** moves to `computer_toolset_20260801` with `eager_input_streaming` per tool (replaces the fine-grained streaming beta). Haiku 5.5 SDKs add beta computer-use and browser-use.
+- **Mid-conversation changes** (system messages, tool-set changes) are supported on Sonnet 5.5 (beta); `thinking.display` `summarized` | `updates` behind `thinking-display-updates-2026-08-18`.
+- **Managed Agents** subagent teams build on `multiagent_20261001` (the `coordinator` pattern is replaced; 2.1.309); `/claude-api managed-agents-secure` audits a deployment.
+- **Advisor** pairing accepts only Opus 5.5, Opus 5, Sonnet 5.5 and returns `advisor_redacted_result`.
+- Limits worth knowing: Sonnet 5.5 — 1M context without a beta header, 128k max output (300k on Batches with `output-300k-2026-03-24`), min cacheable prompt 512 tokens, separate rate limits from Sonnet 5; Haiku 5.5 — pricier above 100k input tokens.
+
+```python
+r = ac.messages.create(
+    model="claude-sonnet-5-5", max_tokens=4096,
+    thinking={"type": "adaptive"}, output_config={"effort": "medium"},
+    tools=[{"name": "lookup", "strict": True, "input_schema": {"type": "object",
+            "properties": {"q": {"type": "string"}}, "required": ["q"], "additionalProperties": False}}],
+    tool_choice={"type": "auto"}, messages=history)
+if r.stop_reason == "refusal":
+    handle(r.stop_details)            # never retry with a rewritten history
+history.append({"role": "assistant", "content": r.content})   # append-only, thinking preserved
+```
+
+## MCP 2026-07-28 <a id="mcp-2026-07-28"></a>
+
+Current spec revision (modelcontextprotocol.io/specification/2026-07-28). Write new servers and clients against it; keep legacy (2025-11-25) compatibility because hosts negotiate it.
+
+- **Stateless by design.** `initialize`/`notifications/initialized` and `Mcp-Session-Id` are gone; every request carries `_meta` (protocolVersion, clientCapabilities, clientInfo) and every result carries `resultType` (`complete` | `input_required`; extensions add `task`). An open stdio process or HTTP connection is not a session — requests from unrelated conversations interleave on it, so cross-call state (cursor, selected space, KG query handle) travels as an explicit opaque handle in tool arguments, validated against the principal, with a documented TTL.
+- **`server/discover`** is mandatory for servers; clients probe it first and fall back to `initialize` on any other error or timeout (never key on one error code). A dual-era server picks its behaviour from how the client opens.
+- **MRTR** (multi round-trip requests) replaces server-initiated requests: a `tools/call` may return `input_required` with `inputRequests`/`requestState`; the client retries the original request with a new id and `inputResponses`. `requestState` is attacker-controlled — integrity-protect it (HMAC/AEAD), single-use where it matters. Elicitation stays active and goes through MRTR.
+- **`subscriptions/listen`** replaces `resources/subscribe`/`unsubscribe` and the HTTP GET stream; notifications are best-effort, so poll and cache too. `ttlMs` + `cacheScope` are required on list/read results.
+- **Deprecated (SEP-2577, earliest removal 2027-07-28): Roots, Sampling, Logging** (and Dynamic Client Registration in favour of CIMD). Pass paths as tool parameters, call LLM providers directly, log to stderr/OpenTelemetry. Tier-1 SDKs warn at runtime.
+- **Claude Code** runs the legacy era by default: `MCP_SDK_GENERATION=v1|v2` selects the SDK generation (`v2` = protocol 2026-07-28; default in some sessions since 2.1.274), `MCP_PROTOCOL_NEGOTIATION=auto|legacy` the probe. Permission rules name the full normalized server (`mcp__<server>__*`, 2.1.299). Bundled stdio servers get `CLAUDE_PROJECT_DIR` and still answer `roots/list` for the legacy host.
+- **TypeScript SDK**: `@modelcontextprotocol/server` — `serveStdio(createServerFactory)` with a factory returning a fresh `McpServer` per call (the old `server.connect(new StdioServerTransport())` serves 2025-era clients only). **Python**: SDK ≥ 2.0 `MCPServer` + `mcp.run(transport="stdio")`. Verify both eras with `npx @modelcontextprotocol/inspector --cli --protocol-era legacy|modern`.
+- Tool hygiene: prefixed names (`kg_query`), `readOnlyHint`/`openWorldHint` annotations, `outputSchema` + `structuredContent`, `isError` execution errors so the model can recover, credentials from env never from tool args.
+
+## OpenAI side: Responses, codex exec, Agents SDK <a id="openai-2026"></a>
+
+- **Responses API** (`client.responses.create`) is the current primary surface: `instructions` = system, `input` = prompt, `r.output_text`; multimodal, reasoning controls/summaries and tool calling during reasoning; `.parse(text_format=Model)` for structured output; Chat Completions remains supported. Stateful by default (`previous_response_id` / `conversation_id`) — pick one history strategy, never mix with explicit history. The Codex MCP server was removed (2026-09-05): use the app-server.
+- **Headless Codex**: `codex exec` runs sandboxed by default (`--sandbox read-only|workspace-write|danger-full-access`; `--full-auto` is gone — use `--sandbox workspace-write` or `--approve-for-me`); `--json` emits JSONL events (`thread.started`, `item.*`, `turn.completed` with token usage); `--output-schema <file>` constrains the final answer to a JSON Schema (`additionalProperties: false`); `--output-last-message <path>`; `codex exec resume --last` chains stages. Progress on stderr, final message on stdout.
+- **Agents SDK mapping from the Claude Agent SDK** (developers.openai.com cookbook): `ClaudeAgentOptions(system_prompt)` → `Agent(name, instructions, model, tools)`; `@tool` + `create_sdk_mcp_server` → `@function_tool`; `allowed_tools` → expose only the needed tools + `needs_approval`; `PreToolUse`/`PostToolUse` → `RunHooks`/`AgentHooks` (observation only — block with guardrails/approvals); permission prompts → `needs_approval=True` + `RunState` pause/resume; MCP → `HostedMCPTool`; `.claude/agents/*.md` → `agent.as_tool(...)` or `handoffs=[...]`; sessions → `Session` / `previous_response_id` / `conversation_id`; sandbox → `SandboxAgent` with `Shell()`, `Filesystem()`, `ApplyPatch()`; `query()` → `Runner.run(...)`; `CLAUDE.md` + skills → `AGENTS.md` + `.agents/skills/*/SKILL.md`. Claude runs the loop inside the sandbox; OpenAI keeps the harness in the trusted runtime and treats the sandbox as a tool.
+- Reliability patterns: `Compaction()` / `StaticCompactionPolicy` at phase boundaries, `Memory()` for process lessons, stable-prefix prompt ordering for caching, tool output truncated to ~10k tokens keeping head and tail.
+
+## Deprecations <a id="deprecations"></a>
+
+Encode these in generated code and advice; never emit the removed form.
+
+| Removed / ending | Use instead |
+|---|---|
+| `thinking: disabled` on 5.5 models and Fable (400) | adaptive thinking + effort, or `between_tools` |
+| forced `tool_choice` `any`/`tool` (400) | `tool_choice: auto` + `strict: true` schemas |
+| editing or re-ordering prior assistant/thinking turns | append-only histories |
+| fine-grained streaming beta for computer use | `computer_toolset_20260801` + `eager_input_streaming` |
+| Managed Agents `coordinator` | `multiagent_20261001` (2.1.309) |
+| Fast mode on Opus 4.8 (ends 2026-11-30) | Opus 5.5 / Opus 5 fast mode, or standard speed |
+| standalone Claude Design (closes 2026-12-14) | `/design` artboards inside Claude Code |
+| Task tools (`TaskCreate`/`TodoWrite`) on Opus 4.8+, Sonnet 5+, Fable | plan-file checklist, or `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` |
+| `/ultraplan` and the `ultraplan` keyword | plan mode / `/plan` |
+| MCP `Mcp-Session-Id`, `initialize`, Roots, Sampling, Logging, DCR | stateless `_meta`, `server/discover`, tool params, provider APIs, stderr/OTel, CIMD |
+| MCP permission rules without the full server name | `mcp__<server>__*` (2.1.299) |
+| `codex exec --full-auto` | `--sandbox workspace-write` / `--approve-for-me` |
+| OpenAI Codex MCP server | app-server |

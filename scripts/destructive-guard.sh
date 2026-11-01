@@ -448,6 +448,42 @@ line_texts() {
   [ "${#SPLIT_OUT[@]}" -gt 1 ] && LINES=("${SPLIT_OUT[@]}")
 }
 
+# ---- fast path: a command with no candidate token is allowed here, before any full check ----
+# Every rule below fires only on a command whose text holds one of a small set of tokens: a
+# command word the per-command rules resolve to (rm, dd, mkfs, ..., or clean for git clean), a
+# DOWNLOADERS word or base64 (the pipeline, substitution and soft download rules), a network word
+# (the trifecta), an environment-dump builtin, a PowerShell cmdlet fragment, a device or /etc path,
+# a secret-variable prefix, the indirect-expansion opener, or a { with an & (fork bombs). The text
+# is matched the way the rules see it: folded to lowercase (PowerShell folds, and lowercase is the
+# wider net for Bash), with hyphens removed (resolve_head drops them, so r-m resolves to rm) and
+# quotes removed (strip_quotes does the same before a target is compared). A command word counts
+# at a boundary that is not a letter or digit (resolve_head takes the word after the last / of a
+# whitespace-separated word). Holding none of these, a command cannot match any rule, so it is
+# allowed at once; holding one, it goes through every check unchanged. test_guard_latency.py and
+# the parity corpus in test_destructive_guard.py hold this to the full checks' verdicts.
+FAST_HEADS="rm find dd mkfs wipefs blkdiscard shred sgdisk sfdisk diskutil chmod chown chgrp tee clean cat set env printenv export declare typeset compgen nc ncat ssh scp rsync base64"
+FAST_PARTS='removeitem formatvolume cleardisk removepartition resetphysicaldisk initializedisk claude_ /proc/ /sessionenv/ /etc/ /dev/sd /dev/nvme /dev/hd /dev/vd /dev/xvd /dev/mmcblk /dev/disk /dev/rdisk /dev/mapper/ /dev/loop ${!'
+fast_path() {  # true when the command holds no candidate token
+  local t re tok
+  lower "$1"
+  t=$LOWER_OUT
+  drop_char "$t" -; t=$DROP_OUT
+  drop_char "$t" '"'; t=$DROP_OUT
+  drop_char "$t" "'"; t=$DROP_OUT
+  case "$t" in
+    *'{'*) case "$t" in *'&'*) return 1 ;; esac ;;
+  esac
+  for tok in $FAST_PARTS; do
+    case "$t" in *"$tok"*) return 1 ;; esac
+  done
+  re=""
+  for tok in $FAST_HEADS $DOWNLOADERS $EVALWORD; do re="$re|$tok"; done
+  re="(^|[^a-z0-9])(${re#|})([^a-z0-9]|$)"
+  [[ $t =~ $re ]] && return 1
+  return 0
+}
+fast_path "$CMD" && exit 0
+
 # ---- normalize case once, for the checks below that must run the same for Bash and PowerShell ----
 # PowerShell cmdlet resolution is case-insensitive (Invoke-WebRequest / iwr / IWR are equivalent),
 # so a PowerShell payload is folded to lowercase before any token match. A Bash payload is left

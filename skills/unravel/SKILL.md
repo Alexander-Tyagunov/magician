@@ -1,7 +1,8 @@
 ---
 name: unravel
-description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use whenever a problem is reported or something misbehaves — "I have a bug / it's broken / not working / crashing", an error/exception/stack trace, a regression, a test failure, or a production issue/outage when the app is deployed. Grounds the investigation with /magic + the knowledge graph (kg query/blast) for comprehensive root-cause research.
-allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *)
+description: Debugging with a hypothesis preflight — evidence before any change, one change at a time, then a regression test. Use when a bug, error, regression, failing test, or outage is reported; not for features.
+effort: high
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *)
 argument-hint: "<bug or error description>"
 ---
 
@@ -11,11 +12,15 @@ argument-hint: "<bug or error description>"
 
 Debug systematically. No random changes in the hope something helps.
 
-Scale `/effort` to bug complexity — for deep, multi-layer root-cause hunts use your model's deepest level (`xhigh`, or `max` on models that lack it). See [lore/models.md](../../lore/models.md).
+Scale `/effort` to bug complexity — for deep, multi-layer root-cause hunts use `xhigh` (`max` only as an opt-in for a frontier problem; it is session-only). See [lore/models.md](../../lore/models.md).
 
 <HARD-GATE>
 State your hypothesis and evidence BEFORE reading any code or making any change. This prevents the most common AI debugging failure: making changes without understanding the cause.
 </HARD-GATE>
+
+## When to use
+
+Trigger phrases: "I have a bug / it's broken / not working / crashing", an error, exception, or stack trace, a regression, a test failure, a production issue or outage when the app is deployed. The investigation is grounded with `/magic` and the knowledge graph (`kg query` / `kg blast`) for root-cause research. Not for new features (`/conjure`, `/ward`) or performance tuning (`/accelerate`).
 
 ## Process
 
@@ -63,20 +68,7 @@ Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomous
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

@@ -1,6 +1,6 @@
 ---
 name: conjure
-description: Structured design dialogue with a visual companion — produces an approved spec and design artifacts before any implementation begins. Use at the start of a feature, before writing code.
+description: Structured design dialogue with a visual companion — produces an approved spec and design artifacts before implementation. Use at the start of a feature, before writing code.
 allowed-tools: Read, Grep, Glob, AskUserQuestion, Edit(./.workspace/shared/**), Edit(./.workspace/local/designs/**), Edit(./.workspace/local/mockups/**), Bash(${CLAUDE_SKILL_DIR}/scripts/vc-start.sh *), Bash(${CLAUDE_SKILL_DIR}/scripts/vc-stop.sh *), Bash(git commit -m *), Bash(kg query *), mcp__playwright__browser_take_screenshot, mcp__playwright__browser_snapshot, mcp__playwright__browser_wait_for, mcp__playwright__browser_close
 argument-hint: "[feature or what you want to design]"
 ---

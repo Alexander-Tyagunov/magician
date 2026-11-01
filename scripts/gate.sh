@@ -11,6 +11,13 @@
 #   3. Directory limits: at most 512 tracked files, no non-image file of 256 KiB or more, only text,
 #      SVG, PNG, JPEG, GIF, WebP and font files, and no OS junk (.DS_Store, Thumbs.db, desktop.ini,
 #      __MACOSX).
+#   4. Token budget: an offline estimate (bytes / 4) of the always-on cost (skill and agent names and
+#      descriptions, which sit in every session) and of each skill body, and, when the `claude` CLI
+#      is installed, the CLI's own projection from `claude --plugin-dir . plugin details magician`
+#      (text output; the command has no JSON flag). Fails when the CLI reports more than 1,500
+#      always-on tokens or a skill body over 6,000 tokens, and when the offline always-on estimate
+#      grew by more than 10% over the value recorded in evals/results/budget.json, unless the top
+#      CHANGELOG entry mentions "token budget". Both numbers are recorded in that file on every run.
 #   (The Codex package is built and gated on the `codex-plugin` branch.)
 #
 # The behavioral eval suite (claude plugin eval --trust-plugin) spends API budget and needs the
@@ -146,7 +153,132 @@ run_tier "File count (at most ${MAX_FILES} files)" check_file_count
 run_tier "File sizes (no non-image file of 256 KiB or more)" check_file_sizes
 run_tier "File types (text, SVG, PNG, JPEG, GIF, WebP and fonts; no OS junk)" check_file_types
 
-# ---- Tier 4: behavioral evals (opt-in, local only) ---------------------------------------------
+# ---- Tier 4: token budget (always; the CLI projection when the `claude` CLI is installed) ------
+BUDGET_FILE="$ROOT/evals/results/budget.json"
+MAX_ALWAYS_ON=1500
+MAX_SKILL_BODY=6000
+GROWTH_PCT=10
+
+# frontmatter_bytes FILE -> bytes of the name, description and when_to_use lines of the frontmatter
+frontmatter_bytes() {
+  local n=0 line infm=0 first=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$first" = 1 ]; then first=0; [ "$line" = "---" ] && { infm=1; continue; } || break; fi
+    [ "$line" = "---" ] && break
+    case "$line" in
+      name:*|description:*|when_to_use:*) n=$((n + ${#line} + 1)) ;;
+    esac
+  done < "$1"
+  printf '%s' "$n"
+}
+# body_bytes FILE -> bytes after the frontmatter
+body_bytes() {
+  local total fm
+  total=$(wc -c < "$1" | tr -d ' ')
+  fm=$(awk 'NR==1 && $0!="---" {exit} NR>1 && $0=="---" {print NR; exit}' "$1")
+  if [ -n "$fm" ]; then
+    printf '%s' "$(( total - $(head -n "$fm" "$1" | wc -c | tr -d ' ') ))"
+  else
+    printf '%s' "$total"
+  fi
+}
+# Number in text such as ~1,797 or ~5k or ~730 -> plain integer
+tok_number() {
+  local s=$1
+  s=${s#\~}; s=${s//,/}
+  case "$s" in
+    *k) s=${s%k}; case "$s" in *.*) s=$(( ${s%.*} * 1000 + ${s#*.} * 100 )) ;; *) s=$(( s * 1000 )) ;; esac ;;
+  esac
+  printf '%s' "$s"
+}
+
+check_token_budget() {
+  local ok=1 bytes=0 f name b tok body_json="" line comp always invoke cli_always="" cli_json="" prev
+  local changelog_ok=0 top
+  # Offline estimate: always-on = name + description lines of every skill and agent, / 4.
+  for f in "$ROOT"/skills/*/SKILL.md "$ROOT"/agents/*.md; do
+    [ -f "$f" ] || continue
+    bytes=$(( bytes + $(frontmatter_bytes "$f") ))
+  done
+  local offline_always=$(( bytes / 4 ))
+  echo "offline estimate: always-on ~${offline_always} tokens (skill and agent names and descriptions, bytes / 4)"
+  for f in "$ROOT"/skills/*/SKILL.md; do
+    [ -f "$f" ] || continue
+    name=${f%/SKILL.md}; name=${name##*/}
+    b=$(body_bytes "$f"); tok=$(( b / 4 ))
+    body_json="${body_json:+$body_json, }\"$name\": $tok"
+    if [ "$tok" -gt "$MAX_SKILL_BODY" ]; then
+      echo "skill body over ${MAX_SKILL_BODY} tokens (offline estimate): ${name} ~${tok}"
+      ok=0
+    fi
+  done
+  # The CLI's own projection, when available. `claude plugin details` prints text (no JSON flag is
+  # documented); the "Always-on:" line and the per-component table are read from it.
+  if command -v claude >/dev/null 2>&1; then
+    local out
+    out=$(cd "$ROOT" && claude --plugin-dir "$ROOT" plugin details magician 2>/dev/null) || out=""
+    if [ -n "$out" ]; then
+      always=$(printf '%s\n' "$out" | grep -E '^[[:space:]]*Always-on:' | head -1 | sed -E 's/.*Always-on:[[:space:]]*~?([0-9,.k]+).*/\1/')
+      [ -n "$always" ] && cli_always=$(tok_number "$always")
+      if [ -n "$cli_always" ]; then
+        echo "claude plugin details: always-on ~${cli_always} tokens (limit ${MAX_ALWAYS_ON})"
+        [ "$cli_always" -gt "$MAX_ALWAYS_ON" ] && { echo "always-on tokens over ${MAX_ALWAYS_ON}"; ok=0; }
+      fi
+      while IFS= read -r line; do
+        set -- $line
+        [ "$#" -eq 3 ] || continue
+        comp=$1; invoke=$3
+        case "$invoke" in ~[0-9]*) ;; *) continue ;; esac
+        tok=$(tok_number "$invoke")
+        [ -d "$ROOT/skills/$comp" ] || comp="agent:$comp"   # skills and agents can share a name
+        cli_json="${cli_json:+$cli_json, }\"$comp\": $tok"
+        if [ -d "$ROOT/skills/$comp" ] && [ "$tok" -gt "$MAX_SKILL_BODY" ]; then
+          echo "skill body over ${MAX_SKILL_BODY} tokens (claude plugin details): ${comp} ~${tok}"
+          ok=0
+        fi
+      done <<EOF_DETAILS
+$(printf '%s\n' "$out" | sed -n '/^Per-component/,/^$/p' | sed -n '3,$p')
+EOF_DETAILS
+    else
+      echo "claude plugin details gave no output; CLI projection skipped"
+    fi
+  else
+    echo "claude CLI not found; CLI projection skipped (offline estimate only)"
+  fi
+  # Growth check against the recorded offline value, waived by a CHANGELOG note.
+  top=$(awk '/^## /{n++} n==1' "$ROOT/CHANGELOG.md" 2>/dev/null)
+  case "$top" in *"token budget"*) changelog_ok=1 ;; esac
+  if [ -f "$BUDGET_FILE" ]; then
+    prev=$(grep -oE '"offline_always_on_tokens": *[0-9]+' "$BUDGET_FILE" | head -1 | grep -oE '[0-9]+$')
+    if [ -n "$prev" ] && [ "$prev" -gt 0 ]; then
+      if [ $(( offline_always * 100 )) -gt $(( prev * (100 + GROWTH_PCT) )) ]; then
+        if [ "$changelog_ok" = 1 ]; then
+          echo "always-on estimate grew over ${GROWTH_PCT}% (${prev} -> ${offline_always}); accepted, the CHANGELOG's top entry mentions the token budget"
+        else
+          echo "always-on estimate grew over ${GROWTH_PCT}% (${prev} -> ${offline_always}) with no \"token budget\" note in the CHANGELOG's top entry"
+          ok=0
+        fi
+      else
+        echo "always-on estimate within ${GROWTH_PCT}% of the recorded ${prev}"
+      fi
+    fi
+  else
+    echo "no recorded budget yet; this run sets the baseline"
+  fi
+  mkdir -p "${BUDGET_FILE%/*}" 2>/dev/null
+  {
+    printf '{\n  "recorded_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "offline_always_on_tokens": %s,\n' "$offline_always"
+    printf '  "offline_skill_body_tokens": {%s},\n' "$body_json"
+    printf '  "cli_always_on_tokens": %s,\n' "${cli_always:-null}"
+    if [ -n "$cli_json" ]; then printf '  "cli_on_invoke_tokens": {%s}\n' "$cli_json"; else printf '  "cli_on_invoke_tokens": null\n'; fi
+    printf '}\n'
+  } > "$BUDGET_FILE" 2>/dev/null && echo "recorded in ${BUDGET_FILE#$ROOT/}"
+  [ "$ok" = 1 ]
+}
+run_tier "Token budget (always-on under ${MAX_ALWAYS_ON}, skill bodies under ${MAX_SKILL_BODY}, growth under ${GROWTH_PCT}%)" check_token_budget
+
+# ---- Tier 5: behavioral evals (opt-in, local only) ---------------------------------------------
 if [ "$RUN_EVALS" = "1" ]; then
   if command -v claude >/dev/null 2>&1; then
     eval_cmd=(claude plugin eval --trust-plugin "$ROOT" --threshold "$THRESHOLD" --json "$ROOT/.gate-evals.json")

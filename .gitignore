@@ -28,7 +28,9 @@ gemini_generated.png
 # Behavioral eval run output (claude plugin eval, run by scripts/gate.sh --evals)
 /.gate-evals*.json
 /.gate-evals*.log
-evals/results/
+# The token-budget baseline is tracked: scripts/gate.sh compares each run against it
+evals/results/*
+!evals/results/budget.json
 
 __pycache__/
 *.pyc

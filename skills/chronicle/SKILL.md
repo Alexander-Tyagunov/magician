@@ -1,6 +1,6 @@
 ---
 name: chronicle
-description: Memory & context steward — view session history, manage the global reference store (repos, projects, ideas), check context size, and record or consolidate project learnings. Use to review past sessions, remember/recall/forget a reference, check how full the context is, or capture/consolidate learnings.
+description: Memory and context steward — session history, global references, context size, project learnings. Use to review past sessions, remember/recall/forget a reference, check context fullness, or capture learnings.
 allowed-tools: Read, Glob, AskUserQuestion, Bash(ctx pct *), Bash(ctx learn --add *), Bash(ctx consolidate), Edit(~/.claude/plugins/data/magician-*/references.md)
 argument-hint: "[status | learn <fact> [--global] | consolidate | last N | remember <fact> | references | forget <text> | clear N]"
 ---

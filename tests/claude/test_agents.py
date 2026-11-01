@@ -24,6 +24,11 @@ REQUIRED_FIELDS = {"name", "description", "tools", "model"}
 # Tool identifiers a magician subagent may request. MCP tools are namespaced `mcp__…`.
 VALID_TOOLS = {"Read", "Write", "Edit", "Bash", "Grep", "Glob"}
 
+# The only Bash specifiers a read-only lens may carry: the knowledge graph's read commands, which return
+# ranked `file:line` for far fewer tokens than grepping. Each is a scoped allowlist rule (`Bash(kg query *)`),
+# never bare `Bash` — `kg init`/`refresh`/`reset` and every other command stay out of reach.
+KG_READ_GRANTS = {"Bash(kg check)", "Bash(kg query *)", "Bash(kg blast *)", "Bash(kg neighbors *)"}
+
 # Never in an agent's `tools:` list: the wildcard would hand an agent every tool, and the rest are
 # unscoped network egress or background execution no magician agent needs.
 FORBIDDEN_TOOLS = {"*", "Monitor", "WebFetch", "WebSearch", "NotebookEdit"}
@@ -31,7 +36,7 @@ FORBIDDEN_TOOLS = {"*", "Monitor", "WebFetch", "WebSearch", "NotebookEdit"}
 # `tools:` limits what an agent may use. Read-only is the default; an agent gets more only when
 # its job cannot be done without it, and that exception is spelled out here so widening an agent
 # is a deliberate, reviewed change to this map.
-READ_ONLY = {"Read", "Grep", "Glob"}
+READ_ONLY = {"Read", "Grep", "Glob"} | KG_READ_GRANTS
 MAX_TOOLS = {
     # Applies one verified fix and reruns the acceptance check: must edit and run commands.
     "fixer": {"Read", "Edit", "Write", "Grep", "Glob", "Bash"},
@@ -97,6 +102,8 @@ class AgentDefinitionTests(unittest.TestCase):
                     if tool.startswith("mcp__"):
                         self.assertNotIn("*", tool, f"{path.name} requests a wildcard MCP grant")
                         continue
+                    if tool in KG_READ_GRANTS:
+                        continue
                     self.assertIn(tool, VALID_TOOLS, f"{path.name} requests unknown tool {tool!r}")
 
     def test_tools_stay_within_each_agents_ceiling(self) -> None:
@@ -119,6 +126,28 @@ class AgentDefinitionTests(unittest.TestCase):
                 tools = agent_tools(path)
                 for tool in ("Write", "Edit", "Bash", "*"):
                     self.assertNotIn(tool, tools, f"review lens {name} must not have {tool}")
+                shell = {t for t in tools if t.startswith("Bash")}
+                self.assertFalse(shell - KG_READ_GRANTS,
+                                 f"review lens {name} may run only the kg read commands, not {sorted(shell - KG_READ_GRANTS)}")
+
+    def test_lenses_locate_with_kg_and_carry_the_obstacles_pointer(self) -> None:
+        """Every review lens holds the kg read grants and says how to use them (locate with kg, read the
+        lines it names, grep only to confirm); every agent returns the canonical Obstacles block from
+        lore/obstacles.md by pointer (field names inline) instead of pasting it."""
+        for name in REVIEW_LENSES:
+            path = AGENTS / f"{name}.md"
+            with self.subTest(agent=name):
+                self.assertTrue(KG_READ_GRANTS <= agent_tools(path), f"{name} lacks the kg read grants")
+                _, body = read_frontmatter(path)
+                self.assertIn("grep only to confirm", body.lower())
+        for path in agent_files():
+            with self.subTest(agent=path.stem):
+                _, body = read_frontmatter(path)
+                self.assertIn("return the Obstacles block from lore/obstacles.md", body)
+                for field in ("STATUS", "OBSTACLE", "BLOCKER", "SEVERITY", "WORKAROUND", "RECURRENCE", "SCOPE", "NEXT"):
+                    self.assertIn(field, body, f"{path.stem}: Obstacles pointer lacks {field}")
+                self.assertNotRegex(body, r"(?m)^STATUS: DEGRADED \| BLOCKED$",
+                                    f"{path.stem} still pastes the Obstacles block")
 
     def test_write_capable_agents_document_why(self) -> None:
         """An agent that keeps write tools must say why in its own body, and bound them, so the
