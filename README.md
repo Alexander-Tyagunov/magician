@@ -153,7 +153,7 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/transmute` | Understand an existing feature, then port it or change it in place |
 | `/knowledge-graph` | Build and query the local code index |
 | `/chronicle` | Review session history, saved references and project learnings |
-| `/statusline` | Turn the status line on or off and set the voice |
+| `/statusline` | Turn the status line on or off, set the voice and turn STE-lite on or off |
 | `/jira` | Read, search, create and update Jira issues |
 | `/confluence` | Read, search, create and update Confluence pages |
 | `/inscribe` | Write a new reusable skill for the current repository |
@@ -182,9 +182,10 @@ The commands ship in the plugin's `tools/` folder. At session start, a hook writ
 | `ctx` | Stores project learnings and reports how full the context is, reading only token counts and the model name from this session's transcript file | None |
 | `jira` | REST client for your Jira site | Your Jira site only, over HTTPS |
 | `confluence` | REST client for your Confluence site | Your Confluence site only, over HTTPS |
-| `magician-ui` | Turns the status line, voice and lore on or off, and removes settings earlier versions added | None |
+| `magician-ui` | Turns the status line, voice, STE-lite and lore on or off, and removes settings earlier versions added | None |
 | `magician-statusline` | Draws the status line from the data Claude Code passes to it | None |
 | `magician-scan` | Scans a folder for security issues and prints each match with its file, line and a short snippet; credential values are redacted | None |
+| `ste-lint` | Checks the prose of a Markdown file against the STE-lite rules and prints each finding with its line, for example a sentence over the word limit; skips code, tables and quoted text | None |
 | `plan-render` | Checks a `plan.json` written by `/blueprint` and renders `plan.md` and a self-contained `plan.html` walkthrough from it; keeps earlier versions in `history/` | None |
 
 ## Configuration
@@ -220,6 +221,12 @@ Voice is the output-brevity level, meaning how much prose Claude writes around t
 
 Set it with `/statusline`, by asking Claude to run `magician-ui voice warrior` (or another name), with a `.magician/voice` file in the project, or with the `MAGICIAN_VOICE` environment variable. The environment variable wins, then the project file, then the saved setting. A change applies from the next session.
 
+### STE-lite
+
+STE-lite is a second, independent switch. The voice sets how much Claude writes. STE-lite sets how each sentence is built, in a simplified technical English: a descriptive sentence has 25 words or fewer, a step has 20 or fewer and one instruction, steps are imperative, the condition comes before the command, and prose uses the active voice and simple tenses with no semicolons, contractions or Latin abbreviations. Code, identifiers, numbers and error text stay verbatim. The rules are STE-inspired and paraphrased. They make no claim of ASD-STE100 compliance, and magician ships no STE dictionary.
+
+It is off by default. Turn it on by asking Claude to run `magician-ui ste on`, with a `.magician/ste` file in the project that contains `on`, or with `MAGICIAN_STE=1`. The environment variable wins, then the project file, then the saved setting. When it is on, the session start hook adds one short note with the rules after the voice note. For one session, `/output-style magician:ste` switches the response style without the flag. The rule layer is in [lore/ste.md](lore/ste.md), with the word list in [lore/deep/ste.md](lore/deep/ste.md).
+
 ### Status line
 
 The status line stays off until you turn it on with `/statusline`. It shows how full the context is, with a warning as it fills and a small chart of recent use, plus the model, git branch and cost, the active skill, the reasoning effort, and the lore and voice state. Turning it on edits one key in your settings, as described in [Settings it can change](#settings-it-can-change).
@@ -232,7 +239,7 @@ Hooks are scripts Claude Code runs on session events. They make no network calls
 
 | Event | Script | What it does | How to turn it off |
 |---|---|---|---|
-| Session start | `session-start.sh` | Detects the stack and adds matching lore, the voice note, a note from the last session in this folder, recent learnings, saved references, a code-index hint and the detected log platform. Reads the manifests and keeps the detected stack in its data folder, keyed by the git commit and the manifest files, so later sessions skip the detection until one of them changes (`MAGICIAN_LORE=eager` runs it every time). In a cloud session it adds one line saying the bundled commands run by full path | Turn off lore, voice or `session_history`; the hook itself only by disabling the plugin |
+| Session start | `session-start.sh` | Detects the stack and adds matching lore, the voice note, the STE-lite note when that flag is on, a note from the last session in this folder, recent learnings, saved references, a code-index hint and the detected log platform. Reads the manifests and keeps the detected stack in its data folder, keyed by the git commit and the manifest files, so later sessions skip the detection until one of them changes (`MAGICIAN_LORE=eager` runs it every time). In a cloud session it adds one line saying the bundled commands run by full path | Turn off lore, voice, STE-lite or `session_history`; the hook itself only by disabling the plugin |
 | Session start | `userconfig-env.sh` | Copies non-empty Jira and Confluence options into the session environment, with the path of magician's data folder and a marker showing the hook ran. In a cloud session (`CLAUDE_CODE_REMOTE=1`) it reads and writes nothing | Leave those options empty; the folder path and marker are always written |
 | Session start | `tools-path.sh` | Writes a launcher for each [bundled command](#bundled-commands) into a folder for the running version in magician's data folder, removes everything else in that folder and the folders of versions no longer installed, and adds one line to the session environment that puts that folder first on the PATH; runs none of the commands. In a cloud session it writes nothing | Disable the plugin |
 | `claude --init` | `setup-init.sh` | At the top of a git repository with no `.workspace/` yet, creates `.workspace/shared/` and `.workspace/local/` and adds the `.workspace/local/` line to `.gitignore`, the part of `/almanac` that needs no answers; reads nothing from the event | Disable the plugin |
@@ -240,6 +247,7 @@ Hooks are scripts Claude Code runs on session events. They make no network calls
 | After compaction | `compact-context.sh` | Restates the branch, uncommitted files, this session's commits, shared workspace files and the first 1,500 characters of `.workspace/local/session-state.md` when it exists; writes nothing | Disable the plugin |
 | Each prompt | `pattern-detect.sh` | Adds at most one line naming a matching skill; stores nothing from the prompt | Disable the plugin |
 | Before shell commands | `destructive-guard.sh` | Blocks a fixed list of dangerous commands, see [Safety guard](#safety-guard); a command with none of the words the list looks for passes in a few milliseconds | Not possible, by design |
+| After writes and edits | `ste-lint-hook.sh` | When STE-lite is on and the file is a Markdown deliverable under `.workspace/shared/`, or matches a glob in the project's `.magician/ste-paths` list, runs the bundled `ste-lint` on it and hands Claude its first findings, so the prose is fixed in the same turn. Reads the file path from the event; writes nothing; never blocks | Off by default (STE-lite) |
 | After writes and edits | `format.sh` | Runs an installed formatter on the edited file, in the background; keeps a per-file time stamp in its data folder so a second write within 2 seconds is left alone | Off by default (`auto_format`) |
 | A magician agent finishes | `subagent-stop.sh` | Reads the last 4 KiB of that agent's transcript, named by the event, and when it holds `STATUS: BLOCKED` or `STATUS: DEGRADED` appends one line (time, agent, status, the rest of that line, at most 1 KB, control characters removed) to `.workspace/local/obstacles.jsonl`; only in a project that has a `.workspace/` folder; keeps nothing else from the transcript | Disable the plugin |
 | Before a model switch | `pre-model-switch.sh` | While the marker file `.workspace/local/security-scan.active` exists, which `/sentinel` and the `/divine` security lens create at scan start and remove in their completion signal, or `MAGICIAN_PIN_MODEL=1` is set, asks you to confirm a model switch, so a safety fallback can't change the model tier in the middle of a scan unnoticed; otherwise silent. Reads the two model names; writes nothing | Delete the marker file or unset the variable |
@@ -268,11 +276,11 @@ Claude Code gives each plugin a data folder, usually `~/.claude/plugins/data/mag
 | Data folder | Integration opt-outs, your `/almanac` workspace choice, the pull request versions `/divine` has reviewed, a 30-second Jira and Confluence cache, and pacing and marker files | Until you uninstall |
 | Data folder | Per project, the detected stack (archetype, technologies, log SDKs) with the git commit and manifest sizes it was read at, and, with `auto_format` on, one time stamp per formatted file path | The stack until the next detection or uninstall; the stamps one hour |
 | `.workspace/local/` in your project | `obstacles.jsonl`, one line per blocked or degraded magician agent run, and `session-state.md`, the running state skills write for compaction | Until you delete them |
-| `~/.claude/magician/` | Preferences in `cli-ui.json`, the status line renderer, status markers, the code index | Status markers 7 days; the rest until you delete it |
+| `~/.claude/magician/` | Preferences in `cli-ui.json` (status line, voice, STE-lite and lore), the status line renderer, status markers, the code index | Status markers 7 days; the rest until you delete it |
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups taken before `magician-ui` edits your settings | Newest 3 |
 | `.workspace/` in your project | Specs, plans, research, decisions, post-mortems, `/conjure` designs and mockups, the design preview's chat log, `/divine` review diffs and `/transmute` session state | Until you delete it |
 | `.workspace/shared/plans/<date>-<feature>/` in your project | `plan.json`, the plan `/blueprint` wrote; `plan.md` and `plan.html`, rendered from it; and `history/`, one `plan.v<n>.json` per earlier version. `plan.html` is a static page: it opens from the file, loads nothing from the network and sends nothing | Until you delete it |
-| `.magician/` in your project | Optional `voice` and `lore.off` files you create | Until you delete it |
+| `.magician/` in your project | Optional `voice`, `ste`, `ste-paths` (globs of Markdown files the STE-lite check also covers), `ste-terms` (words it must not flag) and `lore.off` files you create | Until you delete it |
 
 The `/jira` and `/confluence` skills add to their memory files, `jira-memory.md` and `confluence-memory.md`, without asking, and say "Remembered" when they do. Edit or delete those files to clear them.
 
@@ -304,7 +312,8 @@ magician never changes Claude Code settings on its own. These commands edit `~/.
 
 Before each Bash or PowerShell command runs, a hook checks the command text against a fixed list of catastrophic forms:
 
-- recursive deletion of the filesystem root, system folders or your home folder
+- recursive deletion of the filesystem root, system folders or your home folder, also when the command word is spelled with quotes or a backslash or produced by `echo` in a substitution, when a `cd` to that folder comes first and the delete names `.` or `*`, or when the hook event's own working directory is that folder
+- emptying a file under a system folder or your home folder with `truncate`
 - raw writes to disk devices, and formatting a filesystem
 - overwriting critical system files such as the password database
 - recursive permission or ownership changes on system folders
@@ -313,9 +322,9 @@ Before each Bash or PowerShell command runs, a hook checks the command text agai
 - a forced git clean that also deletes ignored files (`-x` or `-X` with `-f` or `--force`, also after git options such as `-C`), such as local secrets files
 - in PowerShell, a forced recursive delete of any drive root, anything under `C:\Windows`, or a home folder or its whole contents, and disk-wiping cmdlets
 
-Wrappers such as sudo, env, timeout and nice, and full program paths, are removed before this check. The checks for piping a download into a shell and for fork bombs ignore text inside quotes, so a commit message that only mentions them passes. The other rules split the command at every `;`, `|` and `&`, quoted or not, and at line breaks outside quotes, so a quoted message that holds one of those separators followed by one of the commands above is refused. A match is blocked before Claude Code evaluates permission rules, so no allow rule or permission mode overrides it.
+Wrappers such as sudo, env, timeout and nice, full program paths, quote characters and a leading backslash inside the command word, and an `echo` substitution around it, are removed before this check. The checks for piping a download into a shell and for fork bombs ignore text inside quotes, so a commit message that only mentions them passes. The other rules split the command at every `;`, `|` and `&`, quoted or not, and at line breaks outside quotes, so a quoted message that holds one of those separators followed by one of the commands above is refused. A match is blocked before Claude Code evaluates permission rules, so no allow rule or permission mode overrides it.
 
-For Bash commands, a second list reads quoted parts too. It blocks a recursive forced delete of a path written from `/`, eval of quoted, variable or backquoted content, using `cat` on SSH keys, AWS, gcloud or Azure credentials, or a `.env` or `.env.*` file anywhere in a path (templates such as `.env.example` excepted), and a command that mentions a secret such as a token or password, uses a network tool and pipes into an interpreter.
+For Bash commands, a second list reads quoted parts too. It blocks a recursive forced delete of a path written from `/`, of the whole working directory (`.`, `./*` or `*`) or of whatever `xargs` feeds it, a `find -delete` over the whole working tree with no name, path, time or size filter, `truncate` of a file outside the working directory, `git push --force` or `-f` without `--force-with-lease`, `git reset --hard`, eval of quoted, variable or backquoted content, using `cat` on SSH keys, AWS, gcloud or Azure credentials, or a `.env` or `.env.*` file anywhere in a path (templates such as `.env.example` excepted), and a command that mentions a secret such as a token or password, uses a network tool and pipes into an interpreter.
 
 Bash commands are also refused when they name magician's saved options or the session environment file, read another process's environment through the proc filesystem (quoted paths included), or print the whole environment with `env`, `set` or one of the other listing commands the guard checks, including behind a wrapper such as `sudo` or `timeout` or inside `( )` or `{ }`. During a session that environment holds the Jira and Confluence tokens you entered.
 
@@ -334,9 +343,9 @@ Lore is magician's bundled guidance for specific technologies: a short core file
 | Databases | 30: 29 engines across relational, analytics, document, key-value, vector, graph and search, plus a shared guide |
 | Logging and observability | 8: 7 platforms with their query languages, plus a general logging guide |
 | Infrastructure | 4: Docker, Kubernetes, Terraform and GitHub Actions |
-| Working practices | 13, including security, verification, test-driven development, git, models and design principles |
+| Working practices | 16, including security, verification, test-driven development, git, models, design principles and STE-lite |
 
-The [lore folder](lore/) holds all 134 core files, and the [deep-dive folder](lore/deep/) holds 111 deep dives. Turn lore off by asking Claude to run `magician-ui lore off`, with a `.magician/lore.off` file in the project, or with `MAGICIAN_LORE=0`.
+The [lore folder](lore/) holds all 137 core files, and the [deep-dive folder](lore/deep/) holds 112 deep dives. Turn lore off by asking Claude to run `magician-ui lore off`, with a `.magician/lore.off` file in the project, or with `MAGICIAN_LORE=0`.
 
 ## Workspace
 

@@ -30,6 +30,8 @@ Subcommands:
   lore [on|off|status]       Turn the bundled lore on or off (cli-ui.json only).
   voice [warrior|scribe|bard|status]
                              Set the output-brevity level (cli-ui.json only).
+  ste [on|off|status]        Turn STE-lite (simplified technical English prose) on or off
+                             (cli-ui.json only; default off).
   allow --off                Same as `cleanup`.
   automode --off             Same as `cleanup`.
   reconcile                  No longer used; prints a pointer to `cleanup`.
@@ -38,8 +40,8 @@ A subcommand given an argument it doesn't take, and `enable` or `set` given no k
 without changing anything; -h or --help after any subcommand prints this text.
 
 If cli-ui.json exists but can't be read (not valid JSON, not UTF-8, or not a JSON object), nothing
-replaces it: `enable`, `default`, `set`, `lore on|off` and `voice <level>` stop without changing
-anything; `cleanup` and `disable` do the rest, leave it as is and say so; `disable --purge` refuses
+replaces it: `enable`, `default`, `set`, `lore on|off`, `voice <level>` and `ste on|off` stop without
+changing anything; `cleanup` and `disable` do the rest, leave it as is and say so; `disable --purge` refuses
 while settings.json has permission entries the record might cover (--force deletes it anyway). Session
 start keeps reading its old values until you fix the file or delete it. An empty file counts as no
 file.
@@ -75,6 +77,10 @@ KEEP_BACKUPS = 3
 # SessionStart adds a brevity note for warrior/scribe (none for bard).
 VOICE_LEVELS = ["warrior", "scribe", "bard"]
 VOICE_DEFAULT = "scribe"
+
+# STE-lite: an orthogonal flag (the voice sets length, STE-lite sets grammar). Stored as a JSON boolean
+# "ste" in cli-ui.json; SessionStart adds a short STE note when it is on. Default off.
+STE_DEFAULT = False
 
 # Every permissions.allow rule magician 4.2 to 4.14 merged into ~/.claude/settings.json (this list is
 # the union of all versions). Nothing adds these any more; they are kept only so `cleanup` can remove
@@ -476,6 +482,7 @@ def cmd_status(_args):
     print(f"settings:    {SETTINGS} — statusLine {'runs magician' if wired else 'does not run magician'}")
     print(f"lore:        {'disabled' if cfg.get('lore') == 'disabled' else 'enabled'} (`magician-ui lore on|off`)")
     print(f"voice:       {cfg.get('voice', VOICE_DEFAULT)} (output brevity: warrior<scribe<bard; default scribe — `magician-ui voice <level>`)")
+    print(f"ste:         {'on' if cfg.get('ste', STE_DEFAULT) is True else 'off'} (STE-lite prose; default off — `magician-ui ste on|off`)")
     left = _permission_leftovers(s, cfg)
     kept = _allow_rules_split(s, cfg)[1]
     # An unreadable record may be the one that says magician set defaultMode "auto".
@@ -785,8 +792,54 @@ def cmd_voice(args):
     print("Substance, code, commands, paths, and errors are always kept verbatim. Takes effect next session start.")
 
 
+def cmd_ste(args):
+    """Turn STE-lite on or off (default OFF). STE-lite is a simplified technical English rule layer
+    for prose: short sentences (25 words descriptive, 20 per step), one instruction per sentence,
+    imperative steps, condition before command, active voice, simple tenses, no semicolons, no
+    contractions, no Latin abbreviations. Code, identifiers, numbers and error text stay verbatim.
+    It is STE-inspired and claims no ASD-STE100 compliance. It is orthogonal to the voice: the voice
+    sets length, STE-lite sets grammar. `magician-ui ste on|off` sets it; `ste status` prints the
+    state. Resolution (first match wins): env MAGICIAN_STE=1|0 → per-project `.magician/ste` (content
+    `on` or `off`) → this setting → off. When on, SessionStart adds a short STE note after the voice
+    note. Takes effect next session. `/output-style magician:ste` is the per-session alternative."""
+    if not args or args[0] in ("status", "--status"):
+        cfg = _cfg_to_show(17)[0]
+        st = "on" if cfg.get("ste", STE_DEFAULT) is True else "off"
+        print(f"ste (STE-lite):  {st} (default: off)")
+        env = os.environ.get("MAGICIAN_STE", "").strip().lower()
+        proj = None
+        try:
+            with open(os.path.join(".magician", "ste"), encoding="utf-8") as fh:
+                proj = fh.read(64).strip().lower()
+        except OSError:
+            pass
+        if env in ("1", "on", "true", "yes"):
+            eff, src = "on", "env MAGICIAN_STE"
+        elif env in ("0", "off", "false", "no"):
+            eff, src = "off", "env MAGICIAN_STE"
+        elif proj in ("on", "off"):
+            eff, src = proj, ".magician/ste"
+        else:
+            eff, src = st, "cli-ui.json"
+        print(f"effective here:  {eff} (from {src})")
+        print("overrides:       env `MAGICIAN_STE=1|0` · per-project `.magician/ste` (`on` or `off`)")
+        print("per session:     `/output-style magician:ste`")
+        return
+    cfg = _cfg_for_update()
+    on = args[0] in LORE_ON
+    cfg["ste"] = on
+    cfg["updatedAt"] = _now()
+    save_cfg(cfg)
+    if on:
+        print("STE-lite ON — SessionStart adds a short simplified-technical-English note for prose "
+              "(short imperative sentences; code, identifiers, numbers and errors stay verbatim). "
+              "Turn off: `magician-ui ste off`. Takes effect next session start.")
+    else:
+        print("STE-lite OFF (default) — SessionStart adds no STE note. Turn on: `magician-ui ste on`.")
+
+
 CMDS = {"status": cmd_status, "enable": cmd_enable, "set": cmd_set, "default": cmd_default,
-        "disable": cmd_disable, "cleanup": cmd_cleanup, "lore": cmd_lore, "voice": cmd_voice,
+        "disable": cmd_disable, "cleanup": cmd_cleanup, "lore": cmd_lore, "voice": cmd_voice, "ste": cmd_ste,
         "allow": cmd_allow, "automode": cmd_automode, "reconcile": cmd_reconcile}
 
 
@@ -804,6 +857,8 @@ def _bad_arg(cmd, args):
         bad = args[1:] if args and args[0] in LORE_ON + LORE_OFF + ("status", "--status") else args
     elif cmd == "voice":
         bad = args[1:]   # cmd_voice checks the level itself
+    elif cmd == "ste":
+        bad = args[1:] if args and args[0] in LORE_ON + LORE_OFF + ("status", "--status") else args
     else:                # status, default, cleanup, reconcile
         bad = args
     return bad[0] if bad else None

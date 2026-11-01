@@ -468,7 +468,7 @@ class UnreadableConfigTests(UiCase):
 
     MATCHING = CleanupTests.MATCHING
     SAVING = (["enable"], ["enable", "--all"], ["default"], ["set", "rot"], ["lore", "off"], ["lore"],
-              ["voice", "bard"])
+              ["voice", "bard"], ["ste", "on"], ["ste", "off"])
 
     def write_broken_cfg(self, raw: bytes) -> Path:
         self.mh.mkdir(parents=True, exist_ok=True)
@@ -571,7 +571,7 @@ class UnreadableConfigTests(UiCase):
                 self.assertIn("3 allow rule(s) match magician's old list", out)
                 self.assertNotIn("no record of adding them", out)
                 # The hooks read the raw text, so the defaults these print may not be what applies.
-                for argv in (["lore", "status"], ["voice"], ["voice", "status"]):
+                for argv in (["lore", "status"], ["voice"], ["voice", "status"], ["ste"], ["ste", "status"]):
                     self.assert_one_note(self.ui(*argv).stdout, cfg)
                 self.assertEqual(cfg.read_bytes(), broken)
                 self.assertEqual(self.settings.read_bytes(), raw)
@@ -644,7 +644,7 @@ class ArgumentTests(UiCase):
                      ("disable", "--purge", "--help"), ("allow", "--off", "-h")]
         bad_runs = [("cleanup", "--dry-run"), ("cleanup", "now"), ("enable", "-x"), ("enable", "--everything"),
                     ("set", "--quiet", "rot"), ("disable", "--purgee"), ("disable", "--purge", "-n"),
-                    ("lore", "maybe"), ("lore", "on", "off"), ("voice", "bard", "extra"), ("allow", "--off", "--dry-run"),
+                    ("lore", "maybe"), ("lore", "on", "off"), ("voice", "bard", "extra"), ("ste", "maybe"), ("ste", "on", "off"), ("allow", "--off", "--dry-run"),
                     ("automode", "off", "now"), ("reconcile", "--x"), ("status", "--json"), ("default", "--all"),
                     ("enable", "help"), ("enable", "contxt"), ("enable", "--only=contxt"), ("enable", "--only"),
                     ("set", "contxt")]
@@ -670,6 +670,16 @@ class ArgumentTests(UiCase):
         self.assertIn("lore injection:", self.ui("lore", "status").stdout)
         self.ui("voice", "warrior")
         self.assertIn("voice level:     warrior", self.ui("voice").stdout)
+        self.assertIn("ste (STE-lite):  off (default: off)", self.ui("ste").stdout)
+        self.ui("ste", "on")
+        self.assertIs(self.read_cfg()["ste"], True)
+        self.assertEqual(self.read_cfg()["voice"], "warrior", "ste and voice are stored side by side")
+        self.assertIn("ste (STE-lite):  on", self.ui("ste", "status").stdout)
+        self.assertIn("ste:         on", self.ui("status").stdout)
+        self.ui("ste", "off")
+        self.assertIs(self.read_cfg()["ste"], False)
+        self.assertIn("ste:         off", self.ui("status").stdout)
+        self.assertIn("ste [on|off|status]", self.ui("--help").stdout)
         self.assertIn("nothing was changed", self.ui("allow").stdout)
         self.ui("enable", "--only", "context,rot")
         self.ui("set", "--only=meta")

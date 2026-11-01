@@ -108,6 +108,8 @@ If **Show suggestions**: print a short list in chat, built from the detected sta
 
 Then tell the user they can add any of these with `/permissions` (or by editing their own settings). If **Skip**: continue.
 
+Add one more line to the same list: STE-lite, magician's simplified technical English for prose, is off by default. To turn it on, the user runs `magician-ui ste on` or creates a `.magician/ste` file with the content `on`. Write no file for it.
+
 ### 7. MCP Suggestions
 Based on detected archetype, mention MCP servers that could help:
 - web: browser automation MCP for UI testing

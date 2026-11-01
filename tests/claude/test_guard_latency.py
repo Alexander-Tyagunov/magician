@@ -36,7 +36,8 @@ BASELINE_SKIP_MS = 20.0   # a runner where an empty bash process takes longer th
 BASELINE_FREE_MS = 4.0    # a baseline up to this is normal; above it the limit grows in proportion
 
 # 200 ordinary commands of the kind Claude runs all day. Most hold no candidate token and take the fast
-# path; a few (rm, chmod, find, env with an operand) go through the full checks, as in real use.
+# path; a few (rm, chmod, find, env with an operand, git push, git reset --soft) go through the full
+# checks, as in real use.
 BENIGN = [
     "git status", "git diff", "git log --oneline -5", "git add -A", "git commit -m \"fix typo\"",
     "git push origin main", "git pull --rebase", "git checkout -b feature/x", "git stash", "git stash pop",
@@ -170,9 +171,14 @@ class FastPathCoverageTests(unittest.TestCase):
                     for word in a.group(1).split("|"):
                         arms.add(word.rstrip(".*"))
         self.assertTrue({"rm", "dd", "mkfs", "git", "env", "set"} <= arms, sorted(arms))
-        # git is caught through its only destructive subcommand, clean.
-        self.assertIn("clean", heads)
-        self.assertIn('[ "${1:-}" = clean ]', code)
+        # git is caught through its subcommands: clean (hard), push and reset (soft), each a head.
+        self.assertIn('_gsub="${1:-}"', code)
+        for sub in ("clean", "push", "reset"):
+            self.assertIn(sub, heads)
+            self.assertIn('[ "$_gsub" = %s ]' % sub, code)
+        # cd is context for the rm and find rules (CD_HINT), not a rule: a cd with neither is harmless.
+        self.assertIn('if [ "$RH_HEAD" = cd ] || [ "$RH_HEAD" = pushd ]; then', code)
+        self.assertNotIn("cd", heads)
         missing = sorted(w for w in arms - {"git"} if w not in heads)
         self.assertEqual(missing, [], f"per-command rule heads missing from FAST_HEADS: {missing}")
 

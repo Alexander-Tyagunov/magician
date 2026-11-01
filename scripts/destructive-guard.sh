@@ -61,6 +61,12 @@ RAW=${BASH_REMATCH[1]}
 [ -n "$RAW" ] || exit 0
 [ "${#RAW}" -gt "$MAX_CMD" ] && soft_block "$TOO_LONG"
 
+# The event's working directory, when it is a plain absolute path: a delete of `.` or `*` is read
+# against it, and a `cd DIR &&` earlier in the command replaces it (see CD_HINT below).
+EVENT_CWD=""
+re_cwd='"cwd"[[:space:]]*:[[:space:]]*"(/[^"\\]*)"'
+[[ $INPUT =~ $re_cwd ]] && EVENT_CWD=${BASH_REMATCH[1]}
+
 # ---- linear text helpers ----
 # Every edit of the command text below goes through these. bash 3.2's ${var//x/y}, ${var#*x} and
 # a loop that re-slices the remaining text all cost time in proportion to the text length for
@@ -194,8 +200,9 @@ flag_takes_value() {
 # wrapper's own flag per flag_takes_value), bare numeric args (a wrapper's duration/priority) and
 # WRAPPERS words; strips a leading path component and any hyphens so multi-word names line up
 # with the token lists above.
+BQ=$'\x60'   # a backquote, written as its code so no backquoted span sits in this file
 resolve_head() {
-  local seg="$1" w lastwrap="" skip=0 i=0
+  local seg="$1" w lastwrap="" skip=0 i=0 echoed=0
   RH_HEAD=""
   RH_REST=""
   set -f
@@ -205,6 +212,16 @@ resolve_head() {
   for w in $seg; do
     i=$((i + 1))
     if [ "$skip" = 1 ]; then skip=0; continue; fi
+    # An echo substitution, $(echo X) or the backquoted form, runs X, so X is the head: the opener
+    # is dropped and the closing ) or backquote is cut from the next word. The same for printf.
+    if [ "$echoed" = 1 ]; then
+      echoed=0
+      case "$w" in *')') w=${w%)} ;; *"$BQ") w=${w%"$BQ"} ;; esac
+    else
+      case "$w" in
+        '$(echo'|"${BQ}echo"|'$(printf'|"${BQ}printf") echoed=1; continue ;;
+      esac
+    fi
     case "$w" in
       *=*) continue ;;
       [0-9]*) continue ;;
@@ -213,6 +230,12 @@ resolve_head() {
         continue
         ;;
     esac
+    # A leading backslash (\rm skips an alias) and quote characters inside the word (r''m, 'r'm,
+    # r""m) are gone by the time the shell looks the command up, so they go here too.
+    case "$w" in \\*) w=${w#\\} ;; esac
+    case "$w" in *\'*|*\"*) strip_quotes "$w"; w=$STRIP_OUT ;; esac
+    case "$w" in '('*) w=${w#(} ;; '{'*) w=${w#\{} ;; esac   # a subshell or group opener
+    [ -n "$w" ] || continue
     case "$w" in */*) last_part "$w" /; w=$PART_OUT ;; esac
     case "$w" in *-*) drop_char "$w" -; w=$DROP_OUT ;; esac
     case " $WRAPPERS " in *" $w "*) lastwrap=$w; continue ;; esac
@@ -461,7 +484,7 @@ line_texts() {
 # whitespace-separated word). Holding none of these, a command cannot match any rule, so it is
 # allowed at once; holding one, it goes through every check unchanged. test_guard_latency.py and
 # the parity corpus in test_destructive_guard.py hold this to the full checks' verdicts.
-FAST_HEADS="rm find dd mkfs wipefs blkdiscard shred sgdisk sfdisk diskutil chmod chown chgrp tee clean cat set env printenv export declare typeset compgen nc ncat ssh scp rsync base64"
+FAST_HEADS="rm find dd mkfs wipefs blkdiscard shred sgdisk sfdisk diskutil chmod chown chgrp tee clean push reset truncate cat set env printenv export declare typeset compgen nc ncat ssh scp rsync base64"
 FAST_PARTS='removeitem formatvolume cleardisk removepartition resetphysicaldisk initializedisk claude_ /proc/ /sessionenv/ /etc/ /dev/sd /dev/nvme /dev/hd /dev/vd /dev/xvd /dev/mmcblk /dev/disk /dev/rdisk /dev/mapper/ /dev/loop ${!'
 fast_path() {  # true when the command holds no candidate token
   local t re tok
@@ -730,8 +753,60 @@ flat_split "$_all"
 split_on ';' "$REPL_OUT"
 FSEGS=("${SPLIT_OUT[@]}")
 
+# CD_HINT: the folder a bare `.`, `./`, `./*` or `*` target stands for. It starts as the event's
+# working directory and follows every `cd DIR` statement in the command (an absolute path, ~ or
+# $HOME replaces it; a relative name is appended; `cd -`, `..` or an unreadable form clears it).
+# `cd` is context for the rm and find rules, not a rule of its own, so it is not a fast-path head.
+CD_HINT=$EVENT_CWD
+# cwd_expand TEXT -> sets CWD_OUT to TEXT with each bare . ./ ./* or * word replaced by the folder
+# CD_HINT names (or its contents), so has_target reads `rm -rf .` after `cd /` as a root wipe.
+cwd_expand() {
+  local w out="" hint=$CD_HINT
+  CWD_OUT=$1
+  [ -n "$hint" ] || return 0
+  case " $1 " in *' . '*|*' ./ '*|*' ./* '*|*' * '*) ;; *) return 0 ;; esac
+  # The home folder is known by its path too: the event's cwd is spelled out, never as ~.
+  [ -n "${HOME:-}" ] && { [ "$hint" = "$HOME" ] || [ "$hint" = "$HOME/" ]; } && hint='~'
+  for w in $1; do
+    case "$w" in
+      .|./) w=$hint ;;
+      './*'|'*') case "$hint" in */) w="${hint}*" ;; *) w="$hint/*" ;; esac ;;
+    esac
+    out="$out $w"
+  done
+  CWD_OUT=${out# }
+}
+# Soft-stage flags set by the hard loop below (emitted only once every hard check passed clean).
+CWD_WIDE_RM=0      # rm -rf on the whole working directory (. ./ ./* *)
+XARGS_RM=0         # rm -rf with no path, fed by xargs
+CWD_WIDE_FIND=0    # find -delete over the working tree with no name filter
+TRUNC_OUTSIDE=0    # truncate of a file outside the working directory
+GIT_SOFT=""        # git push --force / git reset --hard, with its reason
+
 for seg in "${FSEGS[@]}"; do
   resolve_head "$seg"
+  if [ "$RH_HEAD" = cd ] || [ "$RH_HEAD" = pushd ]; then
+    _d=""
+    for _w in $RH_REST; do
+      case "$_w" in -*) continue ;; esac
+      _d=$_w
+      break
+    done
+    strip_quotes "$_d"
+    _d=$STRIP_OUT
+    case "$_d" in
+      '') CD_HINT='~' ;;
+      -|..|../*|'$'*) case "$_d" in '$HOME'*|'${HOME}'*) CD_HINT=$_d ;; *) CD_HINT="" ;; esac ;;
+      /*|'~'|'~/'*) CD_HINT=$_d ;;
+      *)
+        _d=${_d#./}
+        if [ -n "$CD_HINT" ]; then
+          case "$CD_HINT" in */) CD_HINT="$CD_HINT$_d" ;; *) CD_HINT="$CD_HINT/$_d" ;; esac
+        fi
+        ;;
+    esac
+    continue
+  fi
   case "$RH_HEAD" in
     rm)
       case " $RH_REST " in
@@ -745,20 +820,69 @@ for seg in "${FSEGS[@]}"; do
       case "$SHORTS" in *f*) _frc=1 ;; esac
       case " $LONGS " in *' --force '*) _frc=1 ;; esac
       strip_quotes "$RH_REST"
-      if [ "$_rec" = 1 ] && [ "$_frc" = 1 ] && has_target "$STRIP_OUT"; then
-        block "a recursive, forced delete targeting a system or home root"
+      drop_char "$STRIP_OUT" ')'          # a subshell's closing paren sits on the last target
+      STRIP_OUT=$DROP_OUT
+      if [ "$_rec" = 1 ] && [ "$_frc" = 1 ]; then
+        cwd_expand "$STRIP_OUT"
+        if has_target "$STRIP_OUT" || has_target "$CWD_OUT"; then
+          block "a recursive, forced delete targeting a system or home root"
+        fi
+        _ops=0
+        for _w in $STRIP_OUT; do
+          case "$_w" in -*) continue ;; esac
+          _ops=$((_ops + 1))
+          case "$_w" in .|./|'./*'|'*') CWD_WIDE_RM=1 ;; esac
+        done
+        if [ "$_ops" = 0 ]; then
+          case " $seg " in *' xargs '*) XARGS_RM=1 ;; esac
+        fi
       fi
       ;;
     find)
       strip_quotes "$RH_REST"
-      if has_target "$STRIP_OUT"; then
+      drop_char "$STRIP_OUT" ')'
+      STRIP_OUT=$DROP_OUT
+      cwd_expand "$STRIP_OUT"
+      if has_target "$STRIP_OUT" || has_target "$CWD_OUT"; then
         case " $RH_REST " in
-          *' -delete '*) block "find on a system/home root with -delete" ;;
+          *' -delete '*|*' -delete') block "find on a system/home root with -delete" ;;
         esac
         case "$RH_REST" in
           *'-exec rm '*|*'-execdir rm '*) block "find on a system/home root with -exec rm" ;;
         esac
       fi
+      case " $RH_REST " in
+        *' -delete '*|*' -delete')
+          # The whole working tree (no path, . or ./) with no name, path, time or size filter.
+          _fp=""
+          for _w in $STRIP_OUT; do
+            case "$_w" in -*) break ;; esac
+            _fp=$_w
+            break
+          done
+          case "$_fp" in ''|.|./)
+            case " $RH_REST " in
+              *' -name '*|*' -iname '*|*' -path '*|*' -ipath '*|*' -wholename '*|*' -regex '*|\
+*' -iregex '*|*' -newer'*|*' -mtime '*|*' -mmin '*|*' -empty '*|*' -size '*|*' -samefile '*) ;;
+              *) CWD_WIDE_FIND=1 ;;
+            esac ;;
+          esac
+          ;;
+      esac
+      ;;
+    truncate)
+      # -s/--size and -r/--reference take a value; every other word is a file to empty.
+      _skipv=0
+      for _w in $RH_REST; do
+        if [ "$_skipv" = 1 ]; then _skipv=0; continue; fi
+        case "$_w" in
+          -s|-r|--size|--reference) _skipv=1; continue ;;
+          -*) continue ;;
+        esac
+        strip_quotes "$_w"
+        has_target "$STRIP_OUT" && block "truncate of a file under a system or home root"
+        case "$STRIP_OUT" in /*|'~'|'~/'*|'$HOME'*|'${HOME}'*|../*) TRUNC_OUTSIDE=1 ;; esac
+      done
       ;;
     dd)
       case " $RH_REST " in
@@ -849,7 +973,8 @@ for seg in "${FSEGS[@]}"; do
         esac
         break
       done
-      if [ "${1:-}" = clean ]; then
+      _gsub="${1:-}"
+      if [ "$_gsub" = clean ]; then
         shift
         _gargs="$*"
         set --
@@ -862,6 +987,32 @@ for seg in "${FSEGS[@]}"; do
         if [ "$_gx" = 1 ] && [ "$_gf" = 1 ]; then
           block "git clean -x, which irreversibly deletes ignored and untracked files"
         fi
+      elif [ "$_gsub" = push ]; then
+        # A plain force push rewrites the remote branch blindly; --force-with-lease (or
+        # --force-if-includes) refuses when the remote moved, so it stays allowed.
+        shift
+        _gargs="$*"
+        set --
+        collect_flags "$_gargs"
+        _gforce=0; _glease=0
+        case "$SHORTS" in *f*) _gforce=1 ;; esac
+        case " $LONGS " in *' --force '*) _gforce=1 ;; esac
+        case " $LONGS " in *' --force-with-lease'*|*' --force-if-includes'*) _glease=1 ;; esac
+        # A refspec with a leading plus (`+main`, `+HEAD:main`) is a force push too.
+        case " $_gargs " in *' +'[A-Za-z0-9_./:-]*) _gforce=1 ;; esac
+        if [ "$_gforce" = 1 ] && [ "$_glease" = 0 ]; then
+          case " $_gargs " in
+            *' main '*|*' master '*|*':main '*|*':master '*|*'/main '*|*'/master '*)
+              GIT_SOFT="git push --force to main or master without --force-with-lease" ;;
+            *) GIT_SOFT="git push --force without --force-with-lease, which overwrites the remote branch blindly" ;;
+          esac
+        fi
+      elif [ "$_gsub" = reset ]; then
+        shift
+        case " $* " in
+          *' --hard '*) GIT_SOFT="git reset --hard, which discards every uncommitted change in the working tree" ;;
+        esac
+        set --
       fi
       set --
       ;;
@@ -1199,6 +1350,12 @@ for seg in "${FSEGS[@]}"; do
     done
   fi
 done
+
+[ "$CWD_WIDE_RM" = 1 ] && soft_block "rm -rf on the whole working directory, dot or star; needs manual review"
+[ "$XARGS_RM" = 1 ] && soft_block "rm -rf with no path, deleting whatever xargs feeds it; needs manual review"
+[ "$CWD_WIDE_FIND" = 1 ] && soft_block "find -delete over the whole working tree with no name or path filter; needs manual review"
+[ "$TRUNC_OUTSIDE" = 1 ] && soft_block "truncate of a file outside the working directory; needs manual review"
+[ -n "$GIT_SOFT" ] && soft_block "$GIT_SOFT"
 
 _priv=0
 case "$CMD_LC" in
