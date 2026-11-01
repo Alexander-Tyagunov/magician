@@ -141,7 +141,7 @@ CODE_RULES = {   # name -> pattern (applied to comment-free code of every script
     "top-level additionalContext": r"\{\s*\\?\"additionalContext",
     "Claude Code settings write": r"(?:>|\btee\b|\bmv\b|\bcp\b|\bsed\s+-i)[^\n;|&]*settings(?:\.local)?\.json",
     "removed feature": r"patterns\.json|\bcapsule|\.resume\b|kg-?nudge|access-tracker|access-patterns"
-                       r"|agent-lifecycle|worktree-init|pre-compact|mcp-?nudge|fingerprint|session-start-time"
+                       r"|agent-lifecycle|worktree-init|mcp-?nudge|fingerprint|session-start-time"
                        r"|\bctx\s+(?:capsule|hook|resume)\b|\bgreet|statusLine",
     "imperative wording": r"(?i:\binvoke\b|before responding|before doing any other work|\bdo not\b"
                           r"|AskUserQuestion|auto-activat|let the user know|\byou must\b|\bIMPORTANT:)",
@@ -149,6 +149,9 @@ CODE_RULES = {   # name -> pattern (applied to comment-free code of every script
 TEXT_RULES = {   # applied to the whole file (comments included)
     "transcript field": r"transcript_path|last_assistant_message|agent_transcript_path",
 }
+# The one documented exception: subagent-stop.sh reads the last 4 KiB of the finished agent's own
+# transcript, named by the event, to find a STATUS: BLOCKED / DEGRADED line (README, PRIVACY.md).
+TRANSCRIPT_READER = "subagent-stop.sh"
 STRICT_TOKENS = (r"\bpython", r"\bnode\b", r"\bperl\b", r"\bruby\b", r"\bawk\b", r" -c ", r"\beval\b",
                  r"\bsource\s", r"(?m)^\s*\.\s", r"\bjq\b", r"/bin/", r"PLUGIN_ROOT", r"transcript_path",
                  r"last_assistant_message", r"settings\.json", r"CLAUDE_ENV_FILE", r"\binscribe\b",
@@ -230,6 +233,8 @@ class StaticScriptTests(unittest.TestCase):
                     m = re.search(pattern, code, re.M)
                     self.assertIsNone(m, f"{rule}: {m.group(0)!r}" if m else "")
             for rule, pattern in TEXT_RULES.items():
+                if rule == "transcript field" and name == TRANSCRIPT_READER:
+                    continue
                 with self.subTest(script=name, rule=rule):
                     self.assertIsNone(re.search(pattern, text), rule)
 
@@ -573,9 +578,20 @@ class FormatTests(_SandboxCase):
         self.assertEqual(self.sb.calls("gofmt"), [["-w", str(self.go)]])
         self.assertEqual(self.go.read_text(encoding="utf-8"), "package main\n")
         again = self.sb.run(self.SCRIPT, self._payload(str(self.go)), **self.ON)
-        self.assertEqual(again.stdout, "")                      # already formatted: nothing to report
+        self.assertEqual(again.stdout, "")                      # formatted under 2 s ago: skipped
+        self.assertEqual(len(self.sb.calls("gofmt")), 1)
+        stamps = list((self.sb.data / "format-stamps").iterdir())
+        self.assertEqual(len(stamps), 1, "one stamp per file path, under the plugin data folder")
+        self.assertRegex(stamps[0].read_text(encoding="utf-8"), r"^[0-9]+\n$")
+        self.assertEqual(_tree(self.sb.home), before[0])        # nothing stored outside the data folder
+        self.assertEqual(_tree(self.sb.mag), before[2])
+        stamps[0].write_text("1000000000\n", encoding="utf-8")  # the stamp is old: format again
+        third = self.sb.run(self.SCRIPT, self._payload(str(self.go)), **self.ON)
+        self.assertEqual(third.stdout, "")                      # already formatted: nothing to report
         self.assertEqual(len(self.sb.calls("gofmt")), 2)
-        self.assertEqual(self.sb.snapshot(), before)            # nothing stored
+        stamps[0].write_text("junk\n", encoding="utf-8")        # an unreadable stamp counts as old
+        self.sb.run(self.SCRIPT, self._payload(str(self.go)), **self.ON)
+        self.assertEqual(len(self.sb.calls("gofmt")), 3)
 
     def test_prettier_needs_its_own_option(self) -> None:
         md = self.sb.work / "notes.md"
@@ -661,6 +677,14 @@ class NotifyTests(_SandboxCase):
         self.assertEqual(seq, "\x1b]777;notify;Magician;Background run finished\x07")
         for name in ("osascript", "notify-send", "uname"):
             self.assertEqual(self.sb.calls(name), [], f"notify.sh ran {name}")
+
+    def test_plugin_notification_is_shown(self) -> None:
+        seq = self._seq(self.sb.run(self.SCRIPT, self._event("plugin_notification", "Index refreshed"),
+                                    TERM_PROGRAM="ghostty", **self.ON))
+        self.assertEqual(seq, "\x1b]777;notify;Magician;Index refreshed\x07")
+        seq = self._seq(self.sb.run(self.SCRIPT, self._event("plugin_notification", ""), TERM_PROGRAM="ghostty",
+                                    **self.ON))
+        self.assertEqual(seq, "\x1b]777;notify;Magician;plugin notice\x07")
 
     def test_other_notification_types_are_ignored(self) -> None:
         for kind in ("idle_prompt", "permission_prompt", "auth_success"):
@@ -835,6 +859,253 @@ class CiWatchTests(_SandboxCase):
             with self.subTest(cwd=cwd.name):
                 self.assertEqual(self._watch(cwd), [])
         self.assertEqual(self.sb.calls("gh"), [])
+
+
+class PreCompactTests(_SandboxCase):
+    SCRIPT = "pre-compact.sh"
+
+    def _doc(self, payload) -> dict:
+        proc = self.sb.run(self.SCRIPT, payload)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_asks_for_the_state_file_before_the_summary_and_reads_no_transcript(self) -> None:
+        marker = "TRANSCRIPT-ONLY-MARKER-9c1d"
+        transcript = self.sb.base / "t.jsonl"
+        transcript.write_text(json.dumps({"type": "user", "message": marker}) + "\n", encoding="utf-8")
+        before = self.sb.snapshot()
+        for trigger in ("auto", "manual"):
+            with self.subTest(trigger=trigger):
+                doc = self._doc({"hook_event_name": "PreCompact", "trigger": trigger,
+                                 "transcript_path": str(transcript), "session_id": "s"})
+                self.assertEqual(set(doc), {"systemMessage", "hookSpecificOutput"})
+                self.assertEqual(doc["hookSpecificOutput"]["hookEventName"], "PreCompact")
+                ctx = doc["hookSpecificOutput"]["additionalContext"]
+                self.assertIn(".workspace/local/session-state.md", ctx)
+                self.assertIn("none is written yet", ctx)
+                self.assertNotIn(marker, ctx + doc["systemMessage"])
+                self.assertIsNone(IMPERATIVE.search(ctx), ctx)
+                self.assertIn("/compact" if trigger == "manual" else "context is full", ctx)
+        self.assertEqual(self.sb.snapshot(), before)
+        self.assertEqual({p.name for p in self.sb.work.iterdir()}, set(), "the hook wrote into the project")
+
+    def test_notes_an_existing_state_file_and_an_unknown_trigger(self) -> None:
+        state = self.sb.work / ".workspace" / "local" / "session-state.md"
+        state.parent.mkdir(parents=True)
+        state.write_text("# state\n", encoding="utf-8")
+        ctx = self._doc({"trigger": "weird"})["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("one exists and gets the latest state", ctx)
+        self.assertTrue(ctx.startswith("Claude Code is about to summarize this session."), ctx)
+
+
+class SubagentStopTests(_SandboxCase):
+    SCRIPT = "subagent-stop.sh"
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.sb.work / ".workspace").mkdir()
+        self.transcript = self.sb.base / "agent.jsonl"
+
+    def _payload(self, agent: str = "magician:reviewer", key: str = "transcript_path") -> dict:
+        return {"hook_event_name": "SubagentStop", "agent_type": agent, "agent_id": "a1",
+                key: str(self.transcript), "session_id": "s", "cwd": str(self.sb.work)}
+
+    def _write(self, lines: list) -> None:
+        self.transcript.write_text("".join(json.dumps(l) + "\n" for l in lines), encoding="utf-8")
+
+    def _log(self) -> list:
+        f = self.sb.work / ".workspace" / "local" / "obstacles.jsonl"
+        if not f.exists():
+            return []
+        return [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines()]
+
+    def test_blocked_and_degraded_status_lines_are_recorded(self) -> None:
+        self._write([{"type": "assistant", "text": "reading"},
+                     {"type": "assistant", "text": "Report:\nSTATUS: BLOCKED - the staging DB refused the connection\nnext"}])
+        proc = self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        (rec,) = self._log()
+        self.assertEqual(set(rec), {"ts", "agent", "status", "obstacle"})
+        self.assertRegex(rec["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual((rec["agent"], rec["status"]), ("magician:reviewer", "BLOCKED"))
+        self.assertEqual(rec["obstacle"], "the staging DB refused the connection")
+        self._write([{"type": "assistant", "text": "STATUS: DEGRADED: no network, static review only"}])
+        self.sb.run(self.SCRIPT, self._payload("magician:sentinel", "agent_transcript_path"))
+        self.assertEqual([(r["agent"], r["status"], r["obstacle"]) for r in self._log()],
+                         [("magician:reviewer", "BLOCKED", "the staging DB refused the connection"),
+                          ("magician:sentinel", "DEGRADED", "no network, static review only")])
+
+    def test_reads_only_the_last_4kib_and_keeps_records_under_1kb(self) -> None:
+        old = "STATUS: BLOCKED early marker that must not count"
+        self._write([{"type": "assistant", "text": old}, {"type": "assistant", "text": "x" * 5000},
+                     {"type": "assistant", "text": "STATUS: DEGRADED " + "long " * 300}])
+        self.sb.run(self.SCRIPT, self._payload())
+        (rec,) = self._log()
+        self.assertEqual(rec["status"], "DEGRADED")
+        self.assertLess(len(json.dumps(rec)), 1024)
+        self.assertTrue(rec["obstacle"].startswith("long long"))
+        self._write([{"type": "assistant", "text": old}, {"type": "assistant", "text": "y" * 5000}])
+        self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual(len(self._log()), 1, "a marker outside the last 4 KiB was recorded")
+
+    def test_control_characters_and_quotes_are_stripped(self) -> None:
+        # raw bytes, as a transcript that is not JSON would carry them: the text ends at a quote or backslash
+        self.transcript.write_text("STATUS: BLOCKED \u001b[31mred\u001b[0m\ttab \"q\" \\ back\n", encoding="utf-8")
+        self.sb.run(self.SCRIPT, self._payload('magician:fix"er'))
+        self.assertEqual(self._log(), [])          # an agent name outside the allowed characters is skipped
+        self.sb.run(self.SCRIPT, self._payload())
+        (rec,) = self._log()
+        self.assertEqual(rec["obstacle"], "[31mred[0m tab")
+        self.assertNotIn("\u001b", json.dumps(rec))
+        # in a JSON transcript line the text ends at the first escape, so the record stays well-formed
+        self._write([{"type": "assistant", "text": "STATUS: DEGRADED one\ntwo"}])
+        self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual(self._log()[-1]["obstacle"], "one")
+
+    def test_silent_without_a_status_a_workspace_a_magician_agent_or_a_real_file(self) -> None:
+        self._write([{"type": "assistant", "text": "all good, STATUS: OK"}])
+        self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual(self._log(), [])
+        self._write([{"type": "assistant", "text": "STATUS: BLOCKED x"}])
+        self.sb.run(self.SCRIPT, self._payload("reviewer"))
+        self.sb.run(self.SCRIPT, self._payload("other:magician:x"))
+        self.assertEqual(self._log(), [])
+        missing = dict(self._payload(), transcript_path=str(self.sb.base / "nope.jsonl"))
+        self.sb.run(self.SCRIPT, missing)
+        relative = dict(self._payload(), transcript_path="agent.jsonl")
+        self.sb.run(self.SCRIPT, relative)
+        self.assertEqual(self._log(), [])
+        shutil.rmtree(self.sb.work / ".workspace")
+        proc = self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertFalse((self.sb.work / ".workspace").exists(), "the hook created .workspace")
+
+
+class ModelSwitchTests(_SandboxCase):
+    PRE = "pre-model-switch.sh"
+    POST = "post-model-switch.sh"
+    EVENT = {"hook_event_name": "PreModelSwitch", "from_model": "claude-opus-5-5", "to_model": "claude-sonnet-5-5"}
+
+    def test_pre_switch_is_silent_unless_a_scan_is_active(self) -> None:
+        proc = self.sb.run(self.PRE, self.EVENT)
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        for how in ("env", "marker"):
+            with self.subTest(how=how):
+                extra = {"MAGICIAN_PIN_MODEL": "1"} if how == "env" else {}
+                if how == "marker":
+                    marker = self.sb.work / ".workspace" / "local" / "security-scan.active"
+                    marker.parent.mkdir(parents=True, exist_ok=True)
+                    marker.write_text("", encoding="utf-8")
+                proc = self.sb.run(self.PRE, self.EVENT, **extra)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                doc = json.loads(proc.stdout)
+                out = doc["hookSpecificOutput"]
+                self.assertEqual(out["hookEventName"], "PreModelSwitch")
+                self.assertEqual(out["permissionDecision"], "ask")
+                self.assertIn("safety fallback would change tier mid-scan", out["permissionDecisionReason"])
+                self.assertIn("claude-opus-5-5 to claude-sonnet-5-5", out["permissionDecisionReason"])
+        proc = self.sb.run(self.PRE, {"from_model": "x\"y", "to_model": "z"}, MAGICIAN_PIN_MODEL="1")
+        reason = json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("mid-scan;", reason, "an odd model name is left out of the reason")
+        self.assertNotIn("x", reason.split(";")[0])
+
+    def test_post_switch_adds_one_plain_line_of_context(self) -> None:
+        proc = self.sb.run(self.POST, self.EVENT)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.count("\n"), 1)
+        self.assertIn("model changed from claude-opus-5-5 to claude-sonnet-5-5; re-check effort and cache assumptions",
+                      proc.stdout)
+        self.assertIsNone(IMPERATIVE.search(proc.stdout), proc.stdout)
+        self.assertEqual(self.sb.run(self.POST, {"from_model": "a"}).stdout, "")
+        self.assertIn("from the previous model to b;", self.sb.run(self.POST, {"to_model": "b"}).stdout)
+
+
+class SetupInitTests(_SandboxCase):
+    SCRIPT = "setup-init.sh"
+
+    def test_creates_the_workspace_once_at_the_repo_root(self) -> None:
+        repo = self.sb.repo("proj")
+        (repo / ".gitignore").write_text("node_modules/", encoding="utf-8")   # no trailing newline
+        proc = self.sb.run(self.SCRIPT, {"hook_event_name": "Setup", "trigger": "init"}, cwd=repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        msg = json.loads(proc.stdout)["systemMessage"]
+        self.assertIn("created .workspace/shared/ and .workspace/local/", msg)
+        self.assertIn(".gitignore now lists .workspace/local/", msg)
+        for d in ("shared/decisions", "shared/specs", "shared/plans", "shared/research", "shared/postmortems", "local"):
+            self.assertTrue((repo / ".workspace" / d).is_dir(), d)
+        self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8"),
+                         "node_modules/\n# Magician workspace (local machine only)\n.workspace/local/\n")
+        again = self.sb.run(self.SCRIPT, {}, cwd=repo)
+        self.assertEqual((again.returncode, again.stdout), (0, ""))
+        self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8").count(".workspace/local/"), 1)
+
+    def test_creates_gitignore_and_respects_an_existing_entry(self) -> None:
+        repo = self.sb.repo("fresh")
+        self.sb.run(self.SCRIPT, {}, cwd=repo)
+        self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8"),
+                         "# Magician workspace (local machine only)\n.workspace/local/\n")
+        private = self.sb.repo("private")
+        (private / ".gitignore").write_text(".workspace/\n", encoding="utf-8")
+        msg = json.loads(self.sb.run(self.SCRIPT, {}, cwd=private).stdout)["systemMessage"]
+        self.assertIn("already covers .workspace/local/", msg)
+        self.assertEqual((private / ".gitignore").read_text(encoding="utf-8"), ".workspace/\n")
+
+    def test_silent_outside_a_repo_root(self) -> None:
+        proc = self.sb.run(self.SCRIPT, {}, cwd=self.sb.work)        # no git
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(list(self.sb.work.iterdir()), [])
+        repo = self.sb.repo("deep")
+        sub = repo / "pkg"
+        sub.mkdir()
+        proc = self.sb.run(self.SCRIPT, {}, cwd=sub)                 # below the root
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertFalse((sub / ".workspace").exists())
+        self.assertFalse((repo / ".workspace").exists())
+
+
+class StopFailureTests(_SandboxCase):
+    SCRIPT = "stop-failure.sh"
+
+    def test_points_at_compact_and_the_state_file(self) -> None:
+        proc = self.sb.run(self.SCRIPT, {"hook_event_name": "StopFailure", "error": "max_output_tokens"})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        doc = json.loads(proc.stdout)
+        self.assertEqual(set(doc), {"systemMessage"})
+        self.assertIn("/compact", doc["systemMessage"])
+        self.assertIn("written to .workspace/local/session-state.md survives", doc["systemMessage"])
+        state = self.sb.work / ".workspace" / "local" / "session-state.md"
+        state.parent.mkdir(parents=True)
+        state.write_text("# s\n", encoding="utf-8")
+        doc = json.loads(self.sb.run(self.SCRIPT, {}).stdout)
+        self.assertIn("holds the running state", doc["systemMessage"])
+
+
+class CloudSessionTests(_SandboxCase):
+    """CLAUDE_CODE_REMOTE=1: no launchers, no credential bridge, one note that commands run by full path."""
+
+    def test_launcher_and_credential_hooks_write_nothing_in_the_cloud(self) -> None:
+        opts = {"CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL": "https://x.atlassian.net",
+                "CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN": "tok-" + "s3cr3t"}
+        for script in ("tools-path.sh", "userconfig-env.sh"):
+            with self.subTest(script=script):
+                proc = self.sb.run(script, {"session_id": "c", "source": "startup"}, CLAUDE_CODE_REMOTE="1", **opts)
+                self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+                self.assertIn("cloud session", proc.stderr)
+                self.assertIn("full path only", proc.stderr)
+                self.assertNotIn("s3cr3t", proc.stderr)
+        self.assertFalse(self.sb.envfile.exists())
+        self.assertFalse((self.sb.data / "tools").exists())
+        proc = self.sb.run("tools-path.sh", {}, CLAUDE_CODE_REMOTE="0")
+        self.assertTrue((self.sb.data / "tools").exists(), "the launcher hook stays on outside the cloud")
+
+    def test_session_start_names_the_cloud_branch(self) -> None:
+        proc = self.sb.run("session-start.sh", {"session_id": "c", "source": "startup"}, CLAUDE_CODE_REMOTE="1")
+        ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Cloud session (CLAUDE_CODE_REMOTE=1)", ctx)
+        self.assertIn("run by full path only, as tools/<name> under the plugin root", ctx)
+        self.assertEqual(ctx.count(str(ROOT)), 1)
+        proc = self.sb.run("session-start.sh", {"session_id": "c", "source": "startup"})
+        self.assertNotIn("Cloud session", json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"])
 
 
 if __name__ == "__main__":

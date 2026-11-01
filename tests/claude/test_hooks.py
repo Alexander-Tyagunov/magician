@@ -43,8 +43,10 @@ VALID_EVENTS = {
     "Elicitation", "ElicitationResult",
 }
 
-# Events whose groups may carry a `matcher` (tool name, notification type, session source).
-MATCHER_EVENTS = {"PreToolUse", "PostToolUse", "Notification", "SessionStart"}
+# Events whose groups may carry a `matcher` (tool name, notification type, session source, setup
+# phase, compaction trigger, agent type, failure kind) per the hooks reference.
+MATCHER_EVENTS = {"PreToolUse", "PostToolUse", "Notification", "SessionStart", "Setup", "PreCompact",
+                  "SubagentStop", "StopFailure", "PreModelSwitch", "PostModelSwitch"}
 
 # The only accepted command form: quoted plugin root, literal scripts/<name>.sh path, no arguments.
 COMMAND_RE = re.compile(r'^"\$\{CLAUDE_PLUGIN_ROOT\}"/scripts/([a-z0-9-]+\.sh)$')
@@ -56,18 +58,25 @@ EXPECTED_WIRING = {
                 ("tools-path.sh", {"timeout": 10})]),
         ("compact", [("compact-context.sh", {})]),
     ],
+    "Setup": [("init", [("setup-init.sh", {"timeout": 10})])],
     "UserPromptSubmit": [(None, [("pattern-detect.sh", {})])],
-    "PreToolUse": [("Bash|PowerShell", [("destructive-guard.sh", {})])],
-    "PostToolUse": [("Write|Edit", [("format.sh", {})])],
-    "Notification": [("agent_completed|agent_needs_input", [("notify.sh", {})])],
+    # The guard fails closed: a timeout or crash blocks the call (onFailure, v2.1.295+), within 5 s.
+    "PreToolUse": [("Bash|PowerShell", [("destructive-guard.sh", {"timeout": 5, "onFailure": "block"})])],
+    "PostToolUse": [("Write|Edit", [("format.sh", {"async": True})])],
+    "PreCompact": [("auto|manual", [("pre-compact.sh", {"timeout": 10})])],
+    "SubagentStop": [("^magician:", [("subagent-stop.sh", {"timeout": 10})])],
+    "PreModelSwitch": [(None, [("pre-model-switch.sh", {"timeout": 10})])],
+    "PostModelSwitch": [(None, [("post-model-switch.sh", {"timeout": 10})])],
+    "Notification": [("agent_completed|agent_needs_input|plugin_notification", [("notify.sh", {})])],
     "Stop": [(None, [("chronicle-stop.sh", {"async": True})])],
+    "StopFailure": [("max_output_tokens", [("stop-failure.sh", {"timeout": 10})])],
 }
 
 REMOVED_SCRIPTS = ("access-tracker.sh", "agent-lifecycle.sh", "worktree-init.sh",
-                   "pre-compact.sh", "jira-mcp-nudge.sh", "kg-nudge.sh")
-REMOVED_EVENTS = ("PreCompact", "SubagentStart", "SubagentStop", "WorktreeCreate")
+                   "jira-mcp-nudge.sh", "kg-nudge.sh")
+REMOVED_EVENTS = ("SubagentStart", "WorktreeCreate")
 
-ALLOWED_HOOK_KEYS = {"type", "command", "timeout", "async"}
+ALLOWED_HOOK_KEYS = {"type", "command", "timeout", "async", "onFailure"}
 
 
 def _script_of(command: str) -> str | None:
@@ -161,23 +170,54 @@ class HookWiringTests(unittest.TestCase):
             self.assertTrue(re.fullmatch(group["matcher"], "Bash"))
             self.assertTrue(re.fullmatch(group["matcher"], "PowerShell"))
 
-    def test_notify_fires_only_for_agent_notifications(self) -> None:
+    def test_notify_fires_only_for_agent_and_plugin_notifications(self) -> None:
         groups = self.config["hooks"]["Notification"]
         self.assertEqual(len(groups), 1)
         matcher = groups[0]["matcher"]
-        for kind in ("agent_completed", "agent_needs_input"):
+        for kind in ("agent_completed", "agent_needs_input", "plugin_notification"):
             self.assertTrue(re.fullmatch(matcher, kind), kind)
         for kind in ("permission_prompt", "idle_prompt", "auth_success", "elicitation_dialog"):
             self.assertIsNone(re.fullmatch(matcher, kind), kind)
 
-    def test_only_the_chronicle_hook_is_async(self) -> None:
+    def test_only_the_hooks_the_model_need_not_wait_for_are_async(self) -> None:
+        """chronicle-stop.sh (Stop) and format.sh (PostToolUse) run async with no asyncRewake: the
+        model does not wait for a session record or a formatter. The guard and the context hooks
+        stay synchronous, since their output or verdict is needed before the next step."""
         for event, _group, hook in self._hooks():
             with self.subTest(command=hook["command"]):
+                self.assertNotIn("asyncRewake", hook)
                 if _script_of(hook["command"]) == "chronicle-stop.sh":
                     self.assertEqual(event, "Stop")
                     self.assertIs(hook.get("async"), True)
+                elif _script_of(hook["command"]) == "format.sh":
+                    self.assertEqual(event, "PostToolUse")
+                    self.assertIs(hook.get("async"), True)
                 else:
                     self.assertNotIn("async", hook)
+
+    def test_guard_fails_closed_within_five_seconds(self) -> None:
+        """A PreToolUse hook that times out does not block unless onFailure is "block"; the guard is
+        the one hook that may fail closed, and its fast path keeps it well inside 5 seconds."""
+        for event, _group, hook in self._hooks():
+            with self.subTest(command=hook["command"]):
+                if _script_of(hook["command"]) == "destructive-guard.sh":
+                    self.assertEqual(event, "PreToolUse")
+                    self.assertEqual(hook.get("onFailure"), "block")
+                    self.assertEqual(hook.get("timeout"), 5)
+                else:
+                    self.assertNotIn("onFailure", hook)
+
+    def test_new_event_matchers_follow_the_hooks_reference(self) -> None:
+        hooks = self.config["hooks"]
+        self.assertEqual(hooks["Setup"][0]["matcher"], "init")
+        self.assertEqual(hooks["PreCompact"][0]["matcher"], "auto|manual")
+        self.assertTrue(re.search(hooks["SubagentStop"][0]["matcher"], "magician:reviewer"))
+        self.assertIsNone(re.search(hooks["SubagentStop"][0]["matcher"], "reviewer"))
+        self.assertIsNone(re.search(hooks["SubagentStop"][0]["matcher"], "other:magician:x"))
+        # StopFailure matchers are a fixed list; context_overflow is not one of them.
+        self.assertEqual(hooks["StopFailure"][0]["matcher"], "max_output_tokens")
+        for event in ("PreModelSwitch", "PostModelSwitch"):
+            self.assertNotIn("matcher", hooks[event][0], f"{event} fires for every target model")
 
     def test_env_file_writers_have_a_short_timeout(self) -> None:
         for script in ("userconfig-env.sh", "tools-path.sh"):

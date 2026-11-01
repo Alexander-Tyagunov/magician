@@ -1,6 +1,6 @@
 ---
 name: almanac
-description: One-time workspace setup — creates the .workspace/ structure, .gitignore entries and a lean CLAUDE.md, then suggests relevant MCPs and permission rules you can add yourself with /permissions. Writes no Claude Code settings. Run once per project.
+description: One-time workspace setup — creates .workspace/, .gitignore entries and a lean CLAUDE.md, then suggests MCPs and permission rules to add yourself; writes no settings. Run once per project.
 allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git commit -m *)
 disable-model-invocation: true
 ---

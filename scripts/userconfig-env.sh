@@ -13,9 +13,14 @@
 #     already present, so running it again (resume, clear, compact) adds nothing.
 #   * It uses builtins only (printf/read/case), so no value ever appears in a process argv.
 #   * A file it creates is mode 0600 (umask 077); an existing file keeps its mode.
+#   * In a cloud session (CLAUDE_CODE_REMOTE=1) it reads and writes nothing and says so on stderr.
 LC_ALL=C
 
 magician_bridge_userconfig() (
+  if [ "${CLAUDE_CODE_REMOTE:-}" = 1 ]; then   # cloud session: no credential reads or writes
+    printf 'magician: cloud session, userConfig values not copied; bundled commands run by full path only\n' >&2
+    exit 0
+  fi
   [ -n "${CLAUDE_ENV_FILE:-}" ] || exit 0
   umask 077
   sq="'"; rep="'\\''"

@@ -46,6 +46,22 @@ exempt it — "looks correct" is a claim.
 | "partial check is enough" | partial proves nothing |
 | "just this once" | no exceptions |
 
+## Low/medium-effort turns — paste the paragraph, only then
+
+At `low` or `medium` effort the 5.5 models sometimes skip verification before claiming done (Anthropic's
+Sonnet 5.5 guidance recommends a system-prompt paragraph that requires a real test/build run). Spawn
+prompts and skill steps that run at `low`/`medium` (implementation turns in [ward](../skills/ward/SKILL.md),
+[orchestrate](../skills/orchestrate/SKILL.md), [weave](../skills/weave/SKILL.md)) include this paragraph
+verbatim:
+
+> Before you report any step as done, fixed or passing, run the real test, build or type-check command
+> for it in this turn and read its output. Do not infer the result from the diff or from an earlier run.
+> If the command cannot run, say so and report the step as unverified.
+
+Do **not** add it on `high`/`xhigh` runs: there it is the self-verification reminder that
+[model-behavior.md](model-behavior.md) forbids — the gates above already demand evidence, and the model
+re-checks itself. The paragraph is a floor for cheap turns, not a second gate.
+
 ## Language-invariant rigor
 
 The verification bar does not bend to the language of the conversation. Anthropic's research on how

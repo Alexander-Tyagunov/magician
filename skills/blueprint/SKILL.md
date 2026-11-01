@@ -1,7 +1,7 @@
 ---
 name: blueprint
-description: Converts an approved spec into a TDD task plan with a parallelism map and a visual walkthrough (plan.json → plan.md + plan.html) saved to a dated feature folder in .workspace/shared/plans/. Use after a spec is approved, before implementation.
-allowed-tools: Read, Glob, AskUserQuestion, Bash(plan-render *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/plan-render *), Bash(kg blast *), Edit(./.workspace/shared/plans/**)
+description: Converts an approved spec into a TDD task plan with a parallelism map and a visual walkthrough (plan.md + plan.html) in .workspace/shared/plans/. Use after a spec is approved, before implementation.
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(plan-render *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/plan-render *), Bash(kg blast *), Edit(./.workspace/shared/plans/**)
 argument-hint: "[spec-file-path] | review <plan-dir> | --static"
 ---
 
@@ -11,7 +11,7 @@ argument-hint: "[spec-file-path] | review <plan-dir> | --static"
 
 > **Bundled command:** if `plan-render` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/plan-render`. If that is missing too (Claude chat and Cowork ship no plugin tools), write `plan.md` only, in the single-file format of [references/plan-format-legacy.md](references/plan-format-legacy.md), and skip steps 4–5.
 
-Convert an approved spec into one plan source, `plan.json`, and render two documents from it: `plan.md` (what `/orchestrate` and `/ward` execute) and `plan.html` (the walkthrough a person reviews).
+Convert an approved spec into one plan source, `plan.json`, and render two documents from it: `plan.md` (what `/orchestrate` and `/ward` execute) and `plan.html` (the walkthrough a person reviews). The plan file is also the compaction-proof checklist: its `- [ ]` task boxes are what `/orchestrate` and `/ward` tick, because Task tools (TaskCreate/TodoWrite) are absent on current models unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; executors write `.workspace/local/session-state.md` before a wave starts and after it ends so a compaction mid-run loses nothing.
 
 - Schema, validation rules and the `plan.md` contract: [references/plan-schema.md](references/plan-schema.md)
 - Worked example: [references/plan-example.json](references/plan-example.json)
@@ -59,20 +59,7 @@ A step is `parallel: true` only if it does not write a file another parallel ste
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

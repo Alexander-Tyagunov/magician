@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Notification(agent_completed|agent_needs_input) — OPT-IN desktop notification when a background
-# session finishes or starts waiting for input. Off unless the user enables the
+# Notification(agent_completed|agent_needs_input|plugin_notification) — OPT-IN desktop notification
+# when a background session finishes or starts waiting for input, or a plugin posts a notice. Off unless the user enables the
 # "desktop_notifications" plugin option. Delivery is a terminal notification sequence that Claude
 # Code writes: OSC 9 (iTerm2, WezTerm, Windows Terminal, ConEmu), OSC 99 (Kitty) or OSC 777 (Ghostty,
 # Warp and every other terminal). Terminals without a notification escape (macOS Terminal.app, the
@@ -18,6 +18,7 @@ re_type='"notification_type"[[:space:]]*:[[:space:]]*"([a-z_]+)"'
 case ${BASH_REMATCH[1]} in
   agent_completed)   KIND="run complete" ;;
   agent_needs_input) KIND="needs your input" ;;
+  plugin_notification) KIND="plugin notice" ;;
   *) exit 0 ;;
 esac
 

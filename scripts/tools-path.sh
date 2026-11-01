@@ -19,9 +19,15 @@
 #     (PATH can't carry it), is refused with a note on stderr. The skills then use the full path.
 #     Windows paths (Git Bash) are converted with cygpath first.
 #   * stdout stays empty. It only appends to the session env file and skips a line already there.
+#   * In a cloud session (CLAUDE_CODE_REMOTE=1) it writes nothing and says so on stderr: the
+#     bundled commands run by their full path only.
 LC_ALL=C
 
 magician_tools_path() (
+  if [ "${CLAUDE_CODE_REMOTE:-}" = 1 ]; then   # cloud session: no launchers; the commands run by full path only
+    printf 'magician: cloud session, no launchers written; bundled commands run by full path only\n' >&2
+    exit 0
+  fi
   [ -n "${CLAUDE_ENV_FILE:-}" ] || exit 0
   [ -n "${CLAUDE_PLUGIN_DATA:-}" ] || exit 0
   [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || exit 0

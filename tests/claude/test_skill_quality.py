@@ -36,6 +36,18 @@ MAX_SKILL_BODY_LINES = 500
 # The documented hard cap on a skill description (description + when_to_use combined).
 MAX_DESCRIPTION_CHARS = 1536
 
+# magician's own budget: descriptions sit in context every turn (and Codex truncates long ones), so
+# each stays a single "use when / not when" sentence pair; trigger-phrase lists live in the body
+# under "## When to use", which Claude reads only after selecting the skill.
+MAX_HOUSE_DESCRIPTION_CHARS = 250
+MAX_TOTAL_DESCRIPTION_CHARS = 5000
+
+# The 8-field Obstacles block is canonical in lore/obstacles.md only; a skill or agent carries a
+# two-line pointer with the field names, never the pasted fence (it is re-injected after
+# compaction per skill, so one copy per file was ~230 tokens paid dozens of times).
+OBSTACLE_FIELDS = ("STATUS", "OBSTACLE", "BLOCKER", "SEVERITY", "WORKAROUND", "RECURRENCE", "SCOPE", "NEXT")
+OBSTACLE_FENCE_LINE = re.compile(r"(?m)^(?:OBSTACLE|BLOCKER|WORKAROUND|RECURRENCE):")
+
 # High-signal time-sensitive phrasing. A skill/agent body is a standing instruction the model
 # follows confidently; a dated claim ("as of <date>", "currently") silently goes wrong once it
 # ages. Domain words that are genuinely timeless ("recently added deps" as a review heuristic) are
@@ -100,6 +112,43 @@ class SkillQualityTests(unittest.TestCase):
             with self.subTest(skill=path.parent.name):
                 self.assertLessEqual(len(desc), MAX_DESCRIPTION_CHARS,
                                      f"{path.parent.name}: description exceeds {MAX_DESCRIPTION_CHARS} chars")
+
+    def test_skill_descriptions_within_house_budget(self) -> None:
+        """Every description is injected every turn: keep each under 300 chars and all of them under
+        5,000 combined. Move trigger-phrase lists into the body ("## When to use")."""
+        total = 0
+        for path in skill_files():
+            fields, _ = read_frontmatter(path)
+            desc = fields.get("description", "")
+            total += len(desc)
+            with self.subTest(skill=path.parent.name):
+                self.assertLessEqual(len(desc), MAX_HOUSE_DESCRIPTION_CHARS,
+                                     f"{path.parent.name}: description is {len(desc)} chars "
+                                     f"(> {MAX_HOUSE_DESCRIPTION_CHARS}); move trigger phrases to the body")
+        self.assertLessEqual(total, MAX_TOTAL_DESCRIPTION_CHARS,
+                             f"all skill descriptions total {total} chars (> {MAX_TOTAL_DESCRIPTION_CHARS})")
+
+    def test_obstacles_block_is_only_in_lore(self) -> None:
+        """The fenced 8-field Obstacles block lives in lore/obstacles.md alone. A skill or agent that
+        pastes it (a fenced line starting `OBSTACLE:` / `BLOCKER:` ...) pays ~230 tokens per load and
+        drifts from the canonical shape; it must carry the pointer plus the field names instead."""
+        producers = []
+        for path in skill_files() + agent_files():
+            _, body = read_frontmatter(path)
+            name = path.parent.name if path.name == "SKILL.md" else path.stem
+            fenced = "\n".join(m.group(0) for m in re.finditer(r"(?ms)^[ \t]*(```|~~~).*?\1", body))
+            with self.subTest(component=name):
+                self.assertIsNone(OBSTACLE_FENCE_LINE.search(fenced),
+                                  f"{name}: pastes the Obstacles fence; point to lore/obstacles.md instead")
+            if re.search(r"return (?:the|an) Obstacles block", body):
+                producers.append((name, body))
+        # A pointer without the field names strands a dispatched unit that never read the lore.
+        for name, body in producers:
+            with self.subTest(component=name):
+                self.assertIn("lore/obstacles.md", body, f"{name}: Obstacles pointer must link the lore")
+                missing = [f for f in OBSTACLE_FIELDS if f not in body]
+                self.assertFalse(missing, f"{name}: Obstacles pointer lacks field names {missing}")
+        self.assertGreaterEqual(len(producers), 15, "most skills return the Obstacles block from the lore")
 
     def test_no_time_sensitive_prose_in_skills_or_agents(self) -> None:
         """A skill/agent body is a standing instruction. A point-in-time claim ("as of <date>",

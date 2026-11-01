@@ -1,6 +1,6 @@
 ---
 name: confluence
-description: Work with Confluence over its REST API — "check/read/open confluence", "search confluence", "summarize this confluence page", "find the X doc/page", "the X page/space", "create/update a confluence page", "comment on a page", "add a label". Any read/search/create/update on Confluence pages, including references to a remembered space, page, or doc. Uses the bundled `confluence` CLI (Confluence REST over HTTPS).
+description: Confluence via the bundled `confluence` CLI — read, search (CQL), summarize, create/update pages, comment, label. Use for any Confluence page or space request, incl. a remembered space.
 allowed-tools: Read, AskUserQuestion, Bash(confluence whoami), Bash(confluence get *), Bash(confluence search *), Bash(confluence cql *), Bash(confluence children *), Bash(confluence comments *), Bash(confluence raw GET *), Edit(~/.claude/plugins/data/magician-*/confluence-memory.md)
 argument-hint: "[page URL/id · 'search …' · space · 'create …' · setup]"
 ---
@@ -17,6 +17,10 @@ This skill uses the bundled `confluence` CLI. If the user prefers another instal
 - **Content formats (storage / wiki), macros** → [authoring.md](authoring.md)
 - **First-time setup (`/plugin configure magician`, then a new session)** → [setup.md](setup.md)
 - **The user's spaces & known pages** → resolution memory (see *Memory*)
+
+## When to use
+
+Trigger phrases: "check/read/open confluence", "search confluence", "summarize this confluence page", "find the X doc/page", "the X page/space", "create/update a confluence page", "comment on a page", "add a label". Any read/search/create/update on Confluence pages. Not for Jira issues (`/jira`).
 
 ## Phase 0 — Check access & opt-out
 
@@ -64,20 +68,7 @@ Read it to resolve a named doc/space/shorthand to a page id; if absent, search. 
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

@@ -1,7 +1,8 @@
 ---
 name: ward
 description: TDD engine and enforcer — red/green/refactor, one behavior at a time. Use while implementing any feature or bugfix, or to execute a specific blueprint task with TDD.
-allowed-tools: Read, Grep, Glob
+effort: medium
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *)
 argument-hint: "[behavior to implement | task <N>]"
 ---
 
@@ -15,13 +16,13 @@ Before implementing, discover and read the repo's own standards — `CLAUDE.md`,
 
 ## Effort
 
-Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task (your model's deepest level — `xhigh`, or `max` where unsupported — only for a genuinely hard multi-layer one). See [lore/models.md](../../lore/models.md).
+Scale `/effort` to task size: low for a one-line fix, medium for normal work, high for a complex multi-behavior task (`xhigh` only for a genuinely hard multi-layer one; `max` is session-only and an opt-in for frontier problems). Across a run: `medium` for implementation turns, `high` for certify/review/security turns; on Bedrock/Vertex/gateways hold one level (an effort change drops the cache there). See [lore/models.md](../../lore/models.md).
 
 The failing test *is* the verification. Don't add a self-review step after green — re-reading your own diff to confirm it is redundant on current models. Let RED → GREEN → REFACTOR and [/certify](../certify/SKILL.md) carry the proof. See [lore/model-behavior.md](../../lore/model-behavior.md).
 
 ## Autonomy — approve the plan, then run
 
-Once the spec is settled — the failing test you can write, or the plan task in `.workspace/shared/plans/` — run the remaining phases (RED → GREEN → REFACTOR and the per-task steps) autonomously: don't stop to ask the owner between phases before reading `CLAUDE.md`/standards, searching, `kg query`/`blast`, running the tests, or read-only git (`git status`, diff). This skill pre-approves only Read/Grep/Glob, because TDD edits arbitrary source and no honest path limit exists: `kg` lookups, test runs, and edits go through Claude Code's normal permission prompt unless the user runs in auto mode or approves them. Re-gate only on real side effects — the per-task `git add`/`commit`/`push`. Beyond that, pause only for genuine spec ambiguity (the "cannot write the test first" case below). See [lore/autonomy.md](../../lore/autonomy.md).
+Once the spec is settled — the failing test you can write, or the plan task in `.workspace/shared/plans/` — run the remaining phases (RED → GREEN → REFACTOR and the per-task steps) autonomously: don't stop to ask the owner between phases before reading `CLAUDE.md`/standards, searching, `kg query`/`blast`, running the tests, or read-only git (`git status`, diff). This skill pre-approves only reads and read-only searches (Read, Grep, Glob and the embedded `ugrep`/`bfs`/`rg`/`grep`/`find` commands), because TDD edits arbitrary source and no honest path limit exists: `kg` lookups, test runs, and edits go through Claude Code's normal permission prompt unless the user runs in auto mode or approves them. Re-gate only on real side effects — the per-task `git add`/`commit`/`push`. Beyond that, pause only for genuine spec ambiguity (the "cannot write the test first" case below). See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Two modes
 
@@ -62,24 +63,11 @@ After the behavior(s) for the task are green and refactored:
 1. Run the project's **formatter + linter** (the ones CI/review actually use) and type-check — **fix style/lint before committing.** A convention the reviewer or `code-review.md` would flag (e.g. async/await vs `.then`) is a failing gate, not a post-review fixup ([lore/code-standards.md](../../lore/code-standards.md)).
 2. Run the full test suite — no regressions.
 3. Commit with a conventional commit message.
-4. Mark the task complete in the plan file (`- [ ]` → `- [x]`). In a plan folder, tick the boxes in `plan.md` only; `plan.json` carries no progress and its `version` is not bumped for this.
+4. Mark the task complete in the plan file (`- [ ]` → `- [x]`). In a plan folder, tick the boxes in `plan.md` only; `plan.json` carries no progress and its `version` is not bumped for this. The plan file is the checklist — Task tools (TaskCreate/TodoWrite) are absent on current models unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` — and `.workspace/local/session-state.md` is the compaction-proof state: write it before you start a multi-task run and after each task lands.
 
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

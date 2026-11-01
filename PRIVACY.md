@@ -14,9 +14,11 @@ magician is open-source software that runs on your own computer. The author runs
 - git metadata for the current project: branch, recent commits and the names of changed files.
 - The records it saved in earlier sessions, listed below.
 - When you run `/chronicle status` or ask for a context report, the `ctx` command reads the current session's transcript file for its token counts and model name only, and stores nothing from it.
-- When `/sentinel` runs its local scan, the `magician-scan` command reads every file in the folder, dotenv files included. For each match it prints the file, the line and a short snippet into the conversation. For credential and private-key matches the snippet shows only the key name, never the value.
+- When `/sentinel` runs its local scan, the `magician-scan` command reads every file in the folder, dotenv files included. For each match it prints the file, the line and a short snippet into the conversation. For credential, key and private-key matches, including keys found in Dockerfiles, docker-compose files, LiteLLM configuration and unpacked mobile bundles, the snippet shows only the key name, never the value.
+- When one of magician's own agents finishes, the `subagent-stop.sh` hook reads the last 4 KiB of that agent's transcript file, named by the hook event, to look for a line that starts with `STATUS: BLOCKED` or `STATUS: DEGRADED`. It keeps the rest of that one line, at most 1 KB with control characters removed, in `.workspace/local/obstacles.jsonl` in your project, and nothing else from the transcript. This is the one hook that reads a transcript; it runs only in a project that has a `.workspace/` folder.
+- Hook events that carry a model name (`PreModelSwitch`, `PostModelSwitch`) or a compaction trigger: the hooks read those fields and nothing else from the event.
 
-magician does not store the text of your prompts, Claude's replies or your conversation transcripts.
+magician does not store the text of your prompts, Claude's replies or your conversation transcripts, apart from the one status line described above.
 
 ## What magician stores on your computer
 
@@ -32,6 +34,9 @@ The plugin data folder is the folder Claude Code gives each plugin, usually `~/.
 | Same folder | A short-lived cache of Jira and Confluence responses, reused for 30 seconds and replaced by later requests, and the time of the last request, used for pacing | Until you uninstall |
 | Same folder | One launcher per bundled command in a `tools/` folder, in a subfolder per installed version: a two-line script that runs the command from the installed plugin, with no personal data | Rewritten each session; a version's subfolder is deleted once that version is no longer installed, the rest when you uninstall |
 | Same folder | Small marker files, such as a note that a one-time or weekly message was shown | Until you uninstall |
+| Same folder | Per project, the detected stack (archetype, technology names, log SDK names) with the git commit and the manifest file sizes it was read at, so the next session can skip the detection | Until the next detection or uninstall |
+| Same folder | With `auto_format` on, one file per formatted file path holding the time of the last format (the path itself is stored as a checksum) | One hour |
+| `.workspace/local/` in your projects | `obstacles.jsonl`, one line per blocked or degraded magician agent run (time, agent name, status, the status line's text), and `session-state.md`, the running state the planning and building skills write so a compaction loses nothing | Until you delete them |
 | `~/.claude/magician/` | Your magician preferences (status line, voice and lore settings), a copy of the status line renderer, and the local code index for repositories you index, including a local socket file while the optional index helper runs | Until you delete them |
 | `~/.claude/magician/status/` | Per-session status line markers such as the active skill name, written only while the status line is on | 7 days |
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups of your Claude Code settings, taken before `magician-ui` changes them, readable only by you | The newest 3 |
