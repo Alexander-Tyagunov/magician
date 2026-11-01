@@ -12,15 +12,23 @@ documents every consumer reads, so a revision can never leave them out of sync:
 Subcommands (one clean command per call, so one `Bash(plan-render *)` allow rule covers all):
   plan-render check <plan.json>                      validate; exit 2 with one line per violation
   plan-render md    <plan.json> [-o plan.md]         render plan.md (stdout without -o)
-  plan-render html  <plan.json> [-o plan.html] [--theme light|dark|auto] [--static] [--mermaid]
+  plan-render html  <plan.json> [-o plan.html] [--theme light|dark|auto] [--transport auto|local|artifact|static]
+                                                     [--static] [--mermaid]
+  plan-render workflow <plan.json> [-o plan.workflow.js]   a Claude Code Workflow script: one phase per
+                                                     wave, parallel() for the parallel steps, agent() per
+                                                     task with the bounded return schema (deferred omitted)
   plan-render diff  <a.json> <b.json>                JSON summary: changed fields per step id,
                                                      added / removed steps, changed plan fields
-  plan-render all   <plan.json>                      check, then plan.md + plan.html next to the json
-                                                     and history/plan.v<version>.json
+  plan-render all   <plan.json>                      check, then plan.md + plan.html + plan.workflow.js
+                                                     next to the json and history/plan.v<version>.json
 
-Output is deterministic: the same JSON gives byte-identical plan.md and plan.html (no timestamps).
-The page carries a Content-Security-Policy that forbids every remote load; nothing is fetched.
-`--static` pins the page to static review mode even when a companion server injects live mode.
+Output is deterministic: the same JSON gives byte-identical plan.md, plan.html and plan.workflow.js
+(no timestamps). The page carries a Content-Security-Policy that forbids every remote load; nothing
+is fetched. `--transport` picks how the page's review toolbar reaches the session: `local` (the
+companion server injects window.__MAGICIAN_LIVE; events are POSTed, state polled and streamed),
+`artifact` (the page runs as a Claude Artifact and uses its `db` capability), `static` (every send
+composes a chat line) or `auto` (default: local when injected, else artifact when the host offers
+`claude.use`, else static). `--static` is `--transport static`.
 `--mermaid` draws the wave graph with `mmdc` when it is on PATH (opt-in; output then depends on it).
 """
 from __future__ import annotations
@@ -1183,7 +1191,8 @@ def inline_json(obj) -> str:
         .replace("</", "<\\/").replace("<!--", "<\\u0021--")
 
 
-def render_html(plan: dict, theme: str = "auto", static: bool = False, mermaid: bool = False) -> str:
+def render_html(plan: dict, theme: str = "auto", static: bool = False, mermaid: bool = False,
+                transport: str = "auto") -> str:
     md = render_md(plan)
     graph = None
     if mermaid:
@@ -1193,7 +1202,7 @@ def render_html(plan: dict, theme: str = "auto", static: bool = False, mermaid: 
     md_html = md_to_html(md, graph)
     initial = "dark" if theme == "dark" else "light"
     slots = {"TITLE": esc(plan.get("title", "")), "THEME": initial, "THEME_MODE": theme,
-             "REVIEW_MODE": "static" if static else "auto", "CHARTS": charts_html(plan),
+             "REVIEW_MODE": "static" if static else transport, "CHARTS": charts_html(plan),
              "PLAN_MD_HTML": md_html, "PLAN_MD_RAW": inline_json(md), "PLAN_JSON": inline_json(plan)}
     # One pass over the template: a placeholder-shaped string inside plan text is never re-expanded.
     return re.sub(r"@@([A-Z_]+)@@", lambda m: slots[m.group(1)], TEMPLATE)
@@ -1342,6 +1351,8 @@ pre.cmd{background:var(--surface-2);border-radius:var(--r-ctl);padding:8px 12px;
 .revising{display:flex;gap:var(--sp3);align-items:center;background:var(--accent-bg);border-radius:var(--r-card);padding:var(--sp2) var(--sp3);margin-top:var(--sp3)}
 .banner{background:var(--warn-bg);color:var(--warn);border-radius:var(--r-card);padding:var(--sp2) var(--sp3);margin-top:var(--sp3);font-weight:600}
 .banner.edit{background:var(--accent-bg);color:var(--accent)}
+.changes{border-collapse:collapse;width:100%;font-size:.8125rem;margin-top:var(--sp2)}.changes th,.changes td{border:1px solid var(--line-soft);padding:4px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}.changes th{background:var(--surface-2)}.changes .add{color:var(--ok)}.changes .del{color:var(--stop)}
+.whatchanged p{margin:0 0 var(--sp2)}
 .sheet-bg{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:10;padding:var(--sp3)}
 .sheet-bg[open]{display:flex}
 .sheet{background:var(--surface);border-radius:var(--r-card);padding:var(--sp4);max-width:560px;width:100%;border:1px solid var(--line)}
@@ -1476,11 +1487,12 @@ footer{margin-top:var(--sp4);color:var(--ink-3);font-size:.875rem;display:flex;g
 </aside>
 <div class="sheet-bg" id="mddlg" role="dialog" aria-modal="true" aria-labelledby="md-title">
   <div class="sheet mdsheet">
-    <div class="mdhead"><div><h2 id="md-title">Plan document — plan.md</h2><p>What /orchestrate and /ward will execute. Rendered from the same plan.json as this page.</p></div><div class="row" style="margin:0"><button class="btn" id="md-copy">Copy plan</button><button class="btn primary" id="md-close">Close</button></div></div>
+    <div class="mdhead"><div><h2 id="md-title">Plan document — plan.md</h2><p>What /orchestrate and /ward will execute. Rendered from the same plan.json as this page.</p><p class="hint" id="mdnote"></p></div><div class="row" style="margin:0"><button class="btn" id="md-copy">Copy plan</button><button class="btn primary" id="md-close">Close</button></div></div>
     <div class="mdbody" id="mdbody" tabindex="0"></div>
   </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sr" id="livenote" role="status" aria-live="polite"></div>
 
 <div id="charts" aria-hidden="true">
 @@CHARTS@@
@@ -1497,21 +1509,39 @@ const PLAN=JSON.parse(document.getElementById('plan').textContent);
 const PLAN_MD=JSON.parse(document.getElementById('plan-md-raw').textContent);
 const $=s=>document.querySelector(s);
 const root=document.documentElement;
-const LIVE=(root.dataset.review!=='static'&&window.__MAGICIAN_LIVE)||null;
-PLAN.version=Number(PLAN.version)||1;
-const steps=PLAN.steps||[]; const byId=Object.fromEntries(steps.map(s=>[s.id,s]));
-steps.forEach(s=>{s.review=Object.assign({status:'pending',note:'',edited_text:''},s.review||{}); s.v=PLAN.version; s.history=Array.isArray(s.history)?s.history:[]; s.depends_on=s.depends_on||[]; s.touches=s.touches||[]; s.files=s.files||{}; s.red=s.red||{}; s.green=s.green||{}; s.verify=s.verify||[]; s.risk=s.risk||{}; s.effort=s.effort||{}});
-const ctx=PLAN.context||{}; const comps=(ctx.components||[]).filter(c=>c&&c.id);
-const edges=(ctx.edges||[]).map(e=>Array.isArray(e)?e:[e.from,e.to]).filter(e=>e[0]&&e[1]);
-const layers=[]; comps.forEach(c=>{if(!layers.includes(c.layer)) layers.push(c.layer)}); steps.forEach(s=>{if(s.layer&&!layers.includes(s.layer)) layers.push(s.layer)});
+/* Transport (data-review): auto | local | artifact | static.
+   local    — the companion server injected window.__MAGICIAN_LIVE: events are POSTed, state is polled / streamed.
+   artifact — the page runs as a Claude Artifact: events go to the artifact's db capability, state is a db document.
+   static   — nothing leaves the page; every send composes a chat line.
+   auto     — local when __MAGICIAN_LIVE is present, else artifact when window.claude.use exists, else static. */
+const MODE=root.dataset.review||'auto';
+const LIVE=((MODE==='auto'||MODE==='local')&&window.__MAGICIAN_LIVE&&typeof window.__MAGICIAN_LIVE==='object')?window.__MAGICIAN_LIVE:null;
+const ARTIFACT_HOST=!LIVE&&(MODE==='auto'||MODE==='artifact')&&!!(window.claude&&typeof window.claude.use==='function');
+const RENDERED_VERSION=Number(PLAN.version)||1;
+PLAN.version=RENDERED_VERSION;
+const steps=PLAN.steps||[]; const byId={};
+function normStep(s){s.review=Object.assign({status:'pending',note:'',edited_text:''},s.review||{}); if(!('v' in s)) s.v=PLAN.version; s.history=Array.isArray(s.history)?s.history:[]; s.depends_on=s.depends_on||[]; s.touches=s.touches||[]; s.files=s.files||{}; s.red=s.red||{}; s.green=s.green||{}; s.verify=s.verify||[]; s.risk=s.risk||{}; s.effort=s.effort||{}; return s}
+steps.forEach(normStep); steps.forEach(s=>{byId[s.id]=s});
+const ctx=PLAN.context||{}; const comps=[]; const edges=[]; const layers=[];
+function deriveContext(){comps.length=0; edges.length=0; layers.length=0; (ctx.components||[]).filter(c=>c&&c.id).forEach(c=>comps.push(c)); (ctx.edges||[]).map(e=>Array.isArray(e)?e:[e.from,e.to]).filter(e=>e[0]&&e[1]).forEach(e=>edges.push(e)); comps.forEach(c=>{if(!layers.includes(c.layer)) layers.push(c.layer)}); steps.forEach(s=>{if(s.layer&&!layers.includes(s.layer)) layers.push(s.layer)})}
+deriveContext();
 const tint=l=>'var(--l-'+((Math.max(0,layers.indexOf(l))%6)+1)+')';
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let cur=0, playing=false, speed=1, timer=null, dwellStart=0, dwellLen=0, raf=null;
 const items=[{kind:'context',id:'context'}].concat(steps);
-const n=items.length;
+let n=items.length;
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function num(x){return typeof x==='number'&&isFinite(x)?x:0}
 function minutes(){return steps.filter(s=>s.review.status!=='deferred').reduce((a,s)=>a+num(s.effort.minutes),0)}
+
+/* ---------- link state (shared by every transport) ---------- */
+const link={kind:ARTIFACT_HOST?'pending':(LIVE?'local':'static'),db:null,readOnly:false,stateVersion:0,etag:null,queue:Promise.resolve(),pending:[],lastHint:'',lastNotice:'',seen:{},cached:false,unsub:[]};
+const isLive=()=>link.kind!=='static';
+const REVISING_TYPES=['step.change_request','step.edit','plan.change_request'];
+const WAIT_MS=600000; /* 10 min without a revision ⇒ "waiting for Claude" */
+let revising=null;   /* {step, started, confirmed, waiting} while a revision is in flight */
+function liveUrl(p){const b=String(LIVE&&LIVE.base||''); return b?b.replace(/\/+$/,'')+'/'+p:p}
+function statusLine(){return link.kind==='local'?'Live · same session · events.jsonl':link.kind==='artifact'?'Artifact · database · events collection':link.kind==='pending'?'Artifact · connecting to the database…':'Static — this page cannot reach the session; reply in chat (e.g. “T7: use managed Redis”)'}
 
 /* ---------- header ---------- */
 function renderHeader(){
@@ -1519,13 +1549,16 @@ function renderHeader(){
   const par=steps.filter(s=>s.parallel).length;
   $('#counts').textContent=steps.length+' steps · '+(PLAN.waves||[]).length+' waves · '+par+' parallel · ~'+(Math.round(minutes()/60*10)/10)+' h';
   const settled=steps.every(s=>['approved','deferred','edited'].includes(s.review.status));
-  $('#approveplan').disabled=!(PLAN.status==='in_review'||PLAN.status==='draft'); $('#approveplan').title=settled?'Every step is reviewed':'Some steps are not reviewed yet — you will be asked to confirm';
+  $('#approveplan').disabled=!(PLAN.status==='in_review'||PLAN.status==='draft')||link.readOnly; $('#approveplan').title=settled?'Every step is reviewed':'Some steps are not reviewed yet — you will be asked to confirm';
+  $('#reject').disabled=link.readOnly||PLAN.status==='approved'||PLAN.status==='rejected';
   const ps=$('#planstatus'); ps.textContent=String(PLAN.status||'').replace('_',' ');
   const tally={}; steps.forEach(s=>{tally[s.review.status]=(tally[s.review.status]||0)+1});
   $('#tally').textContent=['approved','edited','deferred','changed','revising','pending'].filter(k=>tally[k]).map(k=>tally[k]+' '+k).join(' · ')||'no steps';
   ps.className='chip '+(PLAN.status==='approved'?'ok':PLAN.status==='rejected'?'stop':'');
   $('#sources').textContent=(PLAN.sources||[]).map(s=>s.id+' '+s.label).join(' · ')||'—';
-  $('#modenote').textContent=(LIVE?'Live · same session · events.jsonl':'Static page — review marks stay in this tab; reply in chat to change the plan')+' · Version history: '+Array.from({length:PLAN.version},(_,k)=>'v'+(k+1)).join(', ');
+  $('#modenote').textContent=(isLive()?statusLine():'Static page — review marks stay in this tab; reply in chat to change the plan')+(link.readOnly?' · read-only':'')+' · Version history: '+Array.from({length:PLAN.version},(_,k)=>'v'+(k+1)).join(', ');
+  $('#helperstatus').textContent=statusLine(); $('#helperlink').classList.toggle('live',link.kind==='local'||link.kind==='artifact');
+  $('#helpersend').disabled=link.readOnly; $('#helpersend').textContent=isLive()?'Send':'Copy chat line';
 }
 
 /* ---------- timeline ---------- */
@@ -1569,19 +1602,22 @@ function updateMap(){
 function list(a){return a&&a.length?'<ul>'+a.map(x=>'<li class="mono">'+esc(x)+'</li>').join('')+'</ul>':'<span class="mono dim">—</span>'}
 function diffHtml(d){return '<pre class="diff mono">'+String(d).split('\n').map(l=>l.startsWith('+')?'<span class="add">'+esc(l)+'</span>':l.startsWith('-')?'<span class="del">'+esc(l)+'</span>':esc(l)).join('\n')+'</pre>'}
 function statusChip(s){const m={pending:['','pending'],approved:['ok','approved ✓'],deferred:['warn','deferred ⏸'],edited:['accent','edited by you'],changed:['warn','changed — re-review'],revising:['accent','revising…']}; const [c,t]=m[s.review.status]||['',s.review.status]; return '<span class="chip '+c+'">'+esc(t)+'</span>'}
+function elapsedText(){const ms=revising?Math.max(0,Date.now()-revising.started):0; const s=Math.floor(ms/1000); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 function renderDetail(){
-  const d=$('#detailbody'); const it=items[cur];
+  const d=$('#detailbody'); const it=items[cur]; const card=$('#detail');
   if(cur===0){
+    card.setAttribute('aria-busy','false');
     d.innerHTML='<div class="chips"><span class="chip">context</span><span class="chip">step 0</span></div><h2 aria-live="polite">What exists today, and what this plan changes</h2><p>'+esc(ctx.summary||'')+'</p>'
     +'<dl class="kv"><dt>Spec</dt><dd class="mono">'+esc(PLAN.spec||'—')+'</dd>'+(ctx.stack&&ctx.stack.length?'<dt>Stack</dt><dd>'+esc(ctx.stack.join(', '))+'</dd>':'')+'<dt>Constraints</dt><dd>'+list(PLAN.constraints||[])+'</dd><dt>Waves</dt><dd>'+list((PLAN.waves||[]).map(w=>w.id+' '+(w.title||'')+' — '+(w.steps||[]).join(', ')))+'</dd></dl>'
-    +'<p class="dim">Press <span class="kbd">Space</span> or Play to walk the steps. Each step has a review toolbar'+(LIVE?'; Request change sends your text to the Claude session.':'; this page is static, so Request change composes a chat line you paste into the session.')+'</p>';
+    +'<p class="dim">Press <span class="kbd">Space</span> or Play to walk the steps. Each step has a review toolbar'+(isLive()?'; Request change sends your text to the Claude session.':'; this page is static, so Request change composes a chat line you paste into the session.')+'</p>';
   } else {
     const s=it; const deps=s.depends_on.length?s.depends_on.map(x=>'<span class="chip">'+esc(x)+'</span>').join(' '):'<span class="chip">none</span>';
     const lvl=s.risk.level||'low'; const risk='<span class="chip '+(lvl==='high'?'stop':lvl==='medium'?'warn':'ok')+'">'+esc(lvl)+'</span> '+esc(s.risk.note||'');
-    const busy=s.review.status==='revising'; const last=s.history[s.history.length-1];
-    d.innerHTML='<div class="chips"><span class="chip">'+esc(s.id)+'</span><span class="chip">'+esc(s.kind)+'</span><span class="chip" style="background:'+tint(s.layer)+'">'+esc(s.layer)+'</span><span class="chip">'+(s.parallel?'parallel':'sequential')+'</span>'+(s.v>1?'<span class="chip accent">v'+s.v+'</span>':'')+'</div>'
+    const busy=s.review.status==='revising'; const last=s.history[s.history.length-1]; const waiting=busy&&revising&&revising.waiting; const off=busy||link.readOnly;
+    card.setAttribute('aria-busy',busy?'true':'false');
+    d.innerHTML='<div class="chips"><span class="chip">'+esc(s.id)+'</span><span class="chip">'+esc(s.kind)+'</span><span class="chip" style="background:'+tint(s.layer)+'">'+esc(s.layer)+'</span><span class="chip">'+(s.parallel?'parallel':'sequential')+'</span>'+(s.v>1?'<span class="chip accent" data-badge="version">v'+esc(s.v)+'</span>':'')+'</div>'
     +'<h2 aria-live="polite">'+esc(s.title)+'</h2><p>'+esc(s.intent)+'</p>'
-    +(busy?'<div class="revising" aria-live="polite"><svg class="ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16"/><circle class="arc" cx="20" cy="20" r="16"/></svg><div><b>Claude is revising '+esc(s.id)+'</b><br><span class="mono" id="elapsed">00:00</span> · rewriting the step, re-rendering plan.md + plan.html</div></div>':'')
+    +(busy?(waiting?'<div class="banner" role="status" aria-live="polite">Waiting for Claude — check the session (no revision for 10 min). The request for '+esc(s.id)+' was sent; the step updates here when the plan is rebuilt.</div>':'<div class="revising" role="status" aria-live="polite"><svg class="ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16"/><circle class="arc" cx="20" cy="20" r="16"/></svg><div><b>Claude is revising '+esc(s.id)+'</b><br><span class="mono" id="elapsed">'+elapsedText()+'</span> · rewriting the step, re-rendering plan.md + plan.html</div></div>'):'')
     +(s.review.status==='changed'?'<div class="banner">Changed in v'+(last&&Number(last.v)||s.v)+': '+esc(last?(last.summary||('fields changed: '+(last.changed||[]).join(', '))):'')+' — review and approve again.</div>':'')
     +(s.review.status==='edited'?'<div class="banner edit">Reviewer edit carried verbatim into plan.md: “'+esc(s.review.edited_text||s.review.note)+'”</div>':'')
     +'<dl class="kv"><dt>Create</dt><dd>'+list(s.files.create)+'</dd><dt>Modify</dt><dd>'+list(s.files.modify)+'</dd><dt>Tests</dt><dd>'+list(s.files.test)+'</dd>'
@@ -1590,10 +1626,10 @@ function renderDetail(){
     +'<dt>Verify</dt><dd>'+s.verify.map(v=>'<pre class="cmd mono">$ '+esc(v)+'</pre>').join('')+'</dd>'
     +'<dt>Risk</dt><dd>'+risk+'</dd><dt>Effort</dt><dd>'+num(s.effort.minutes)+' min</dd><dt>Depends on</dt><dd>'+deps+'</dd><dt>Touches</dt><dd>'+esc(s.touches.join(', ')||'—')+'</dd></dl>'
     +'<div class="toolbar" role="group" aria-label="Review '+esc(s.id)+'">'
-    +'<button class="btn'+(s.review.status==='approved'?' on':'')+'" type="button" data-act="approve" aria-pressed="'+(s.review.status==='approved')+'"'+(busy?' disabled':'')+'>✓ Approve</button>'
-    +'<button class="btn" type="button" data-act="change"'+(busy?' disabled':'')+'>✎ Request change</button>'
-    +'<button class="btn" type="button" data-act="edit"'+(busy?' disabled':'')+'>✏ Edit</button>'
-    +'<button class="btn" type="button" data-act="defer"'+(busy?' disabled':'')+'>'+(s.review.status==='deferred'?'▶ Un-defer':'⏸ Defer')+'</button>'
+    +'<button class="btn'+(s.review.status==='approved'?' on':'')+'" type="button" data-act="approve" aria-pressed="'+(s.review.status==='approved')+'"'+(off?' disabled':'')+'>✓ Approve</button>'
+    +'<button class="btn" type="button" data-act="change"'+(off?' disabled':'')+'>✎ Request change</button>'
+    +'<button class="btn" type="button" data-act="edit"'+(off?' disabled':'')+'>✏ Edit</button>'
+    +'<button class="btn" type="button" data-act="defer"'+(off?' disabled':'')+'>'+(s.review.status==='deferred'?'▶ Un-defer':'⏸ Defer')+'</button>'
     +'<span class="status">'+statusChip(s)+'</span></div>';
     d.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>act(b.dataset.act));
   }
@@ -1602,6 +1638,11 @@ function renderDetail(){
 }
 function chart(key){const c=document.querySelector('#charts .chart[data-chart="'+key.replace(/"/g,'')+'"]'); if(!c) return null; const el=c.cloneNode(true); const id=cur>0?items[cur].id:null; const svg=el.querySelector('svg'); const t=el.querySelector('title'); if(svg&&t){svg.setAttribute('aria-label',t.textContent); svg.removeAttribute('aria-labelledby')} el.querySelectorAll('[id]').forEach(x=>x.removeAttribute('id')); el.querySelectorAll('[data-step]').forEach(x=>{x.classList.toggle('cur',x.dataset.step===id); x.classList.toggle('deferred',!!byId[x.dataset.step]&&byId[x.dataset.step].review.status==='deferred')}); return el.outerHTML}
 function block(title,inner){return inner?'<div class="block">'+(title?'<h3>'+esc(title)+'</h3>':'')+inner+'</div>':''}
+function show(v){if(v==null) return '—'; if(typeof v==='string') return v; return JSON.stringify(v)}
+function changedHtml(h){
+  const rows=(h.changed||[]).map(f=>'<tr><th scope="row" class="mono">'+esc(f)+'</th><td><span class="del">'+esc(show(h.before?h.before[f]:undefined))+'</span></td><td><span class="add">'+esc(show(h.after?h.after[f]:undefined))+'</span></td></tr>').join('');
+  return '<div class="whatchanged" data-from="'+esc(Number(h.v)-1)+'" data-to="'+esc(h.v)+'">'+(h.summary?'<p>'+esc(h.summary)+'</p>':'')+(rows?'<table class="changes"><thead><tr><th>Field</th><th>v'+esc(Number(h.v)-1)+'</th><th>v'+esc(h.v)+'</th></tr></thead><tbody>'+rows+'</tbody></table>':'')+(typeof h.diff==='string'&&h.diff?diffHtml(h.diff):'')+'</div>';
+}
 function renderSide(){
   const sd=$('#sidebody'); const it=items[cur]; let h='';
   if(cur===0){
@@ -1612,10 +1653,10 @@ function renderSide(){
     h+=block('',chart('risk_matrix'));
   } else {
     const s=it;
+    const last=s.history[s.history.length-1]; if(last&&(last.before||(typeof last.diff==='string'&&last.diff))) h+=block('What changed (v'+(Number(last.v)-1)+' → v'+Number(last.v)+')',changedHtml(last));
     if(s.diff_sketch) h+=block('Diff sketch',diffHtml(s.diff_sketch));
     if(s.kind==='verify'||s.layer==='tests') h+=block('RED → GREEN cycle','<div class="inset"><svg viewBox="0 0 320 90" role="img" aria-label="Red, green, refactor cycle"><title>RED → GREEN → REFACTOR</title>'+[['RED','var(--stop)',30],['GREEN','var(--ok)',160],['REFACTOR','var(--accent)',290]].map(([t,c,x])=>'<circle cx="'+x+'" cy="40" r="26" fill="none" stroke="'+c+'" stroke-width="3"/><text x="'+x+'" y="44" text-anchor="middle" style="fill:'+c+'">'+t+'</text>').join('')+'<path d="M58,40 H132 M188,40 H262" stroke="var(--line)" stroke-width="2"/><path d="M290,66 Q160,110 30,66" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 3"/></svg><p class="mono dim" style="margin:4px 0 0">write the failing test · make it pass · simplify with tests green</p></div>');
     h+=block('Step infographic',chart('step:'+s.id));
-    const last=s.history[s.history.length-1]; if(last&&typeof last.diff==='string'&&last.diff) h+=block('What changed (v'+(Number(last.v)-1)+' → v'+Number(last.v)+')',diffHtml(last.diff));
     h+=block(s.kind==='rollout'?'Rollout order':'Where this step sits',chart('critical_path'));
     if(!h) h='<p class="dim">No infographic for this step — nothing to chart.</p>';
   }
@@ -1644,53 +1685,171 @@ $('#sheet').addEventListener('keydown',e=>{if(e.key==='Escape') $('#sheet-cancel
 function toast(m){const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3200)}
 function copyText(text,label){const done=()=>toast((label||'Copied')+' — paste it into the Claude session'); const fail=()=>{toast('Clipboard refused by the browser — copy the line from the helper panel'); helperSay('sys',text)}; if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fail)} else fail()}
 
-/* ---------- events: live (companion) or static (chat line) ---------- */
+/* ---------- events: §6.2 schema; sent by the transport, or composed as a chat line ---------- */
 const log=[];
+function describe(ev){const t=ev.type; return t==='step.review'?ev.step+' → '+ev.status:t==='step.change_request'?'['+ev.step+'] '+ev.text:t==='plan.change_request'?'[plan] '+ev.text:t==='step.edit'?'['+ev.step+'] edit '+Object.keys(ev.fields||{}).join(', ')+': '+Object.values(ev.fields||{}).join(' ').slice(0,200):t==='plan.approved'?'plan v'+ev.v+' approved ('+Object.keys(ev.steps||{}).length+' steps)':t==='plan.rejected'?'plan v'+ev.v+' rejected: '+ev.reason:t}
 function emit(ev){
   ev.id=log.length+1; ev.v=PLAN.version; log.push(ev);
-  if(LIVE){ev.ts=new Date().toISOString(); fetch((LIVE.base||'')+'/events',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(ev)}).then(r=>{if(!r.ok) toast('The companion refused the event ('+r.status+')'); else if(ev.type==='step.change_request'||ev.type==='plan.change_request'||ev.type==='step.edit') startPolling(2000)},()=>toast('Could not reach the companion — reply in chat instead'))}
+  helperSay('you',describe(ev),ev.type);
+  if(!isLive()) return ev;
+  if(link.stateVersion>PLAN.version){helperSay('sys','Not sent — the plan moved to v'+link.stateVersion+' while you were reviewing ('+ev.type+' carried v'+ev.v+'); the new version is loading.'); return ev}
+  if(link.readOnly){helperSay('sys','Read-only view — '+ev.type+' was not sent.'); return ev}
+  ev.ts=new Date().toISOString();
+  const body=JSON.stringify(ev);
+  if(body.length>8192){helperSay('sys','Not sent — the event is over 8 KB; shorten the text.'); toast('Event too large (over 8 KB)'); return ev}
+  if(link.kind==='pending'){link.pending.push(ev); return ev}
+  if(link.kind==='local') sendLocal(ev,body); else sendArtifact(ev);
+  if(REVISING_TYPES.includes(ev.type)) beginRevising(ev.step||null);
   return ev;
 }
-let pollTimer=null;
-function startPolling(ms){if(!LIVE) return; clearTimeout(pollTimer); pollTimer=setTimeout(poll,ms); function poll(){fetch((LIVE.base||'')+'/state',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(st=>{if(st) applyState(st); const busy=steps.some(s=>s.review.status==='revising'); pollTimer=setTimeout(poll,busy?2000:10000)},()=>{pollTimer=setTimeout(poll,10000)})}}
+function sendLocal(ev,body){
+  fetch(liveUrl('events'),{method:'POST',headers:{'content-type':'application/json'},body}).then(r=>{
+    if(!r.ok){helperSay('sys','The companion refused '+ev.type+' ('+r.status+')'); toast('The companion refused the event ('+r.status+')'); if(REVISING_TYPES.includes(ev.type)&&revising&&!revising.confirmed){endRevising(); render()} startPolling(0); return}
+    return r.json().then(j=>{if(j&&j.id!=null) ev.server_id=j.id},()=>{}).then(()=>{if(REVISING_TYPES.includes(ev.type)) startPolling(2000)});
+  },()=>{helperSay('sys','Could not reach the companion — reply in chat instead'); toast('Could not reach the companion — reply in chat instead'); if(REVISING_TYPES.includes(ev.type)&&revising&&!revising.confirmed){endRevising(); render()}});
+}
+function sendArtifact(ev){
+  const doc=Object.assign({},ev);
+  link.queue=link.queue.then(()=>link.db.collection('events').add(doc)).then(ref=>{ev.server_id=ref.id},e=>{dbError(e,'send '+ev.type); if(REVISING_TYPES.includes(ev.type)&&revising&&!revising.confirmed){endRevising(); render()}});
+}
+function dbError(e,what){
+  const code=e&&typeof e.code==='string'?e.code:'unavailable';
+  if(code==='invalid_argument'||code==='transform_error') setReadOnly('This view cannot write to the artifact database ('+code+') — the controls are read-only; comment on the artifact instead.');
+  else if(code==='revoked'||code==='not_granted'||code==='capability_disabled'||code==='capability_removed') setReadOnly('The artifact database is not available in this view ('+code+') — read-only.');
+  else if(code==='quota_exceeded') helperSay('sys','The artifact database is full — '+String(e.message||'').slice(0,200)+'. Ask the owner to delete this artifact after the review.');
+  else helperSay('sys','Could not '+what+' ('+code+')'+(e&&e.message?': '+String(e.message).slice(0,200):''));
+}
+function setReadOnly(msg){if(!link.readOnly){link.readOnly=true; helperSay('sys',msg)} render()}
+
+/* ---------- revising indicator (§5.4) ---------- */
+function beginRevising(step,startedAt){
+  const s=step&&byId[step]; if(s) s.review.status='revising';
+  if(!revising||revising.step!==(step||'plan')) revising={step:step||'plan',started:isFinite(startedAt)?startedAt:Date.now(),confirmed:false,waiting:false};
+  if(isFinite(startedAt)){revising.started=startedAt; revising.confirmed=true}
+  setPlaying(false); render();
+}
+function endRevising(){if(!revising) return; const s=byId[revising.step]; if(s&&s.review.status==='revising') s.review.status='pending'; revising=null}
+setInterval(()=>{ if(!revising) return; const el=$('#elapsed'); if(el) el.textContent=elapsedText(); if(!revising.waiting&&Date.now()-revising.started>WAIT_MS){revising.waiting=true; helperSay('sys','Waiting for Claude — check the session (no revision for 10 min)'); render()} },1000);
+
+/* ---------- state (state.json / state document): the same shape on every transport ---------- */
 function applyState(st){
   if(!st||typeof st!=='object') return;
-  if(typeof st.version==='number'&&st.version!==PLAN.version){helperSay('claude','Plan v'+st.version+' is ready — reloading the page.'); location.reload(); return}
-  if(st.steps&&typeof st.steps==='object'){Object.keys(st.steps).forEach(id=>{const s=byId[id]; const v=st.steps[id]; if(!s||!v) return; const status=typeof v==='string'?v:v.status; if(status&&['pending','approved','deferred','edited','changed','revising'].includes(status)) s.review.status=status})}
-  if(st.hint) helperSay('claude',String(st.hint).slice(0,500));
-  if(st.notice) helperSay('sys',String(st.notice).slice(0,500));
+  const ver=Number(st.version)||0; if(ver) link.stateVersion=ver;
+  if(typeof st.status==='string'&&ver>=PLAN.version&&(!link.sentFinal||ver>PLAN.version||st.status==='approved'||st.status==='rejected')) PLAN.status=st.status;
+  const rv=st.revising&&typeof st.revising==='object'&&st.revising.step?st.revising:null;
+  if(st.steps&&typeof st.steps==='object'){Object.keys(st.steps).forEach(id=>{const s=byId[id]; const v=st.steps[id]; if(!s||v==null) return; const status=typeof v==='string'?v:(v.review||v.status); if(rv&&String(rv.step)===id) return; if(status==='revising'){beginRevising(id,revising&&revising.step===id?revising.started:Date.now()); return} if(revising&&!revising.confirmed&&revising.step===id) return; if(status&&['pending','approved','deferred','edited','changed'].includes(status)) s.review.status=status})}
+  if(Array.isArray(st.changed)) st.changed.forEach(id=>{const s=byId[id]; if(s&&s.review.status!=='deferred'&&s.review.status!=='revising') s.review.status='changed'});
+  if(rv){const t=Date.parse(rv.started_at); beginRevising(String(rv.step),isFinite(t)?t:undefined)}
+  else if(revising&&revising.confirmed&&ver<=PLAN.version){endRevising()}
+  if(typeof st.hint==='string'&&st.hint&&st.hint!==link.lastHint){link.lastHint=st.hint; helperSay('claude',st.hint.slice(0,500))}
+  if(typeof st.notice==='string'&&st.notice&&st.notice!==link.lastNotice){link.lastNotice=st.notice; helperSay('sys',st.notice.slice(0,500))}
+  if(Array.isArray(st.messages)) st.messages.forEach(m=>{if(!m||typeof m!=='object'||typeof m.text!=='string') return; const k=String(m.ts||'')+'|'+m.text; if(link.seen[k]) return; link.seen[k]=1; helperSay('claude',m.text.slice(0,2000))});
+  if(ver>PLAN.version) loadPlan(ver);
   render();
+}
+function loadPlan(ver){
+  if(link.kind==='local'){ if(link.loading===ver) return; link.loading=ver; fetch(liveUrl('plan.json'),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{link.loading=0; if(p) applyPlan(p); else helperSay('sys','plan.json v'+ver+' is announced but could not be loaded yet')},()=>{link.loading=0}) }
+  else if(link.kind==='artifact'&&link.planDoc&&Number(link.planDoc.version)>PLAN.version) applyPlan(link.planDoc);
+}
+/* per-step diff, same flattening and field order as `plan-render diff` (one level, sorted keys); review.* is
+   left out because the page holds its own review marks and a status flip is not a content change */
+function canon(v){if(Array.isArray(v)) return '['+v.map(canon).join(',')+']'; if(v&&typeof v==='object') return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}'; return JSON.stringify(v===undefined?null:v)}
+function flat(s){const o={}; Object.keys(s).forEach(k=>{if(k==='v'||k==='history'||k==='review') return; const v=s[k]; if(v&&typeof v==='object'&&!Array.isArray(v)) Object.keys(v).forEach(k2=>{o[k+'.'+k2]=v[k2]}); else o[k]=v}); return o}
+function stepDiff(a,b){const fa=flat(a),fb=flat(b); const keys=Object.keys(Object.assign({},fa,fb)).sort(); const changed=keys.filter(k=>canon(fa[k])!==canon(fb[k])); const before={},after={}; changed.forEach(k=>{before[k]=fa[k]; after[k]=fb[k]}); return {changed,before,after}}
+function applyPlan(np){
+  if(!np||typeof np!=='object'||!Array.isArray(np.steps)) return;
+  const nv=Number(np.version)||0; if(nv<=PLAN.version) return;
+  const prev=Object.assign({},byId); const changedIds=[]; const curId=cur>0?items[cur].id:null;
+  const fresh=np.steps.filter(s=>s&&typeof s==='object'&&s.id).map(s=>normStep(JSON.parse(JSON.stringify(s))));
+  fresh.forEach(s=>{const o=prev[s.id]; if(!o){s.v=nv; changedIds.push(s.id); s.history.push({v:nv,changed:['(new step)'],summary:'added in v'+nv}); return}
+    const d=stepDiff(o,s); const localMark=['approved','deferred','edited'].includes(o.review.status);
+    if(d.changed.length){s.v=nv; changedIds.push(s.id); s.history=o.history.concat([{v:nv,changed:d.changed,before:d.before,after:d.after}]); if(s.review.status!=='deferred') s.review.status='changed'}
+    else {s.v=o.v; s.history=o.history; if(s.review.status==='pending'&&localMark) s.review.status=o.review.status; if(o.review.status==='edited'&&s.review.status!=='deferred'){s.review.status='edited'; s.review.edited_text=o.review.edited_text; s.review.note=o.review.note}}});
+  const removed=Object.keys(prev).filter(id=>!fresh.some(s=>s.id===id));
+  Object.keys(np).forEach(k=>{if(k!=='steps'&&k!=='context') PLAN[k]=np[k]}); PLAN.version=nv;
+  Object.keys(ctx).forEach(k=>{delete ctx[k]}); Object.assign(ctx,np.context||{});
+  steps.length=0; fresh.forEach(s=>steps.push(s)); Object.keys(byId).forEach(k=>{delete byId[k]}); steps.forEach(s=>{byId[s.id]=s});
+  items.length=1; steps.forEach(s=>items.push(s)); n=items.length; deriveContext(); buildMap();
+  const rs=revising?revising.step:null; revising=null;
+  const target=rs&&byId[rs]?rs:(changedIds[0]||curId); cur=Math.max(0,items.findIndex(it=>it.id===target)); if(cur<0) cur=0;
+  helperSay('claude','Plan v'+nv+' landed'+(changedIds.length?' — changed: '+changedIds.join(', '):' — no step changed')+(removed.length?' · removed: '+removed.join(', '):'')+'. Review the changed steps again.');
+  toast('Plan v'+nv+' loaded'+(changedIds.length?' — '+changedIds.length+' step(s) changed':''));
+  const note=$('#mdnote'); if(note) note.textContent='The plan document below is the v'+RENDERED_VERSION+' render; the page is at v'+nv+'. Reload the page for the rebuilt document.';
+  setPlaying(false); render();
+}
+
+/* ---------- local transport: poll `state` (ETag), stream `events-stream`, fetch `plan.json` ---------- */
+let pollTimer=null, stream=null;
+function startPolling(ms){if(link.kind!=='local') return; clearTimeout(pollTimer); pollTimer=setTimeout(poll,ms)}
+function poll(){
+  const h={}; if(link.etag) h['if-none-match']=link.etag;
+  fetch(liveUrl('state'),{cache:'no-store',headers:h}).then(r=>{if(r.status===304||!r.ok) return null; link.etag=r.headers.get('etag'); return r.json()}).then(st=>{if(st) applyState(st); schedule()},()=>schedule());
+  function schedule(){clearTimeout(pollTimer); pollTimer=setTimeout(poll,revising?2000:10000)}
+}
+function openStream(){
+  if(typeof window.EventSource!=='function') return;
+  try{stream=new EventSource(liveUrl('events-stream'))}catch(e){return}
+  stream.onmessage=e=>{let o; try{o=JSON.parse(e.data)}catch(_){return} handleStream(o)};
+}
+function handleStream(o){
+  if(!o||typeof o!=='object') return;
+  if(o.state&&typeof o.state==='object'){applyState(o.state); return}
+  if(typeof o.type!=='string'){if('version' in o) applyState(o); return}
+  if(o.type==='state'){applyState(o.data||o); return}
+  const v=Number(o.v)||0;
+  if(v&&v<PLAN.version){helperSay('sys','Ignored a stale '+o.type+' (v'+v+'; the plan is at v'+PLAN.version+')'); return}
+  if(o.type==='plan.revising'){const t=Date.parse(o.started_at); beginRevising(String(o.step||''),isFinite(t)?t:undefined); startPolling(2000); return}
+  if(o.type==='plan.error'){helperSay('sys',String(o.message||'plan.error').slice(0,500)); startPolling(0); return}
+  if(o.type==='plan.revised'){helperSay('claude','Revised to v'+v+(Array.isArray(o.steps)&&o.steps.length?' — '+o.steps.join(', '):'')+(o.summary?': '+String(o.summary).slice(0,300):'')); if(v>PLAN.version) loadPlan(v); startPolling(0); return}
+  if(/^(plan|step)\./.test(o.type)) startPolling(0);
+}
+
+/* ---------- artifact transport: db capability (declared by the skill, not by this page) ---------- */
+function startArtifact(){
+  window.claude.use('db').then(db=>{
+    if(!db){link.kind='static'; link.pending.length=0; helperSay('sys','Artifact without a database — reply in chat'); render(); return}
+    link.db=db; link.kind='artifact'; render(); helperSay('sys','Connected to the artifact database — events go to the "events" collection; the session answers through state/current.');
+    let loaded=false; const timer=setTimeout(()=>{if(!loaded) helperSay('sys','The artifact database has not answered in 10 s — the review state may be out of date or not reachable yet')},10000);
+    const settle=()=>{if(!loaded){loaded=true; clearTimeout(timer)}};
+    link.unsub.push(db.doc('state/current').onSnapshot(snap=>{
+      if(snap.metadata&&snap.metadata.fromCache){if(!link.cached){link.cached=true; helperSay('sys','Showing a cached copy of the review state — it may be out of date until the store answers')}} else {settle(); if(link.cached){link.cached=false; helperSay('sys','Review state confirmed by the store')}}
+      if(!snap.exists){if(!link.cached&&!link.noState){link.noState=true; helperSay('sys','No review state yet — the session writes state/current when it wakes')} return}
+      link.noState=false; applyState(snap.data());
+    },e=>{settle(); dbError(e,'read the review state')}));
+    link.unsub.push(db.doc('plan/current').onSnapshot(snap=>{if(!snap.exists) return; const p=snap.data(); if(p&&typeof p==='object'){link.planDoc=p; if(Number(p.version)>PLAN.version) applyPlan(p)}},e=>dbError(e,'read the plan')));
+    const q=link.pending.splice(0); q.forEach(ev=>{sendArtifact(ev); if(REVISING_TYPES.includes(ev.type)) beginRevising(ev.step||null)});
+  },e=>{link.kind='static'; link.pending.length=0; helperSay('sys','Artifact without a database — reply in chat'); render()});
 }
 function chatLine(scope,text){return (scope==='plan'?'plan':scope)+': '+text.replace(/\s+/g,' ').trim()}
 
 /* ---------- review actions ---------- */
 function dependents(id){return steps.filter(s=>s.depends_on.includes(id)).map(s=>s.id)}
 function act(a){
-  if(cur===0) return; const s=items[cur]; if(s.review.status==='revising') return; setPlaying(false);
-  if(a==='approve'){s.review.status=s.review.status==='approved'?'pending':'approved'; emit({type:'step.review',step:s.id,status:s.review.status}); render(); toast(s.id+' '+s.review.status+(LIVE?'':' (kept in this tab)')); return}
+  if(cur===0) return; const s=items[cur]; if(s.review.status==='revising'||link.readOnly) return; setPlaying(false);
+  if(a==='approve'){s.review.status=s.review.status==='approved'?'pending':'approved'; emit({type:'step.review',step:s.id,status:s.review.status}); render(); toast(s.id+' '+s.review.status+(isLive()?'':' (kept in this tab)')); return}
   if(a==='defer'){ if(s.review.status==='deferred'){s.review.status='pending'; emit({type:'step.review',step:s.id,status:'pending'}); render(); return}
-    const deps=dependents(s.id); sheet({title:'Defer '+s.id+' to a later run?',text:(deps.length?'Dependents '+deps.join(', ')+' will be deferred too. ':'')+'The step stays in plan.md under “Deferred — not executed this run” and can be un-deferred.'+(LIVE?'':' This page is static: tell the session in chat, e.g. “'+s.id+': defer”.'),ok:'Defer',onok:()=>{[s.id,...deps].forEach(id=>{byId[id].review.status='deferred'; emit({type:'step.review',step:id,status:'deferred'})}); if(!LIVE) copyText(chatLine(s.id,'defer'+(deps.length?' (with '+deps.join(', ')+')':'')),'Chat line copied'); render()}}); return}
-  if(a==='edit'){sheet({title:'Edit '+s.id+' — intent',text:'Your text is carried verbatim into plan.md under “Reviewer edit”.'+(LIVE?' Claude may adjust dependents if a file list changes.':' This page is static: the edit is kept in this tab and copied as a chat line for the session.'),fields:'<label for="ed">Intent</label><textarea id="ed" maxlength="2000">'+esc(s.review.edited_text||s.intent)+'</textarea>',ok:'Save edit',onok:()=>{const t=$('#ed').value.trim(); if(!t) return false; s.review.edited_text=t; s.review.status='edited'; s.review.note=t.slice(0,80)+(t.length>80?'…':''); emit({type:'step.edit',step:s.id,fields:{intent:t}}); if(!LIVE) copyText(chatLine(s.id,'edit intent — '+t),'Chat line copied'); render()}}); return}
-  if(a==='change'){sheet({title:'Request a change to '+s.id,text:LIVE?'Claude will revise this step and any step that depends on it, then re-render plan.md and plan.html. You stay on this page.':'This page is static and cannot reach the session. Your request is copied as a chat line (“'+s.id+': …”) — paste it into the Claude session, which will revise the step and re-render both documents.',fields:'<label for="cr">Adapt this step like…</label><textarea id="cr" maxlength="2000" placeholder="e.g. use a managed Redis instead of self-hosted"></textarea><div class="hint">≤ 2,000 characters · sent as untrusted text · Enter sends, Shift+Enter for a new line</div>',ok:LIVE?'Send to Claude':'Copy chat line',onok:()=>{const t=$('#cr').value.trim(); if(!t) return false; helperSay('you','['+s.id+'] '+t); if(LIVE){emit({type:'step.change_request',step:s.id,text:t}); s.review.status='revising'; render()} else {copyText(chatLine(s.id,t),'Chat line copied')}}}); return}
+    const deps=dependents(s.id); sheet({title:'Defer '+s.id+' to a later run?',text:(deps.length?'Dependents '+deps.join(', ')+' will be deferred too. ':'')+'The step stays in plan.md under “Deferred — not executed this run” and can be un-deferred.'+(isLive()?'':' This page is static: tell the session in chat, e.g. “'+s.id+': defer”.'),ok:'Defer',onok:()=>{[s.id,...deps].forEach(id=>{byId[id].review.status='deferred'; emit({type:'step.review',step:id,status:'deferred'})}); if(!isLive()) copyText(chatLine(s.id,'defer'+(deps.length?' (with '+deps.join(', ')+')':'')),'Chat line copied'); render()}}); return}
+  if(a==='edit'){sheet({title:'Edit '+s.id+' — intent',text:'Your text is carried verbatim into plan.md under “Reviewer edit”.'+(isLive()?' Claude integrates the edit and may adjust dependents if a file list changes.':' This page is static: the edit is kept in this tab and copied as a chat line for the session.'),fields:'<label for="ed">Intent</label><textarea id="ed" maxlength="2000">'+esc(s.review.edited_text||s.intent)+'</textarea>',ok:'Save edit',onok:()=>{const t=$('#ed').value.trim(); if(!t) return false; s.review.edited_text=t; s.review.status='edited'; s.review.note=t.slice(0,80)+(t.length>80?'…':''); emit({type:'step.edit',step:s.id,fields:{intent:t}}); if(!isLive()) copyText(chatLine(s.id,'edit intent — '+t),'Chat line copied'); render()}}); return}
+  if(a==='change'){sheet({title:'Request a change to '+s.id,text:isLive()?'Claude will revise this step and any step that depends on it, then re-render plan.md and plan.html. You stay on this page.':'This page is static and cannot reach the session. Your request is copied as a chat line (“'+s.id+': …”) — paste it into the Claude session, which will revise the step and re-render both documents.',fields:'<label for="cr">Adapt this step like…</label><textarea id="cr" maxlength="2000" placeholder="e.g. use a managed Redis instead of self-hosted"></textarea><div class="hint">≤ 2,000 characters · sent as untrusted text · Enter sends, Shift+Enter for a new line</div>',ok:isLive()?'Send to Claude':'Copy chat line',onok:()=>{const t=$('#cr').value.trim(); if(!t) return false; if(isLive()){emit({type:'step.change_request',step:s.id,text:t}); render()} else {emit({type:'step.change_request',step:s.id,text:t}); copyText(chatLine(s.id,t),'Chat line copied')}}}); return}
 }
-function approvePlan(){const map={}; steps.forEach(s=>{if(['pending','changed'].includes(s.review.status)) s.review.status='approved'; map[s.id]=s.review.status}); emit({type:'plan.approved',steps:map}); PLAN.status='approved'; render(); const d=steps.filter(s=>s.review.status==='deferred').map(s=>s.id); const m='Plan v'+PLAN.version+' approved ('+(steps.length-d.length)+' of '+steps.length+' steps'+(d.length?'; '+d.join(', ')+' deferred':'')+').'; toast(m); helperSay(LIVE?'claude':'sys',m+(LIVE?' Claude continues to /orchestrate.':' Static page: tell the session in chat.')); if(!LIVE) copyText('plan: approved v'+PLAN.version+(d.length?' — defer '+d.join(', '):'')+(steps.some(s=>s.review.status==='edited')?' — edited: '+steps.filter(s=>s.review.status==='edited').map(s=>s.id+' ('+s.review.edited_text.replace(/\s+/g,' ').slice(0,200)+')').join('; '):''),'Approval line copied')}
+function approvePlan(){const map={}; steps.forEach(s=>{if(['pending','changed'].includes(s.review.status)) s.review.status='approved'; map[s.id]=s.review.status}); emit({type:'plan.approved',steps:map}); PLAN.status='approved'; link.sentFinal=true; render(); const d=steps.filter(s=>s.review.status==='deferred').map(s=>s.id); const m='Plan v'+PLAN.version+' approved ('+(steps.length-d.length)+' of '+steps.length+' steps'+(d.length?'; '+d.join(', ')+' deferred':'')+').'; toast(m); helperSay('sys',m+(isLive()?' The session continues to /orchestrate.':' Static page: tell the session in chat.')); if(!isLive()) copyText('plan: approved v'+PLAN.version+(d.length?' — defer '+d.join(', '):'')+(steps.some(s=>s.review.status==='edited')?' — edited: '+steps.filter(s=>s.review.status==='edited').map(s=>s.id+' ('+s.review.edited_text.replace(/\s+/g,' ').slice(0,200)+')').join('; '):''),'Approval line copied')}
 $('#approveplan').onclick=()=>{const open=steps.filter(s=>['pending','changed'].includes(s.review.status)); const busy=steps.some(s=>s.review.status==='revising'); if(busy){toast('A revision is in progress — wait for it to land');return} if(!open.length) return approvePlan(); sheet({title:'Approve plan v'+PLAN.version+'?',text:open.length+' of '+steps.length+' steps are not reviewed yet ('+open.map(s=>s.id).join(', ')+'). Approving the plan marks them approved; deferred steps stay deferred. Nothing runs until the session sees the approval.',ok:'Approve all and continue',onok:approvePlan})};
-$('#reject').onclick=()=>{sheet({title:'Reject plan v'+PLAN.version+'?',text:LIVE?'This archives the version to history/plan.v'+PLAN.version+'.rejected.json with your reason, writes a decision record, and returns to the spec. Nothing is executed.':'This page is static: the reason is copied as a chat line `plan: rejected — <reason>` for you to paste; nothing is archived from here.',fields:'<label for="rr">Reason (required)</label><textarea id="rr" maxlength="2000"></textarea>',ok:'Reject plan',onok:()=>{const r=$('#rr').value.trim(); if(!r) return false; emit({type:'plan.rejected',reason:r}); PLAN.status='rejected'; render(); helperSay('you','[plan] rejected: '+r); if(!LIVE) copyText('plan: rejected — '+r,'Rejection line copied'); toast('Plan v'+PLAN.version+' rejected: '+r.slice(0,80))}})};
+$('#reject').onclick=()=>{sheet({title:'Reject plan v'+PLAN.version+'?',text:isLive()?'This archives the version to history/plan.v'+PLAN.version+'.rejected.json with your reason, writes a decision record, and returns to the spec. Nothing is executed.':'This page is static: the reason is copied as a chat line `plan: rejected — <reason>` for you to paste; nothing is archived from here.',fields:'<label for="rr">Reason (required)</label><textarea id="rr" maxlength="2000"></textarea>',ok:'Reject plan',onok:()=>{const r=$('#rr').value.trim(); if(!r) return false; emit({type:'plan.rejected',reason:r}); PLAN.status='rejected'; link.sentFinal=true; render(); if(!isLive()) copyText('plan: rejected — '+r,'Rejection line copied'); toast('Plan v'+PLAN.version+' rejected: '+r.slice(0,80))}})};
 
 /* ---------- helper (✦ link to the Claude session) ---------- */
 const hl=$('#helperlog');
-function helperSay(who,text){const d=document.createElement('div'); d.className='msg '+who; d.innerHTML=(who==='sys'?'':'<span class="who">'+(who==='you'?'You':'Claude')+'</span>')+'<span>'+esc(text)+'</span>'; hl.appendChild(d); hl.scrollTop=hl.scrollHeight; return d}
-function helperOpen(o){$('#helper').hidden=!o; $('#helperbtn').setAttribute('aria-expanded',o); if(o){$('#helperstep').textContent=cur===0?'context':items[cur].id; $('#helpertext').focus()}}
+function helperSay(who,text,kind){const d=document.createElement('div'); d.className='msg '+who; if(kind) d.dataset.event=kind; d.innerHTML=(who==='sys'?'':'<span class="who">'+(who==='you'?'You':'Claude')+'</span>')+'<span>'+esc(text)+'</span>'; hl.appendChild(d); hl.scrollTop=hl.scrollHeight; if(who!=='you'){const ln=$('#livenote'); if(ln) ln.textContent=(who==='claude'?'Claude: ':'')+text} return d}
+function helperOpen(o){const was=$('#helper').hidden; $('#helper').hidden=!o; $('#helperbtn').setAttribute('aria-expanded',o); if(o){$('#helperstep').textContent=cur===0?'context':items[cur].id; $('#helpertext').focus()} else if(!was&&$('#helper').contains(document.activeElement)) $('#helperbtn').focus()}
 $('#helperbtn').onclick=()=>helperOpen($('#helper').hidden); $('#helperclose').onclick=()=>helperOpen(false);
 $('#helpertext').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#helperform').requestSubmit()} if(e.key==='Escape') helperOpen(false)});
-$('#helperform').onsubmit=e=>{e.preventDefault(); const t=$('#helpertext').value.trim(); if(!t) return; const scope=$('#helperform').scope.value; $('#helpertext').value='';
+$('#helperform').onsubmit=e=>{e.preventDefault(); const t=$('#helpertext').value.trim(); if(!t||link.readOnly) return; const scope=$('#helperform').scope.value; $('#helpertext').value='';
   const stepScope=scope==='step'&&cur>0; const s=stepScope?items[cur]:null;
-  helperSay('you','['+(s?s.id:'plan')+'] '+t);
-  if(LIVE){ if(s){ if(s.review.status==='revising'){helperSay('sys',s.id+' is already being revised — wait for it to land'); return} emit({type:'step.change_request',step:s.id,text:t}); s.review.status='revising'; setPlaying(false); render()} else emit({type:'plan.change_request',text:t}) }
-  else { const line=chatLine(s?s.id:'plan',t); helperSay('sys','Chat line: '+line); copyText(line,'Chat line copied') }
+  if(isLive()){ if(s){ if(s.review.status==='revising'){helperSay('sys',s.id+' is already being revised — wait for it to land'); return} emit({type:'step.change_request',step:s.id,text:t}); render()} else emit({type:'plan.change_request',text:t}) }
+  else { emit(s?{type:'step.change_request',step:s.id,text:t}:{type:'plan.change_request',text:t}); const line=chatLine(s?s.id:'plan',t); helperSay('sys','Chat line: '+line); copyText(line,'Chat line copied') }
 };
-if(LIVE){$('#helperlink').classList.add('live'); $('#helperstatus').textContent='Live · same session · events.jsonl'; $('#helperintro').textContent='Talk to the Claude session that wrote this plan. Ask for a change, a clarification or a re-plan; the answer lands here and the plan rebuilds in place.'; $('#helperhint').textContent='Enter sends · Shift+Enter new line · sent as untrusted text'; helperSay('sys','Connected to the session that wrote this plan.'); startPolling(10000)}
-else {$('#helperstatus').textContent='Static — this page cannot reach the session; reply in chat (e.g. “T7: use managed Redis”)'; $('#helperintro').textContent='This page was rendered as a static file. Review marks are kept in this tab so you can tally them; Send composes the chat line and copies it to the clipboard for you to paste into the Claude session.'; $('#helperhint').textContent='Enter copies the chat line · Shift+Enter new line'; $('#helpersend').textContent='Copy chat line'; helperSay('sys','Static page — nothing is sent anywhere. Paste the copied lines into the Claude session that wrote this plan.')}
+if(link.kind==='local'){$('#helperintro').textContent='Talk to the Claude session that wrote this plan. Ask for a change, a clarification or a re-plan; the answer lands here and the plan rebuilds in place.'; $('#helperhint').textContent='Enter sends · Shift+Enter new line · sent as untrusted text'; helperSay('sys','Connected to the session that wrote this plan.'); startPolling(0); openStream()}
+else if(link.kind==='pending'){$('#helperintro').textContent='This page runs as a Claude Artifact. Toolbar actions are written to the artifact database; the session that published it reads them and rebuilds the plan in place.'; $('#helperhint').textContent='Enter sends · Shift+Enter new line · sent as untrusted text'; helperSay('sys','Connecting to the artifact database…'); startArtifact()}
+else {$('#helperintro').textContent='This page was rendered as a static file. Review marks are kept in this tab so you can tally them; Send composes the chat line and copies it to the clipboard for you to paste into the Claude session.'; $('#helperhint').textContent='Enter copies the chat line · Shift+Enter new line'; helperSay('sys','Static page — nothing is sent anywhere. Paste the copied lines into the Claude session that wrote this plan.'); if(MODE==='artifact') helperSay('sys','Artifact without a database — reply in chat')}
 helperSay('claude','Plan v'+PLAN.version+' has '+steps.length+' steps in '+(PLAN.waves||[]).length+' waves. Review each step, or say what to change.');
 
 /* ---------- plan document dialog (pre-rendered by plan-render; no runtime library) ---------- */
@@ -1707,11 +1866,277 @@ document.addEventListener('keydown',e=>{ if($('#sheet').hasAttribute('open')||$(
   const k=e.key; if(k===' '){e.preventDefault();setPlaying(!playing)} else if(k==='ArrowRight'){go(cur+1)} else if(k==='ArrowLeft'){go(cur-1)} else if(k==='r'||k==='R'){$('#restart').click()} else if(k==='s'||k==='S'){$('#speed').click()} else if(k==='a'||k==='A'){act('approve')} else if(k==='c'||k==='C'){act('change')} else if(k==='e'||k==='E'){act('edit')} else if(k==='d'||k==='D'){act('defer')} else if(k==='h'||k==='H'){helperOpen($('#helper').hidden)} else if(k==='?'){$('#helpbtn').click()} });
 
 buildMap(); render();
+window.__magicianPage={version:()=>PLAN.version,link:()=>link.kind,log:()=>log.slice()};
 })();
 </script>
 </body>
 </html>
 '''
+
+
+# ─────────────────────────── plan.workflow.js (Claude Code Workflow) ───────────────────────────
+# A Workflow script is JavaScript run by the Workflow tool: `meta` must be the first statement and a
+# pure literal; `phase()`, `log()`, `agent(prompt, opts)` and `parallel([thunks])` are the API;
+# Date.now(), Math.random(), new Date() and dynamic import() throw in that runtime, so the generator
+# never emits them and the sanity check refuses a file that carries one outside a string.
+FORBIDDEN_JS = ("Date.now(", "Math.random(", "new Date(", "import(")
+MAX_SUMMARY = 1200
+STALL_MS = 1800000
+
+
+def js_str(s: str) -> str:
+    """A JSON string literal is a valid JS string literal; `</` is escaped so the file could also sit
+    inside an HTML page, and U+2028/2029 so it stays a single line."""
+    return json.dumps(str(s), ensure_ascii=False).replace("</", "<\\/") \
+        .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+def js_lines(text: str, indent: str = "    ") -> str:
+    """A multi-line prompt as one concatenation of per-line string literals (readable in the file)."""
+    lines = text.rstrip("\n").split("\n")
+    return (" +\n" + indent).join(js_str(line + ("\n" if i < len(lines) - 1 else "")) for i, line in enumerate(lines))
+
+
+def ordered_in_wave(plan: dict, wave: dict) -> tuple[list[dict], list[dict]]:
+    """Active steps of a wave: the parallel ones (plan order) and the sequential ones in dependency
+    order (a step after every same-wave step it depends on; ties keep plan order)."""
+    by = step_index(plan)
+    active = [by[sid] for sid in wave.get("steps", []) if sid in by and not is_deferred(by[sid])]
+    par = [s for s in active if s.get("parallel")]
+    seq = [s for s in active if not s.get("parallel")]
+    ids = {s["id"] for s in seq}
+    out: list[dict] = []
+    placed: set[str] = set()
+    pending = list(seq)
+    while pending:
+        progress = False
+        for s in list(pending):
+            needs = [d for d in (s.get("depends_on") or []) if d in ids and d not in placed]
+            if not needs:
+                out.append(s)
+                placed.add(s["id"])
+                pending.remove(s)
+                progress = True
+        if not progress:                      # a cycle slipped past check(): keep plan order
+            out += pending
+            break
+    return par, out
+
+
+def workflow_prompt(plan: dict, s: dict) -> str:
+    nums = task_numbers(plan)
+    cons = plan.get("constraints") or []
+    deferred = {x["id"] for x in steps_of(plan) if is_deferred(x)}
+    skipped = [d for d in (s.get("depends_on") or []) if d in deferred]
+    o = [f"Execute ONE task of the approved plan \"{plan.get('title', '')}\" (plan v{plan.get('version', '')}, "
+         f"feature {plan.get('feature', '')}) with strict TDD on the existing repo. You see none of the parent "
+         "conversation — this prompt is complete. Read the repo's conventions first (CLAUDE.md, linter config) "
+         "and match them. Write the failing test first, make it pass, refactor; run the task's verify commands; "
+         "commit exactly once with the message below. Do NOT push, open a PR, or touch files outside this task's "
+         "Files list.",
+         "",
+         "## Global Constraints",
+         "Every task inherits these — do not restate per task."]
+    o += [f"- {c}" for c in cons] or ["- (none)"]
+    if skipped:
+        o += ["", f"Note: {', '.join(skipped)} is deferred this run; treat its outputs as absent."]
+    o += ["", task_block(plan, s).rstrip("\n"), "",
+          f"RETURN JSON: {{task:\"{s['id']}\" (Task {nums[s['id']]}), green (bool), commit (sha or subject), "
+          f"files_changed[], summary (≤ {MAX_SUMMARY} chars, distilled — no logs), obstacles[] "
+          "(lore/obstacles.md fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT; "
+          "empty when clean)}"]
+    return "\n".join(o)
+
+
+def render_workflow(plan: dict) -> str:
+    steps = steps_of(plan)
+    active = [s for s in steps if not is_deferred(s)]
+    deferred = [s for s in steps if is_deferred(s)]
+    waves = [w for w in plan.get("waves", []) if isinstance(w, dict)]
+    phases = []
+    for w in waves:
+        par, seq = ordered_in_wave(plan, w)
+        if par or seq:
+            phases.append({"title": f"{w['id']} {w.get('title', '')}".strip(),
+                           "detail": f"{len(par)} parallel, {len(seq)} sequential"})
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(plan.get("feature", "plan"))).strip("-") or "plan"
+    desc = (f"{plan.get('title', '')} — plan v{plan.get('version', '')}: {len(active)} tasks in {len(phases)} waves"
+            + (f", {len(deferred)} deferred" if deferred else ""))
+    o = ["export const meta = {",
+         f"  name: {js_str(name + '-plan')},",
+         f"  description: {js_str(desc)},",
+         "  phases: [",
+         *[f"    {{ title: {js_str(p['title'])}, detail: {js_str(p['detail'])} }}," for p in phases],
+         "  ],",
+         "}",
+         "",
+         f"// Generated by plan-render from plan.json ({SCHEMA} v{plan.get('version', '')}, sha256:{plan_hash(plan)}).",
+         "// One phase per wave; parallel() for the steps marked Parallel: YES, then the sequential steps in",
+         "// dependency order; deferred steps are omitted. Pass to the Workflow tool as {script}. No Date.now(),",
+         "// Math.random(), new Date() or import() — they throw in the Workflow runtime.",
+         "",
+         "// Return budget (skills/weave/references/template.md): bounded strings, files_changed[], obstacles[].",
+         "const S = (n) => ({ type: 'string', maxLength: n })",
+         "const OBSTACLE = { type: 'object', additionalProperties: false,   // lore/obstacles.md, 8 fields",
+         "  properties: { STATUS: { type: 'string', enum: ['BLOCKED', 'DEGRADED', 'NEEDS_CONTEXT'] }, OBSTACLE: S(200),",
+         "    BLOCKER: S(400), SEVERITY: { type: 'string', enum: ['Critical', 'High', 'Medium', 'Low'] }, WORKAROUND: S(400),",
+         "    RECURRENCE: { type: 'string', enum: ['First-seen', 'Recurring', 'Systemic'] }, SCOPE: S(200), NEXT: S(300) },",
+         "  required: ['STATUS', 'OBSTACLE', 'BLOCKER', 'SEVERITY', 'RECURRENCE', 'SCOPE', 'NEXT'] }",
+         "const OBSTACLES = { type: 'array', maxItems: 8, items: OBSTACLE }",
+         "const FILES = { type: 'array', maxItems: 200, items: S(300) }",
+         "const RESULT = { type: 'object', additionalProperties: false,",
+         f"  properties: {{ task: S(80), green: {{ type: 'boolean' }}, commit: S(64), files_changed: FILES, summary: S({MAX_SUMMARY}), obstacles: OBSTACLES }},",
+         "  required: ['task', 'green', 'summary', 'obstacles'] }",
+         f"const STALL_MS = {STALL_MS}   // per-agent silence budget before a restart",
+         "",
+         "const results = {}",
+         "function task(id, phaseTitle, prompt) {",
+         "  return agent(prompt, { label: id, phase: phaseTitle, schema: RESULT, effort: 'medium', stallMs: STALL_MS })",
+         "    .then((r) => { results[id] = r; if (!r || !r.green) log('⚠ ' + id + ': not green — left for manual follow-up'); return r })",
+         "}",
+         ""]
+    for w in waves:
+        par, seq = ordered_in_wave(plan, w)
+        if not (par or seq):
+            continue
+        title = f"{w['id']} {w.get('title', '')}".strip()
+        o += [f"// ── {title} ──", f"phase({js_str(title)})",
+              f"log({js_str(f'{title}: ' + ', '.join(s['id'] for s in par + seq))})"]
+        if par:
+            o.append("await parallel([")
+            for s in par:
+                o += [f"  () => task({js_str(s['id'])}, {js_str(title)},", "    " + js_lines(workflow_prompt(plan, s)) + "),"]
+            o.append("])")
+        for s in seq:
+            o += [f"await task({js_str(s['id'])}, {js_str(title)},", "  " + js_lines(workflow_prompt(plan, s), "  ") + ")"]
+        o.append(f"log({js_str(title + ' done')})")
+        o.append("")
+    if deferred:
+        o.append("// Deferred — not executed this run: " + ", ".join(s["id"] for s in deferred))
+        o.append("")
+    o += ["return {",
+          f"  plan: {js_str(str(plan.get('feature', '')))}, version: {int(plan.get('version', 0) or 0)},",
+          "  tasks: Object.keys(results).map((id) => ({ id, green: !!(results[id] && results[id].green), commit: results[id] && results[id].commit })),",
+          "  obstacles: Object.keys(results).flatMap((id) => ((results[id] && results[id].obstacles) || []).map((o) => ({ task: id, ...o }))),",
+          f"  deferred: [{', '.join(js_str(s['id']) for s in deferred)}],",
+          "}"]
+    return "\n".join(o) + "\n"
+
+
+def strip_js_strings(src: str) -> str:
+    """Code with string literals and comments blanked (quotes kept), so a token scan and a bracket
+    balance see only code. Template literals keep their `${…}` holes as code."""
+    out: list[str] = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c in "\"'":
+            q = c
+            out.append(q)
+            i += 1
+            while i < n and src[i] != q:
+                if src[i] == "\\":
+                    i += 1
+                if i < n and src[i] == "\n":
+                    return "".join(out) + "\n<<unterminated string>>"
+                i += 1
+            out.append(q)
+            i += 1
+        elif c == "`":
+            out.append("`")
+            i += 1
+            while i < n and src[i] != "`":
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                if src.startswith("${", i):
+                    depth = 0
+                    while i < n:
+                        if src[i] == "{":
+                            depth += 1
+                        elif src[i] == "}":
+                            depth -= 1
+                            if depth == 0:
+                                out.append(src[i])
+                                i += 1
+                                break
+                        out.append(src[i])
+                        i += 1
+                    continue
+                i += 1
+            out.append("`")
+            i += 1
+        elif src.startswith("//", i):
+            while i < n and src[i] != "\n":
+                i += 1
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def js_sanity(src: str) -> list[str]:
+    """Stdlib check of a generated Workflow script: no forbidden runtime calls outside strings,
+    balanced brackets, every string literal closed, `export const meta` first."""
+    problems: list[str] = []
+    code = strip_js_strings(src)
+    if "<<unterminated string>>" in code:
+        problems.append("workflow: unterminated string literal")
+    for tok in FORBIDDEN_JS:
+        if tok in code:
+            problems.append(f"workflow: forbidden token {tok!r} outside a string (it throws in the Workflow runtime)")
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack: list[str] = []
+    for ch in code:
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack[-1] != pairs[ch]:
+                problems.append(f"workflow: unbalanced {ch!r}")
+                break
+            stack.pop()
+    if stack:
+        problems.append(f"workflow: unclosed {stack[-1]!r}")
+    if not src.startswith("export const meta = {"):
+        problems.append("workflow: `export const meta` must be the first statement")
+    for q in ('"', "'", "`"):
+        if code.count(q) % 2:
+            problems.append(f"workflow: odd number of {q} quotes")
+    return problems
+
+
+def checkable_js(src: str) -> str:
+    """The Workflow runtime runs the body after `meta` inside an async function (so top-level `return`
+    and `await` are legal there); `node --check` parses a module, so the same body is wrapped the
+    same way before checking. Line numbers shift by one."""
+    end = src.find("\n}\n")
+    if not src.startswith("export const meta = {") or end < 0:
+        return src
+    head, body = src[:end + 3], src[end + 3:]
+    return head + "async function __workflow(args, budget, agent, parallel, pipeline, phase, log) {\n" + body + "}\n"
+
+
+def node_check(src: str) -> str | None:
+    """`node --check` of the wrapped script when node exists; None when node is absent, "" when ok."""
+    node = shutil.which("node")
+    if not node:
+        return None
+    fd, tmp = tempfile.mkstemp(prefix=".plan-render.", suffix=".mjs")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(checkable_js(src))
+        p = subprocess.run([node, "--check", tmp], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"node --check could not run: {e}"
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return "" if p.returncode == 0 else (p.stderr.strip() or f"node --check exit {p.returncode}")
 
 
 # ───────────────────────────────────── CLI ──────────────────────────────────────
@@ -1772,7 +2197,32 @@ def cmd_md(args) -> int:
 
 def cmd_html(args) -> int:
     plan = _checked(args)
-    out = render_html(plan, theme=args.theme, static=args.static, mermaid=args.mermaid)
+    out = render_html(plan, theme=args.theme, static=args.static, mermaid=args.mermaid, transport=args.transport)
+    if args.output:
+        write_atomic(args.output, out)
+    else:
+        sys.stdout.write(out)
+    return 0
+
+
+def checked_workflow(plan: dict) -> str:
+    """Render the Workflow script and refuse to hand back one that fails the sanity checks."""
+    out = render_workflow(plan)
+    problems = js_sanity(out)
+    nc = node_check(out)
+    if nc:
+        problems.append(f"workflow: node --check failed: {nc.splitlines()[-1] if nc.strip() else nc}")
+    if problems:
+        for p in problems:
+            print(p)
+        print(f"plan-render: {len(problems)} violation(s) in the generated workflow — nothing written", file=sys.stderr)
+        sys.exit(2)
+    return out
+
+
+def cmd_workflow(args) -> int:
+    plan = _checked(args)
+    out = checked_workflow(plan)
     if args.output:
         write_atomic(args.output, out)
     else:
@@ -1827,14 +2277,17 @@ def cmd_all(args) -> int:
         return 2
     _warn(plan)
     md_text = render_md(plan)                      # render everything first, then write all files
-    html_text = render_html(plan, theme=args.theme, static=args.static, mermaid=args.mermaid)
+    html_text = render_html(plan, theme=args.theme, static=args.static, mermaid=args.mermaid, transport=args.transport)
+    wf_text = checked_workflow(plan)
     md_path = os.path.join(folder, "plan.md")
     html_path = os.path.join(folder, "plan.html")
+    wf_path = os.path.join(folder, "plan.workflow.js")
     write_atomic(md_path, md_text)
     write_atomic(html_path, html_text)
+    write_atomic(wf_path, wf_text)
     os.makedirs(hist, exist_ok=True)
     write_atomic(snap, raw.decode("utf-8"))
-    for p in (md_path, html_path, snap):
+    for p in (md_path, html_path, wf_path, snap):
         print(os.path.relpath(p))
     return 0
 
@@ -1859,9 +2312,16 @@ def main(argv=None) -> int:
             p.add_argument("-o", "--output")
         p.add_argument("--theme", choices=("light", "dark", "auto"), default="auto",
                        help="initial theme; auto follows prefers-color-scheme (default)")
-        p.add_argument("--static", action="store_true", help="pin the page to static review mode")
+        p.add_argument("--transport", choices=("auto", "local", "artifact", "static"), default="auto",
+                       help="how the review toolbar reaches the session: auto (default), local companion, "
+                            "artifact db capability, or static chat lines")
+        p.add_argument("--static", action="store_true", help="pin the page to static review mode (--transport static)")
         p.add_argument("--mermaid", action="store_true", help="draw the wave graph with mmdc when on PATH")
         p.set_defaults(fn=fn)
+    p = sub.add_parser("workflow", help="render plan.workflow.js (a Claude Code Workflow script; deferred steps omitted)")
+    p.add_argument("plan")
+    p.add_argument("-o", "--output")
+    p.set_defaults(fn=cmd_workflow)
     p = sub.add_parser("diff", help="JSON summary of what changed between two plan versions")
     p.add_argument("a")
     p.add_argument("b")

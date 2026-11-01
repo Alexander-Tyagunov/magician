@@ -4,5 +4,11 @@
     "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/ci-watch.sh",
     "description": "Checks GitHub Actions every 90 s (for up to 3 h) for new failed runs on the current branch and reports the run ID",
     "when": "on-skill-invoke:deploy"
+  },
+  {
+    "name": "plan-watch",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/plan-watch.sh",
+    "description": "Checks the live plan page's reviewer event log (events.jsonl of the newest plan under .workspace/local/plans/) every 2 s for up to 3 h and prints each new event as one plan-event line; stops when the plan is approved or rejected",
+    "when": "on-skill-invoke:blueprint"
   }
 ]

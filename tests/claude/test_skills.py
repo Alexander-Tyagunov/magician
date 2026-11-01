@@ -144,7 +144,9 @@ class SkillDefinitionTests(unittest.TestCase):
             "blueprint": [*SEARCH, "kg blast src/reports/",
                           "plan-render check .workspace/shared/plans/2026-11-01-csv-export/plan.json",
                           "plan-render all .workspace/shared/plans/2026-11-01-csv-export/plan.json",
-                          "${CLAUDE_PLUGIN_ROOT}/tools/plan-render all .workspace/shared/plans/x/plan.json"],
+                          "${CLAUDE_PLUGIN_ROOT}/tools/plan-render all .workspace/shared/plans/x/plan.json",
+                          "${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-start.sh .workspace/shared/plans/x app --plan",
+                          "${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-stop.sh .workspace/shared/plans/x"],
             "certify": [*SEARCH, "npm test", "npm test -- login.spec.ts", "npm run lint", "npm run build", "pytest",
                         "pytest -q tests/test_auth.py", "mypy .", "ruff check .", "go test ./...", "go vet ./...",
                         "golangci-lint run", "cargo test", "cargo check", "cargo clippy", "mvn test", "gradle test"],
@@ -205,6 +207,10 @@ class SkillDefinitionTests(unittest.TestCase):
             "inscribe": ["git add .claude/skills/x -f .env"],
             "almanac": ["mkdir -p .workspace/../../outside", "git add .workspace/shared/ CLAUDE.md .gitignore -f .env"],
             "portal": ["mkdir -p .features/../../outside"],
+            # The Monitor runs `tail` itself; the skill never pre-approves it, nor the browser opener.
+            "blueprint": ["tail -n0 -F .workspace/local/plans/x/state/events.jsonl",
+                          "open http://127.0.0.1:51342/magician/app/plan/",
+                          "node ${CLAUDE_PLUGIN_ROOT}/tools/companion/server.cjs"],
         }
         for skill, commands in never.items():
             grants = bash_grants(skill)

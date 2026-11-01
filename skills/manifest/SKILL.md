@@ -26,6 +26,8 @@ GATE 4: PR title and final go-ahead (before /seal)
 
 ## Process
 
+**Plan mode for Phases 0–2 (recommended when invoked interactively).** Phases 0–2 only read, research and write workspace documents, and a plan made in plan mode survives compaction (Claude Code re-injects it). So, when `/manifest` runs in an interactive session and the `EnterPlanMode` tool is available to the main agent, enter plan mode before Phase 0 and **exit it (`ExitPlanMode`) before Phase 3** — plan mode blocks writes, so the worktree, implementation and every later phase must run outside it. Caveats: `ExitPlanMode` goes through the normal permission prompt ("Yes, and use auto mode" / "Yes, manually approve edits" / "No, keep planning"); under `useAutoModeDuringPlan` shell commands in plan mode are classifier-approved; neither tool exists inside a subagent or in `-p`, so a dispatched `/manifest` skips this and runs the phases as before. The spec and plan files `/conjure` and `/blueprint` write are the deliverables either way — plan mode changes when writes are allowed, not what is produced.
+
 ### Phase 0: Scope Triage [GATE 1]
 1. Ask: "What do you want to build?" (one sentence description). **End your turn. Wait for their answer before assessing anything.**
 2. Assess scope — is this one coherent feature or multiple independent subsystems?
@@ -40,16 +42,17 @@ GATE 4: PR title and final go-ahead (before /seal)
 
 ### Phase 2: Planning [GATE 3]
 8. Run /blueprint — create the task plan with its parallelism map
-9. /blueprint writes `plan.json`, and renders `plan.md` (what /orchestrate executes) and `plan.html` (the walkthrough the user can open) into `.workspace/shared/plans/<date>-<feature>/`; point the user at `plan.html` when presenting the gate
-10. Gate with **AskUserQuestion** — options: **Approve plan** (proceed to Phase 3), **Request changes** (revise the plan first). **End your turn at the call; wait for the choice. Do NOT proceed to Phase 3 until Approve arrives.** A free-form "approved / looks good" counts as Approve.
+9. /blueprint writes `plan.json` and renders `plan.md` (what /orchestrate executes), `plan.html` (the walkthrough) and `plan.workflow.js` into `.workspace/shared/plans/<date>-<feature>/`, then serves the page live (local companion, or a Claude Artifact) when it can
+10. **GATE 3 happens where the page is.** When /blueprint runs its live loop, the reviewer's **Approve plan** on the page is the gate: /blueprint prints its Completion Signal only after `plan.approved`, and `plan.rejected` returns this run to GATE 2 (revise the spec with /conjure, then plan again) — do not add a second chat gate on top. When the page is static or the loop paused ("Plan review paused"), gate with **AskUserQuestion** — options: **Approve plan** (proceed to Phase 3), **Request changes** (revise the plan first). **End your turn at the call; wait for the choice. Do NOT proceed to Phase 3 until Approve arrives.** A free-form "approved / looks good" counts as Approve.
 
 ### Phase 3: Isolation [GATE 3.5]
+(Leave plan mode here if you entered it — the rest of the run writes files.)
 11. Propose a branch name derived from the feature (e.g. `feature/<kebab-case-name>`). Gate with **AskUserQuestion** — options: **Create worktree** (isolate on branch `feature/<name>`), **Work in current branch** (no worktree). **End your turn at the call; wait for the choice.**
     - On **Create worktree**: run `/portal <name>` — passes the name directly, no re-prompting
     - On **Work in current branch**: note "working in current branch" and continue
 
 ### Phase 4: Implementation
-12. **Proceed immediately after Phase 3 without waiting.** Run /orchestrate — execute all tasks using parallel agents where safe, sequential where required. For a large multi-item plan (many tickets/features/files), prefer **/weave** to deliver them as one native Workflow with guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify). For a long **unattended** run, pair with **`/goal`** so Claude keeps driving across turns until the completion condition holds.
+12. **Proceed immediately after Phase 3 without waiting.** Run /orchestrate — it runs the plan's `plan.workflow.js` as one Workflow when present (the `Workflow` approval prompt applies), else executes the waves with parallel agents where safe, sequential where required. For a large multi-item plan (many tickets/features/files), prefer **/weave** to deliver them as one native Workflow with guardrails (TDD per unit, kg grounding, certify, multi-lens review + adversarial verify). For a long **unattended** run, pair with **`/goal`** so Claude keeps driving across turns until the completion condition holds.
 13. /ward discipline enforced throughout (TDD)
 
 ### Phase 5: Verification

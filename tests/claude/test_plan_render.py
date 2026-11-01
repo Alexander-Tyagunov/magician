@@ -11,8 +11,15 @@ consumer reads. These tests pin the contract:
     pre-renders the plan document (Markdown subset + wave-graph SVG) without a runtime library;
   * charts render only where the plan has the data;
   * `diff` summarises changed fields per step id and added/removed steps;
-  * `all` writes plan.md, plan.html and history/plan.v<n>.json next to the json, refuses an invalid
-    plan without writing, and refuses a version older than the newest history snapshot.
+  * `--transport local|artifact|static|auto` picks how the page's toolbar reaches the session; the
+    page carries the live (companion) code path, the artifact (`claude.use("db")`) code path guarded
+    by the capability resolving, and the static chat-line fallback;
+  * `workflow` emits a Claude Code Workflow script (snapshot `valid.workflow.js`): `meta` first, one
+    phase per wave, parallel() then sequential agent() calls in dependency order, deferred steps
+    omitted, no Date.now()/Math.random()/new Date()/import() outside strings, `node --check` clean;
+  * `all` writes plan.md, plan.html, plan.workflow.js and history/plan.v<n>.json next to the json,
+    refuses an invalid plan without writing, and refuses a version older than the newest history
+    snapshot.
 """
 from __future__ import annotations
 
@@ -377,8 +384,8 @@ class HtmlTests(unittest.TestCase):
         self.assertIn('data-review="auto"', self.html)
         self.assertIn('data-review="static"', run("html", str(VALID), "--static").stdout)
         self.assertIn("window.__MAGICIAN_LIVE", self.html)
-        self.assertIn("'/events'", self.html)
-        self.assertIn("'/state'", self.html)
+        for route in ("liveUrl('events')", "liveUrl('state')", "liveUrl('events-stream')", "liveUrl('plan.json')"):
+            self.assertIn(route, self.html, f"companion route {route} (tools/companion/PROTOCOL.md)")
         self.assertIn("Static — this page cannot reach the session; reply in chat", self.html)
         self.assertNotIn("Math.random", self.html, "no simulated Claude replies")
         self.assertIn("This page is static: the reason is copied as a chat line `plan: rejected — <reason>` for you to paste; nothing is archived from here.", self.html)
@@ -387,6 +394,71 @@ class HtmlTests(unittest.TestCase):
         self.assertIn('<dt><span class="kbd">?</span></dt><dd>This help</dd>', self.html)
         self.assertIn('<h2 aria-live="polite">', self.html)
         self.assertIn("function trap(e)", self.html, "dialogs trap focus")
+
+    def test_transport_flag(self) -> None:
+        for t in ("local", "artifact", "static", "auto"):
+            self.assertIn(f'data-review="{t}"', run("html", str(VALID), "--transport", t).stdout)
+        self.assertIn('data-review="static"', run("html", str(VALID), "--transport", "local", "--static").stdout,
+                      "--static wins over --transport")
+        self.assertEqual(run("html", str(VALID), "--transport", "comments").returncode, 2)
+        # auto: live when the companion injected __MAGICIAN_LIVE, else artifact when claude.use exists, else static
+        self.assertIn("const MODE=root.dataset.review||'auto'", self.html)
+        self.assertIn("(MODE==='auto'||MODE==='local')&&window.__MAGICIAN_LIVE", self.html)
+        self.assertIn("(MODE==='auto'||MODE==='artifact')&&!!(window.claude&&typeof window.claude.use==='function')", self.html)
+        self.assertNotRegex(self.html, r"window\.claude\.(db|room|artifact)\b", "only claude.use is promised by the host")
+
+    def test_live_mode_page_behaviour_is_present(self) -> None:
+        # §6.2 events are POSTed, not composed as chat lines, when live
+        for ev in ("'step.review'", "'step.change_request'", "'step.edit'", "'plan.change_request'",
+                   "'plan.approved'", "'plan.rejected'"):
+            self.assertIn(ev, self.html)
+        self.assertIn("method:'POST'", self.html)
+        self.assertIn("body.length>8192", self.html, "the 8 KB cap is enforced page-side too")
+        # revising ring with elapsed time, aria-busy, the 10-minute "waiting" notice
+        self.assertIn("card.setAttribute('aria-busy',busy?'true':'false')", self.html)
+        self.assertIn('id="elapsed"', self.html)
+        self.assertIn("const WAIT_MS=600000", self.html)
+        self.assertIn("Waiting for Claude — check the session", self.html)
+        # polling cadence and the stream
+        self.assertIn("revising?2000:10000", self.html)
+        self.assertIn("'if-none-match'", self.html)
+        self.assertIn("r.status===304", self.html)
+        self.assertIn("new EventSource(liveUrl('events-stream'))", self.html)
+        # hot-swap: version gate, per-step diff in plan-render diff's field order, v<n> badge, what-changed panel
+        self.assertIn("if(ver>PLAN.version) loadPlan(ver)", self.html)
+        self.assertIn("function stepDiff(a,b)", self.html)
+        self.assertIn("Object.keys(Object.assign({},fa,fb)).sort()", self.html, "same flattening + sorted order as `plan-render diff`")
+        self.assertIn('data-badge="version"', self.html)
+        self.assertIn("What changed (v", self.html)
+        self.assertIn("s.review.status='changed'", self.html)
+        # stale events dropped with a notice; state.hint/notice/messages land in the transcript
+        self.assertIn("Ignored a stale ", self.html)
+        self.assertIn("Not sent — the plan moved to v", self.html)
+        for k in ("st.hint", "st.notice", "st.messages", "st.revising", "st.changed", "st.steps"):
+            self.assertIn(k, self.html)
+        self.assertIn("type:'plan.approved',steps:map", self.html)
+        self.assertIn("type:'plan.rejected',reason:r", self.html)
+        self.assertNotIn("location.reload", self.html, "revisions are hot-swapped, never reloaded")
+
+    def test_artifact_transport_code_paths_are_guarded_by_claude_use(self) -> None:
+        self.assertIn("window.claude.use('db').then(db=>{", self.html)
+        self.assertIn("if(!db){link.kind='static'", self.html, "null ⇒ static fallback")
+        self.assertIn("Artifact without a database — reply in chat", self.html)
+        self.assertIn("link.db.collection('events').add(doc)", self.html, "one document per event")
+        self.assertIn("db.doc('state/current').onSnapshot(", self.html)
+        self.assertIn("db.doc('plan/current').onSnapshot(", self.html)
+        self.assertEqual(self.html.count(".onSnapshot("), 2, "subscribe once per document, never in render")
+        self.assertNotIn("onSnapshot", self.html.split("function renderDetail")[1].split("/* ---------- player")[0])
+        self.assertIn("link.queue=link.queue.then(", self.html, "one write at a time")
+        self.assertIn("code==='invalid_argument'", self.html)
+        self.assertIn("setReadOnly(", self.html)
+        self.assertIn("},10000)", self.html, "10 s loading timer")
+        self.assertIn("snap.metadata.fromCache", self.html)
+        script = self.html.split("<script>\n(function(){")[-1]
+        self.assertNotIn("declare_capabilities", script)
+        self.assertNotIn("capabilities:", script, "the page declares nothing itself (the skill does, via the Artifact tool)")
+        self.assertNotIn("token", self.html.split("function startArtifact")[1].split("function chatLine")[0],
+                         "no secrets go to the database")
 
     def test_theme_option(self) -> None:
         self.assertIn('<html lang="en" data-theme="light" data-theme-mode="auto"', self.html)
@@ -468,6 +540,135 @@ class DiffTests(unittest.TestCase):
         self.assertEqual(out, {"from": 1, "to": 1, "added": [], "removed": [], "changed": {}, "plan": []})
 
 
+FORBIDDEN_JS = ("Date.now(", "Math.random(", "new Date(", "import(")
+
+
+def js_code_only(src: str) -> str:
+    """The script minus string literals and comments (a crude but sufficient scan for the tests)."""
+    src = re.sub(r"//[^\n]*", "", src)
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    src = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', src)
+    src = re.sub(r"'(?:[^'\\\n]|\\.)*'", "''", src)
+    src = re.sub(r"`(?:[^`\\]|\\.)*`", "``", src, flags=re.S)
+    return src
+
+
+class WorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.out = run("workflow", str(VALID)).stdout
+        cls.plan = load(VALID)
+
+    def test_snapshot_is_byte_identical_and_deterministic(self) -> None:
+        self.assertEqual(self.out, (FIX / "valid.workflow.js").read_text(encoding="utf-8"))
+        self.assertEqual(run("workflow", str(VALID)).stdout, self.out)
+
+    def test_meta_is_the_first_statement_and_a_literal(self) -> None:
+        self.assertTrue(self.out.startswith("export const meta = {\n  name: \"plan-walkthrough-static-plan\",\n  description: "))
+        meta = self.out.split("\n}\n", 1)[0]
+        self.assertNotIn("${", meta)
+        self.assertNotRegex(meta, r"\b(args|process|require)\b")
+        for w in self.plan["waves"]:
+            self.assertIn(f'{{ title: "{w["id"]} {w["title"]}", detail: ', meta)
+
+    def test_one_phase_per_wave_parallel_then_sequential_in_dependency_order(self) -> None:
+        phases = re.findall(r'^phase\("([^"]+)"\)$', self.out, re.M)
+        self.assertEqual(phases, [f'{w["id"]} {w["title"]}' for w in self.plan["waves"]])
+        by = {s["id"]: s for s in self.plan["steps"]}
+        for w in self.plan["waves"]:
+            block = self.out.split(f'phase("{w["id"]} {w["title"]}")', 1)[1].split("\nphase(", 1)[0]
+            par = re.findall(r'^  \(\) => task\("(T\d+)"', block, re.M)
+            seq = re.findall(r'^await task\("(T\d+)"', block, re.M)
+            self.assertEqual(sorted(par), sorted(s for s in w["steps"] if by[s]["parallel"]))
+            self.assertEqual(sorted(seq), sorted(s for s in w["steps"] if not by[s]["parallel"]))
+            if par:
+                self.assertLess(block.index("await parallel(["), block.index("await task(") if seq else len(block))
+            for i, sid in enumerate(seq):
+                for dep in by[sid]["depends_on"]:
+                    if dep in seq:
+                        self.assertLess(seq.index(dep), i, f"{sid} must come after {dep}")
+            self.assertIn(f'log("{w["id"]} {w["title"]} done")', block)
+        self.assertEqual(self.out.count("await parallel(["), sum(1 for w in self.plan["waves"] if any(by[s]["parallel"] for s in w["steps"])))
+
+    def test_every_prompt_carries_the_task_block_and_demands_the_bounded_schema(self) -> None:
+        md = run("md", str(VALID)).stdout
+        for s in self.plan["steps"]:
+            n = [i + 1 for i, x in enumerate(self.plan["steps"]) if x["id"] == s["id"]][0]
+            heading = f"### Task {n}: {s['title']} ({s['id']})"
+            self.assertIn(heading, md)
+            self.assertIn(json.dumps(heading + "\n", ensure_ascii=False), self.out)
+            self.assertIn(json.dumps(f'RETURN JSON: {{task:"{s["id"]}" (Task {n}), green (bool), commit (sha or subject), '
+                                     f'files_changed[], summary (≤ 1200 chars, distilled — no logs), obstacles[] '
+                                     '(lore/obstacles.md fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT; empty when clean)}', ensure_ascii=False), self.out)
+        for c in self.plan["constraints"]:
+            self.assertIn(json.dumps(f"- {c}\n", ensure_ascii=False), self.out)
+        self.assertIn("summary: S(1200)", self.out)
+        self.assertIn("files_changed: FILES", self.out)
+        for f in ("STATUS", "OBSTACLE", "BLOCKER", "SEVERITY", "WORKAROUND", "RECURRENCE", "SCOPE", "NEXT"):
+            self.assertIn(f"{f}:", self.out)
+        self.assertIn("schema: RESULT", self.out)
+        self.assertIn("stallMs: STALL_MS", self.out)
+        self.assertIn("label: id", self.out)
+        self.assertIn("'- [ ] Write failing test:'" if False else "- [ ] Write failing test:", self.out)
+
+    def test_forbidden_runtime_tokens_are_absent_outside_strings(self) -> None:
+        code = js_code_only(self.out)
+        for tok in FORBIDDEN_JS:
+            self.assertNotIn(tok, code)
+        # a plan whose prose carries the tokens still renders (they sit inside strings) and node parses it
+        plan = load(VALID)
+        plan["steps"][0]["intent"] += ' mention Date.now() and new Date() and import("x") and a `tick ${x}`'
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "plan.json"
+            path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+            p = run("workflow", str(path))
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertNotIn("Date.now(", js_code_only(p.stdout))
+            self.assertIn("mention Date.now()", p.stdout)
+
+    def test_balanced_and_node_check_clean(self) -> None:
+        code = js_code_only(self.out)
+        for o, c in ("()", "[]", "{}"):
+            self.assertEqual(code.count(o), code.count(c), f"unbalanced {o}{c}")
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        wrapped = self.out.split("\n}\n", 1)
+        src = wrapped[0] + "\n}\nasync function __workflow(args, budget, agent, parallel, pipeline, phase, log) {\n" + wrapped[1] + "}\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "plan.workflow.mjs"
+            f.write_text(src, encoding="utf-8")
+            p = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, timeout=60)
+            self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_deferred_steps_are_omitted(self) -> None:
+        plan = load(VALID)
+        for s in plan["steps"]:
+            if s["id"] == "T5":
+                s["review"]["status"] = "deferred"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "plan.json"
+            path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+            p = run("workflow", str(path))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn('task("T5"', p.stdout)
+        self.assertNotIn("### Task 5:", p.stdout)
+        self.assertIn("// Deferred — not executed this run: T5", p.stdout)
+        self.assertIn('deferred: ["T5"]', p.stdout)
+        self.assertIn("11 tasks in 4 waves, 1 deferred", p.stdout)
+        self.assertIn("Note: T5 is deferred this run; treat its outputs as absent.", p.stdout)
+        self.assertEqual(re.findall(r'^await task\("(T\d+)"', p.stdout.split('phase("W2 Renderers")')[1].split("\nphase(")[0], re.M), ["T4", "T6"])
+
+    def test_workflow_refuses_an_invalid_plan_and_writes_with_dash_o(self) -> None:
+        p = run("workflow", str(FIX / "invalid-unresolved-dep.json"))
+        self.assertEqual(p.returncode, 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "plan.workflow.js"
+            p = run("workflow", str(VALID), "-o", str(out))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual(out.read_text(encoding="utf-8"), self.out)
+
+
 class AllTests(unittest.TestCase):
     def test_all_writes_three_files_and_a_history_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -476,11 +677,12 @@ class AllTests(unittest.TestCase):
             shutil.copy(VALID, folder / "plan.json")
             p = run("all", str(folder / "plan.json"), cwd=folder)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-            self.assertEqual(p.stdout.splitlines(), ["plan.md", "plan.html", os.path.join("history", "plan.v1.json")])
+            self.assertEqual(p.stdout.splitlines(), ["plan.md", "plan.html", "plan.workflow.js", os.path.join("history", "plan.v1.json")])
             self.assertEqual((folder / "plan.md").read_bytes(), (FIX / "valid.md").read_bytes())
             self.assertEqual((folder / "plan.html").read_bytes(), (FIX / "valid.html").read_bytes())
+            self.assertEqual((folder / "plan.workflow.js").read_bytes(), (FIX / "valid.workflow.js").read_bytes())
             self.assertEqual((folder / "history" / "plan.v1.json").read_bytes(), VALID.read_bytes())
-            self.assertEqual(sorted(x.name for x in folder.iterdir()), ["history", "plan.html", "plan.json", "plan.md"])
+            self.assertEqual(sorted(x.name for x in folder.iterdir()), ["history", "plan.html", "plan.json", "plan.md", "plan.workflow.js"])
             # a revision: v2 snapshots next to v1; an older version is refused once v2 exists
             plan = load(VALID)
             plan["version"] = 2
@@ -526,9 +728,10 @@ class CliTests(unittest.TestCase):
     def test_help_and_usage(self) -> None:
         p = run("--help")
         self.assertEqual(p.returncode, 0)
-        for cmd in ("check", "md", "html", "diff", "all"):
+        for cmd in ("check", "md", "html", "workflow", "diff", "all"):
             self.assertIn(f"plan-render {cmd} ", p.stdout)
         self.assertIn("--theme light|dark|auto", p.stdout)
+        self.assertIn("--transport auto|local|artifact|static", p.stdout)
         self.assertIn("--static", p.stdout)
         self.assertIn("--mermaid", p.stdout)
         p = run()

@@ -61,7 +61,7 @@ The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the 
 
 After the behavior(s) for the task are green and refactored:
 1. Run the project's **formatter + linter** (the ones CI/review actually use) and type-check — **fix style/lint before committing.** A convention the reviewer or `code-review.md` would flag (e.g. async/await vs `.then`) is a failing gate, not a post-review fixup ([lore/code-standards.md](../../lore/code-standards.md)).
-2. Run the full test suite — no regressions.
+2. Run the full test suite — no regressions. In a plan folder, the step's `verify` commands are the definition of done `/blueprint` wrote from the project's `verify` skill, `REVIEW.md` or the stack lore: run them exactly as written, every one, and treat a command you had to change as a plan defect to report, not a thing to paper over.
 3. Commit with a conventional commit message.
 4. Mark the task complete in the plan file (`- [ ]` → `- [x]`). In a plan folder, tick the boxes in `plan.md` only; `plan.json` carries no progress and its `version` is not bumped for this. The plan file is the checklist — Task tools (TaskCreate/TodoWrite) are absent on current models unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` — and `.workspace/local/session-state.md` is the compaction-proof state: write it before you start a multi-task run and after each task lands.
 
