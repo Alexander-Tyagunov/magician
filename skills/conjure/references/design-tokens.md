@@ -57,7 +57,7 @@ Three requirements ride on ONE architecture — a two-tier design-token system:
    - *Dense-utility* — compact scale, data-first tables, thin borders, small radius.
    - *Expressive-gradient* — bold display, gradient mesh bg, large radius, motion-forward.
    - *Minimal-mono* — one hue, type-led hierarchy, near-zero chrome.
-3. When showing **3 directions** at GATE 3, enforce they differ on font family AND layout skeleton AND base tone — reject a set where two look like siblings; re-roll one.
+3. When showing **3 directions** at GATE 3, enforce they differ on font family AND layout skeleton AND base tone — reject a set where two look like siblings; re-roll one. This rule (and the no-default-fonts rule) applies only to a greenfield app or an explicit rework: when the app already has a design, the directions keep its fonts, palette and personality and differ only on layout skeleton, density and component choice, and a platform system font the chosen guideline set prescribes (Roboto, SF Pro, Segoe UI) is always allowed.
 4. Each direction is a **token set + one representative layout** (not 3 full apps). Only the chosen direction expands.
 
 ---
