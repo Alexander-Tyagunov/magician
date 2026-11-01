@@ -26,7 +26,9 @@ Once the spec is settled — the failing test you can write, or the plan task in
 ## Two modes
 
 - **Freeform** (`/ward <behavior>`): drive TDD for whatever you're implementing now.
-- **Task mode** (`/ward task <N>`): execute task N from the current blueprint plan in `.workspace/shared/plans/`. Read the task text from the plan file first; if the plan isn't clear from context, ask which plan file. **End your turn and wait** if you must ask. (dispatched with no human present: return NEEDS_CONTEXT instead of waiting).
+- **Task mode** (`/ward task <N>`): execute task N from the current blueprint plan in `.workspace/shared/plans/`. Read the task text from the plan first; if the plan isn't clear from context, ask which plan file or folder. **End your turn and wait** if you must ask. (dispatched with no human present: return NEEDS_CONTEXT instead of waiting).
+  - **Plan folder** (`plan.json` next to `plan.md`): read `plan.json` with Read; task N is `steps[N-1]` — its `red` (test, code, run), `green` (sketch, run), `verify`, `files` and the top-level `constraints` are the task text. A step whose `review.status` is `deferred` is not executed this run: say so and stop. If the last line of `plan.md` (`<!-- magician.plan/1 v<n> … -->`) names a version other than `plan.json.version`, say the plan is stale and ask the user to re-run `plan-render all <dir>/plan.json` before continuing.
+  - **Single `plan.md`** (legacy): read the `### Task N` block as before.
 
 ## The Law
 
@@ -60,7 +62,7 @@ After the behavior(s) for the task are green and refactored:
 1. Run the project's **formatter + linter** (the ones CI/review actually use) and type-check — **fix style/lint before committing.** A convention the reviewer or `code-review.md` would flag (e.g. async/await vs `.then`) is a failing gate, not a post-review fixup ([lore/code-standards.md](../../lore/code-standards.md)).
 2. Run the full test suite — no regressions.
 3. Commit with a conventional commit message.
-4. Mark the task complete in the plan file (`- [ ]` → `- [x]`).
+4. Mark the task complete in the plan file (`- [ ]` → `- [x]`). In a plan folder, tick the boxes in `plan.md` only; `plan.json` carries no progress and its `version` is not bumped for this.
 
 ## Obstacles
 

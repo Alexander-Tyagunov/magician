@@ -1,0 +1,320 @@
+{
+ "schema": "magician.plan/1",
+ "feature": "one-wave",
+ "title": "One wave, two steps",
+ "version": 1,
+ "status": "in_review",
+ "spec": ".workspace/shared/specs/2026-11-01-plan-walkthrough.md",
+ "research": [
+  ".workspace/shared/research/2026-11-01-plan-walkthrough.md"
+ ],
+ "constraints": [
+  "Python 3 stdlib only (no deps) for tools/",
+  "bash 3.2 for scripts",
+  "no network at review time",
+  "existing /orchestrate and /ward keep reading plan.md",
+  "scripts/gate.sh must stay GO"
+ ],
+ "context": {
+  "summary": "Today /blueprint writes a single plan.md and the approval gate is an AskUserQuestion in chat. 4.18.0 adds plan.json as the single source, a deterministic renderer that emits plan.md and plan.html, inline SVG infographics, and a page you can review step by step. The live round-trip (change requests from the page) is 4.19.0.",
+  "blast": [],
+  "components": [
+   {
+    "id": "blueprint",
+    "label": "/blueprint",
+    "sub": "skill",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "orchestrate",
+    "label": "/orchestrate",
+    "sub": "skill",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "ward",
+    "label": "/ward",
+    "sub": "skill",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "manifest",
+    "label": "/manifest",
+    "sub": "gate 3",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "render",
+    "label": "plan-render",
+    "sub": "tools/ · new",
+    "layer": "tools",
+    "exists": false
+   },
+   {
+    "id": "kg",
+    "label": "kg blast",
+    "sub": "tools/kg",
+    "layer": "tools",
+    "exists": true
+   },
+   {
+    "id": "scan",
+    "label": "magician-scan",
+    "sub": "secret patterns",
+    "layer": "tools",
+    "exists": true
+   },
+   {
+    "id": "schema",
+    "label": "plan-schema.md",
+    "sub": "references · new",
+    "layer": "docs",
+    "exists": false
+   },
+   {
+    "id": "readme",
+    "label": "README · CHANGELOG",
+    "sub": "docs",
+    "layer": "docs",
+    "exists": true
+   },
+   {
+    "id": "lore",
+    "label": "design-principles",
+    "sub": "lore/deep",
+    "layer": "lore",
+    "exists": true
+   },
+   {
+    "id": "tokens",
+    "label": "design-tokens.md",
+    "sub": "conjure refs",
+    "layer": "lore",
+    "exists": true
+   },
+   {
+    "id": "t_render",
+    "label": "test_plan_render",
+    "sub": "tests · new",
+    "layer": "tests",
+    "exists": false
+   },
+   {
+    "id": "t_design",
+    "label": "test_plan_design",
+    "sub": "tests · new",
+    "layer": "tests",
+    "exists": false
+   },
+   {
+    "id": "gate",
+    "label": "gate.sh",
+    "sub": "scripts",
+    "layer": "tests",
+    "exists": true
+   }
+  ],
+  "edges": [
+   {
+    "from": "blueprint",
+    "to": "render"
+   },
+   {
+    "from": "blueprint",
+    "to": "kg"
+   },
+   {
+    "from": "blueprint",
+    "to": "schema"
+   },
+   {
+    "from": "render",
+    "to": "scan"
+   },
+   {
+    "from": "orchestrate",
+    "to": "render"
+   },
+   {
+    "from": "ward",
+    "to": "render"
+   },
+   {
+    "from": "manifest",
+    "to": "blueprint"
+   },
+   {
+    "from": "render",
+    "to": "lore"
+   },
+   {
+    "from": "render",
+    "to": "tokens"
+   },
+   {
+    "from": "t_render",
+    "to": "render"
+   },
+   {
+    "from": "t_design",
+    "to": "render"
+   },
+   {
+    "from": "gate",
+    "to": "t_render"
+   },
+   {
+    "from": "gate",
+    "to": "t_design"
+   }
+  ],
+  "stack": [
+   "python",
+   "bash"
+  ],
+  "archetype": "cli"
+ },
+ "waves": [
+  {
+   "id": "W1",
+   "title": "Only wave",
+   "steps": [
+    "T1",
+    "T2"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "id": "T1",
+   "wave": "W1",
+   "kind": "change",
+   "layer": "docs",
+   "title": "Write the plan.json schema reference and a worked example",
+   "intent": "Every later task renders from one structure, so the schema is fixed first. The reference documents each field, the validation rules (unique ids, resolvable depends_on, parallel steps never share a modify file inside a wave, every step has red.run and verify) and the size cap.",
+   "parallel": true,
+   "depends_on": [],
+   "files": {
+    "create": [
+     "skills/blueprint/references/plan-schema.md",
+     "skills/blueprint/references/plan-example.json"
+    ],
+    "modify": [],
+    "test": [
+     "tests/claude/fixtures/plans/valid.json"
+    ]
+   },
+   "touches": [
+    "schema",
+    "blueprint"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_example_matches_schema_doc",
+    "code": "assert set(example.keys()) == documented_top_level_keys",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k schema_doc"
+   },
+   "green": {
+    "sketch": "Write the reference from §4 of the design; copy its example into plan-example.json",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k schema_doc"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "scripts/gate.sh"
+   ],
+   "risk": {
+    "level": "low",
+    "note": ""
+   },
+   "effort": {
+    "minutes": 30
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T2",
+   "wave": "W1",
+   "kind": "change",
+   "layer": "tools",
+   "title": "plan-render check — schema validator",
+   "intent": "A validator that fails loudly is what lets the LLM write JSON once and trust it. It cross-checks ids, dependencies, file conflicts between parallel steps, monotonic version, secrets (reusing magician-scan patterns) and the 256 KiB cap, exit code 2 on any error.",
+   "parallel": true,
+   "depends_on": [],
+   "files": {
+    "create": [
+     "tools/plan-render"
+    ],
+    "modify": [],
+    "test": [
+     "tests/claude/test_plan_render.py",
+     "tests/claude/fixtures/plans/invalid-*.json"
+    ]
+   },
+   "touches": [
+    "render",
+    "scan"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_invalid_fixtures_fail_with_reason (12 cases)",
+    "code": "for f in invalid: rc, err = run('check', f); assert rc == 2 and expected[f] in err",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k invalid"
+   },
+   "green": {
+    "sketch": "argparse subcommands; load JSON; run rule functions in order; print one line per violation",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k invalid"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "tools/plan-render check skills/blueprint/references/plan-example.json"
+   ],
+   "risk": {
+    "level": "low",
+    "note": ""
+   },
+   "effort": {
+    "minutes": 60
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  }
+ ],
+ "metrics": {
+  "steps": 2,
+  "parallel": 2,
+  "sequential": 0,
+  "minutes": 90,
+  "by_layer": {
+   "docs": 1,
+   "tools": 1
+  }
+ },
+ "sources": [
+  {
+   "id": "S1",
+   "label": "proposals/plan-walkthrough-design.md",
+   "href": "proposals/plan-walkthrough-design.md"
+  },
+  {
+   "id": "S2",
+   "label": "lore/deep/design-principles.md#review-checklist"
+  },
+  {
+   "id": "S3",
+   "label": "decisions/2026-11-01-v4.17.0-design-principles.md"
+  },
+  {
+   "id": "S4",
+   "label": "adoption-deck.html (reference pattern)"
+  }
+ ]
+}

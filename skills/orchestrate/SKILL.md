@@ -28,8 +28,10 @@ Scale `/effort` to plan size — high for most plans, your model's deepest level
 
 ## Process
 
-1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan via **AskUserQuestion** (one option per candidate plan file, most-recent first); **end your turn at the call** and proceed with the chosen plan.
-2. **Build the execution graph** — group PARALLEL-annotated tasks into waves; SEQUENTIAL tasks are singletons that run in order.
+1. **Read the blueprint** — most recent in `.workspace/shared/plans/` unless `$ARGUMENTS` names one. If ambiguous, ask which plan via **AskUserQuestion** (one option per candidate plan file or folder, most-recent first); **end your turn at the call** and proceed with the chosen plan.
+   - **Plan folder** (`plan.json` next to `plan.md`): `plan.json` is the source — read it with Read. Task N is `steps[N-1]`; a step with `review.status` of `deferred` is excluded from the graph (they are listed under `## Deferred — not executed this run` in `plan.md`). Check the last line of `plan.md`, `<!-- magician.plan/1 v<n> … -->`: if `v<n>` differs from `plan.json.version`, say the plan is stale and ask the user to re-run `plan-render all <dir>/plan.json` (or `/blueprint review <dir>`) before executing; do not run it from here.
+   - **Single `plan.md`** (legacy): parse it as before — `### Task N`, `Parallel:`, Files, the five TDD lines.
+2. **Build the execution graph** — from `plan.json`, the `waves` are explicit: each wave's `parallel: true` steps run together, its `parallel: false` steps one at a time after them. From a legacy `plan.md`, group PARALLEL-annotated tasks into waves; SEQUENTIAL tasks are singletons that run in order.
 3. **Execute wave by wave.** For each parallel wave, dispatch all its tasks in ONE message (multiple `Task` calls) so they run concurrently. Wait for the whole wave before the next. Run sequential tasks one at a time. As each task's implementer returns, run the **Per-task quality loop** (below) before you mark that task done — completion is confirmed from the VCS diff, not the agent's report.
 4. **After each wave** — sanity check: `git status`, `git log --oneline -3`. Refresh the shared session-state file so the next wave's agents pick up current state with no context loss: write goal · completed/remaining tasks · decisions · blockers · artifact paths to `.workspace/local/session-state.md` (the spawn template tells every agent to read it first).
 5. **After all waves** — run /certify. If it fails, fix and re-certify (bounded evaluator-optimizer loop) before reporting complete — never report done on a red certify.
@@ -48,7 +50,7 @@ Spawned agents see NONE of this conversation. Every `Task` prompt MUST be self-c
 ```
 Goal: implement task <N> — <one-line deliverable>.
 Scope: files/paths in play: <exact list>. Out of scope: <...>.
-Inputs: full task text from the plan (paste it), and the spec at .workspace/shared/specs/<feature>.md. FIRST read .workspace/local/session-state.md if it exists (current goal, decisions, blockers, artifact paths). Locate code with `kg query`/`kg blast`, not broad greps.
+Inputs: full task text from the plan (paste it — the `### Task N` block from plan.md, which carries the step's red/green/verify from plan.json), the Global Constraints, and the spec at .workspace/shared/specs/<feature>.md. FIRST read .workspace/local/session-state.md if it exists (current goal, decisions, blockers, artifact paths). Locate code with `kg query`/`kg blast`, not broad greps.
 Constraints: follow TDD via /ward; conventions/lore: <...>; do not touch <deny paths>; definition of done: <...>.
 Available magician skills: /conjure /blueprint /ward /unravel /certify /orchestrate /scrutinize /portal /seal /manifest /almanac /chronicle /magic /sentinel /accelerate /deploy /inscribe /autopsy
 Return: STATUS: DONE | BLOCKED | NEEDS_CONTEXT, then a one-paragraph summary of what was implemented and committed.

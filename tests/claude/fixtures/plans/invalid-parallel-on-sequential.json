@@ -1,0 +1,994 @@
+{
+ "schema": "magician.plan/1",
+ "feature": "plan-walkthrough-static",
+ "title": "Release 4.18.0 — static plan walkthrough",
+ "version": 1,
+ "status": "in_review",
+ "spec": ".workspace/shared/specs/2026-11-01-plan-walkthrough.md",
+ "research": [
+  ".workspace/shared/research/2026-11-01-plan-walkthrough.md"
+ ],
+ "constraints": [
+  "Python 3 stdlib only (no deps) for tools/",
+  "bash 3.2 for scripts",
+  "no network at review time",
+  "existing /orchestrate and /ward keep reading plan.md",
+  "scripts/gate.sh must stay GO"
+ ],
+ "context": {
+  "summary": "Today /blueprint writes a single plan.md and the approval gate is an AskUserQuestion in chat. 4.18.0 adds plan.json as the single source, a deterministic renderer that emits plan.md and plan.html, inline SVG infographics, and a page you can review step by step. The live round-trip (change requests from the page) is 4.19.0.",
+  "blast": [
+   {
+    "path": "skills/blueprint/",
+    "files": 3,
+    "hits": 3
+   },
+   {
+    "path": "skills/orchestrate/",
+    "files": 2,
+    "hits": 1
+   },
+   {
+    "path": "skills/ward/",
+    "files": 2,
+    "hits": 1
+   },
+   {
+    "path": "tools/",
+    "files": 9,
+    "hits": 1
+   },
+   {
+    "path": "tests/claude/",
+    "files": 21,
+    "hits": 3
+   },
+   {
+    "path": "docs (README…)",
+    "files": 2,
+    "hits": 2
+   }
+  ],
+  "components": [
+   {
+    "id": "blueprint",
+    "label": "/blueprint",
+    "sub": "skill",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "orchestrate",
+    "label": "/orchestrate",
+    "sub": "skill",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "ward",
+    "label": "/ward",
+    "sub": "skill",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "manifest",
+    "label": "/manifest",
+    "sub": "gate 3",
+    "layer": "skills",
+    "exists": true
+   },
+   {
+    "id": "render",
+    "label": "plan-render",
+    "sub": "tools/ · new",
+    "layer": "tools",
+    "exists": false
+   },
+   {
+    "id": "kg",
+    "label": "kg blast",
+    "sub": "tools/kg",
+    "layer": "tools",
+    "exists": true
+   },
+   {
+    "id": "scan",
+    "label": "magician-scan",
+    "sub": "secret patterns",
+    "layer": "tools",
+    "exists": true
+   },
+   {
+    "id": "schema",
+    "label": "plan-schema.md",
+    "sub": "references · new",
+    "layer": "docs",
+    "exists": false
+   },
+   {
+    "id": "readme",
+    "label": "README · CHANGELOG",
+    "sub": "docs",
+    "layer": "docs",
+    "exists": true
+   },
+   {
+    "id": "lore",
+    "label": "design-principles",
+    "sub": "lore/deep",
+    "layer": "lore",
+    "exists": true
+   },
+   {
+    "id": "tokens",
+    "label": "design-tokens.md",
+    "sub": "conjure refs",
+    "layer": "lore",
+    "exists": true
+   },
+   {
+    "id": "t_render",
+    "label": "test_plan_render",
+    "sub": "tests · new",
+    "layer": "tests",
+    "exists": false
+   },
+   {
+    "id": "t_design",
+    "label": "test_plan_design",
+    "sub": "tests · new",
+    "layer": "tests",
+    "exists": false
+   },
+   {
+    "id": "gate",
+    "label": "gate.sh",
+    "sub": "scripts",
+    "layer": "tests",
+    "exists": true
+   }
+  ],
+  "edges": [
+   {
+    "from": "blueprint",
+    "to": "render"
+   },
+   {
+    "from": "blueprint",
+    "to": "kg"
+   },
+   {
+    "from": "blueprint",
+    "to": "schema"
+   },
+   {
+    "from": "render",
+    "to": "scan"
+   },
+   {
+    "from": "orchestrate",
+    "to": "render"
+   },
+   {
+    "from": "ward",
+    "to": "render"
+   },
+   {
+    "from": "manifest",
+    "to": "blueprint"
+   },
+   {
+    "from": "render",
+    "to": "lore"
+   },
+   {
+    "from": "render",
+    "to": "tokens"
+   },
+   {
+    "from": "t_render",
+    "to": "render"
+   },
+   {
+    "from": "t_design",
+    "to": "render"
+   },
+   {
+    "from": "gate",
+    "to": "t_render"
+   },
+   {
+    "from": "gate",
+    "to": "t_design"
+   }
+  ],
+  "stack": [
+   "python",
+   "bash"
+  ],
+  "archetype": "cli"
+ },
+ "waves": [
+  {
+   "id": "W1",
+   "title": "Foundations",
+   "steps": [
+    "T1",
+    "T2"
+   ]
+  },
+  {
+   "id": "W2",
+   "title": "Renderers",
+   "steps": [
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+   ]
+  },
+  {
+   "id": "W3",
+   "title": "Skill integration",
+   "steps": [
+    "T7",
+    "T8",
+    "T9"
+   ]
+  },
+  {
+   "id": "W4",
+   "title": "Ship",
+   "steps": [
+    "T10",
+    "T11",
+    "T12"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "id": "T1",
+   "wave": "W1",
+   "kind": "change",
+   "layer": "docs",
+   "title": "Write the plan.json schema reference and a worked example",
+   "intent": "Every later task renders from one structure, so the schema is fixed first. The reference documents each field, the validation rules (unique ids, resolvable depends_on, parallel steps never share a modify file inside a wave, every step has red.run and verify) and the size cap.",
+   "parallel": true,
+   "depends_on": [],
+   "files": {
+    "create": [
+     "skills/blueprint/references/plan-schema.md",
+     "skills/blueprint/references/plan-example.json"
+    ],
+    "modify": [],
+    "test": [
+     "tests/claude/fixtures/plans/valid.json"
+    ]
+   },
+   "touches": [
+    "schema",
+    "blueprint"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_example_matches_schema_doc",
+    "code": "assert set(example.keys()) == documented_top_level_keys",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k schema_doc"
+   },
+   "green": {
+    "sketch": "Write the reference from §4 of the design; copy its example into plan-example.json",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k schema_doc"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "scripts/gate.sh"
+   ],
+   "risk": {
+    "level": "low",
+    "note": "documentation only"
+   },
+   "effort": {
+    "minutes": 30
+   },
+   "diff_sketch": "+ skills/blueprint/references/plan-schema.md   (field table, validation rules)\n+ skills/blueprint/references/plan-example.json (14-step csv-export sample)",
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T2",
+   "wave": "W1",
+   "kind": "change",
+   "layer": "tools",
+   "title": "plan-render check — schema validator",
+   "intent": "A validator that fails loudly is what lets the LLM write JSON once and trust it. It cross-checks ids, dependencies, file conflicts between parallel steps, monotonic version, secrets (reusing magician-scan patterns) and the 256 KiB cap, exit code 2 on any error.",
+   "parallel": true,
+   "depends_on": [],
+   "files": {
+    "create": [
+     "tools/plan-render"
+    ],
+    "modify": [],
+    "test": [
+     "tests/claude/test_plan_render.py",
+     "tests/claude/fixtures/plans/invalid-*.json"
+    ]
+   },
+   "touches": [
+    "render",
+    "scan"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_invalid_fixtures_fail_with_reason (12 cases)",
+    "code": "for f in invalid: rc, err = run('check', f); assert rc == 2 and expected[f] in err",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k invalid"
+   },
+   "green": {
+    "sketch": "argparse subcommands; load JSON; run rule functions in order; print one line per violation",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k invalid"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "tools/plan-render check skills/blueprint/references/plan-example.json"
+   ],
+   "risk": {
+    "level": "low",
+    "note": "pure function over JSON"
+   },
+   "effort": {
+    "minutes": 60
+   },
+   "diff_sketch": "+ def check(plan):\n+     for rule in (ids_unique, deps_resolve, no_parallel_file_conflicts,\n+                  tdd_fields_present, touches_known, version_monotonic,\n+                  no_secrets, size_cap):\n+         yield from rule(plan)",
+   "infographic": {
+    "type": "bar",
+    "title": "Validation rules by category",
+    "data": [
+     [
+      "structure",
+      3
+     ],
+     [
+      "TDD",
+      2
+     ],
+     [
+      "safety",
+      2
+     ],
+     [
+      "limits",
+      1
+     ]
+    ]
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T3",
+   "wave": "W2",
+   "kind": "change",
+   "layer": "tools",
+   "title": "plan-render md — deterministic plan.md",
+   "intent": "plan.md keeps today's exact shape (### Task N, Parallel:, Files:, five TDD lines) so /orchestrate and /ward need no change on day one; deferred steps go under a separate heading and a sha256 trailer lets consumers detect a stale file.",
+   "parallel": true,
+   "depends_on": [
+    "T1",
+    "T2",
+    "T4"
+   ],
+   "files": {
+    "create": [],
+    "modify": [
+     "tools/plan-render"
+    ],
+    "test": [
+     "tests/claude/test_plan_render.py",
+     "tests/claude/fixtures/plans/valid.md"
+    ]
+   },
+   "touches": [
+    "render",
+    "orchestrate",
+    "ward"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_md_snapshot_byte_identical",
+    "code": "assert render_md(valid) == fixture('valid.md')",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k md_snapshot"
+   },
+   "green": {
+    "sketch": "string template per step; stable key order; trailing <!-- magician.plan/1 v1 sha256:… -->",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k md_snapshot"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "diff <(tools/plan-render md example.json) tests/claude/fixtures/plans/valid.md"
+   ],
+   "risk": {
+    "level": "medium",
+    "note": "format drift would break /orchestrate parsing — snapshot test guards it"
+   },
+   "effort": {
+    "minutes": 45
+   },
+   "diff_sketch": "+ ### Task 3: Stream rows instead of buffering\n+ Parallel: yes (after T1)\n+ Files: create src/reports/stream.ts · modify src/reports/export.ts\n+ - [ ] RED  tests/reports/stream.test.ts::streams_10k_rows\n+ - [ ] GREEN …\n+ Review: pending",
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T4",
+   "wave": "W2",
+   "kind": "change",
+   "layer": "tools",
+   "title": "plan-render html — page template, tokens, player, map",
+   "intent": "The walkthrough page itself: one file, inline CSS/JS, PLAN inlined as JSON with </ escaped, CSP that forbids any remote load, light theme by default with dark as the same tokens, player controls, wave timeline, SVG architecture map, step detail and side panel, keyboard map, reduced-motion path.",
+   "parallel": false,
+   "depends_on": [
+    "T1",
+    "T2"
+   ],
+   "files": {
+    "create": [],
+    "modify": [
+     "tools/plan-render"
+    ],
+    "test": [
+     "tests/claude/test_plan_render.py",
+     "tests/claude/fixtures/plans/valid.html"
+    ]
+   },
+   "touches": [
+    "render",
+    "lore",
+    "tokens"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_html_snapshot_and_csp",
+    "code": "html = render_html(valid); assert 'Content-Security-Policy' in html; assert 'http://' not in strip_json(html); assert html == fixture('valid.html')",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k html"
+   },
+   "green": {
+    "sketch": "TEMPLATE constant with {{tokens}} {{plan}} slots; the page you are looking at is the reference implementation",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k html"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "open plan.html from file:// and run the 25-item checklist"
+   ],
+   "risk": {
+    "level": "medium",
+    "note": "largest task; template is ~700 lines of CSS/JS inside a Python string"
+   },
+   "effort": {
+    "minutes": 180
+   },
+   "diff_sketch": "+ TEMPLATE = r'''<!DOCTYPE html>…<script type=\"application/json\" id=\"plan\">{{plan}}</script>…'''\n+ def render_html(plan, theme='light'):\n+     return TEMPLATE.replace('{{plan}}', json.dumps(plan).replace('</', '<\\\\/'))",
+   "infographic": {
+    "type": "bar",
+    "title": "Template size by part (lines)",
+    "data": [
+     [
+      "CSS",
+      220
+     ],
+     [
+      "map SVG",
+      120
+     ],
+     [
+      "player",
+      90
+     ],
+     [
+      "detail/side",
+      160
+     ],
+     [
+      "charts",
+      110
+     ]
+    ]
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T5",
+   "wave": "W2",
+   "kind": "change",
+   "layer": "tools",
+   "title": "Inline SVG infographics with applicability rules",
+   "intent": "Charts only where the plan has the data: tasks per wave, effort by layer, parallel vs sequential, blast radius, critical path, risk matrix, per-step custom. No chart library; each SVG gets a title, a desc and a hidden data table; series use patterns as well as colour.",
+   "parallel": false,
+   "depends_on": [
+    "T2"
+   ],
+   "files": {
+    "create": [],
+    "modify": [
+     "tools/plan-render"
+    ],
+    "test": [
+     "tests/claude/test_plan_render.py"
+    ]
+   },
+   "touches": [
+    "render"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_charts_only_when_data_exists",
+    "code": "assert '<svg' not in render_html(one_wave_plan).charts['tasks_per_wave']; assert all('<title>' in c for c in render_html(valid).charts.values())",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k charts"
+   },
+   "green": {
+    "sketch": "chart_bar(), chart_donut(), chart_gantt(), chart_matrix() returning SVG strings; a rules table decides which run",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k charts"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render"
+   ],
+   "risk": {
+    "level": "low",
+    "note": "pure string generation"
+   },
+   "effort": {
+    "minutes": 90
+   },
+   "infographic": {
+    "type": "bar",
+    "title": "Charts and when they render (plans in the fixture set)",
+    "data": [
+     [
+      "tasks/wave",
+      5
+     ],
+     [
+      "effort/layer",
+      4
+     ],
+     [
+      "par vs seq",
+      5
+     ],
+     [
+      "blast",
+      3
+     ],
+     [
+      "gantt",
+      4
+     ],
+     [
+      "risk",
+      2
+     ]
+    ]
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T6",
+   "wave": "W2",
+   "kind": "change",
+   "layer": "tools",
+   "title": "plan-render diff and all — revision summary and one-shot pipeline",
+   "intent": "diff produces the what-changed summary between two plan versions (used by the page's changed badge in 4.19); all runs check → md → html and snapshots the previous version into history/.",
+   "parallel": false,
+   "depends_on": [
+    "T3",
+    "T4",
+    "T5"
+   ],
+   "files": {
+    "create": [],
+    "modify": [
+     "tools/plan-render"
+    ],
+    "test": [
+     "tests/claude/test_plan_render.py"
+    ]
+   },
+   "touches": [
+    "render"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_render.py::test_all_writes_three_files_and_history",
+    "code": "run('all', v2); assert exists('plan.md','plan.html','history/plan.v1.json')",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k all"
+   },
+   "green": {
+    "sketch": "diff: walk steps by id, list changed fields; all: sequence the subcommands, atomic write via tmp + rename",
+    "run": "python3 -m unittest tests.claude.test_plan_render -k all"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_render",
+    "tools/plan-render all skills/blueprint/references/plan-example.json"
+   ],
+   "risk": {
+    "level": "low",
+    "note": ""
+   },
+   "effort": {
+    "minutes": 40
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T7",
+   "wave": "W3",
+   "kind": "change",
+   "layer": "skills",
+   "title": "Rewrite /blueprint to emit plan.json and render both documents",
+   "intent": "The skill becomes a ≤ 8 KB router: read spec/research/kg, map files, decompose, write plan.json, run plan-render all, open the page (static in 4.18), gate with AskUserQuestion. New arguments: review <plan-dir> and --static. New grants for plan-render and kg blast.",
+   "parallel": true,
+   "depends_on": [
+    "T6"
+   ],
+   "files": {
+    "create": [
+     "skills/blueprint/references/walkthrough.md",
+     "skills/blueprint/references/revision-rules.md"
+    ],
+    "modify": [
+     "skills/blueprint/SKILL.md"
+    ],
+    "test": [
+     "tests/claude/test_frontmatter_strict.py"
+    ]
+   },
+   "touches": [
+    "blueprint",
+    "render",
+    "kg",
+    "schema",
+    "manifest"
+   ],
+   "red": {
+    "test": "tests/claude/test_skills.py::test_blueprint_grants_and_size",
+    "code": "assert 'Bash(plan-render *)' in grants('blueprint'); assert size('skills/blueprint/SKILL.md') <= 8192",
+    "run": "python3 -m unittest tests.claude.test_skills -k blueprint"
+   },
+   "green": {
+    "sketch": "Process section rewritten; references linked with ../../lore paths; fallback line for Claude chat (plan.md only)",
+    "run": "python3 -m unittest tests.claude.test_skills -k blueprint"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_skills tests.claude.test_frontmatter_strict",
+    "claude plugin validate --strict"
+   ],
+   "risk": {
+    "level": "medium",
+    "note": "behaviour change in a core skill — eval blueprint-emits-plan-json guards it"
+   },
+   "effort": {
+    "minutes": 90
+   },
+   "diff_sketch": "- 4. Write the plan to .workspace/shared/plans/<date>-<feature>.md\n+ 4. Write plan.json (schema: references/plan-schema.md)\n+ 5. Run `plan-render all plan.json` → plan.md + plan.html + history/\n+ 6. Tell the user the page path; gate with AskUserQuestion",
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T8",
+   "wave": "W3",
+   "kind": "change",
+   "layer": "skills",
+   "title": "/orchestrate and /ward read plan.json when present",
+   "intent": "Consumers prefer the structured plan (explicit waves, deferred steps excluded) and verify the plan.md trailer hash; when plan.json is absent they parse plan.md exactly as today, so older plans still run.",
+   "parallel": true,
+   "depends_on": [
+    "T3"
+   ],
+   "files": {
+    "create": [],
+    "modify": [
+     "skills/orchestrate/SKILL.md",
+     "skills/ward/SKILL.md"
+    ],
+    "test": [
+     "tests/claude/test_skills.py"
+    ]
+   },
+   "touches": [
+    "orchestrate",
+    "ward",
+    "render"
+   ],
+   "red": {
+    "test": "tests/claude/test_skills.py::test_consumers_mention_plan_json_and_fallback",
+    "code": "for s in ('orchestrate','ward'): body = read(s); assert 'plan.json' in body and 'plan.md' in body",
+    "run": "python3 -m unittest tests.claude.test_skills -k consumers"
+   },
+   "green": {
+    "sketch": "One paragraph in each skill's input section: prefer plan.json, exclude review.status == deferred, check trailer",
+    "run": "python3 -m unittest tests.claude.test_skills -k consumers"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_skills"
+   ],
+   "risk": {
+    "level": "low",
+    "note": "additive"
+   },
+   "effort": {
+    "minutes": 30
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T9",
+   "wave": "W3",
+   "kind": "verify",
+   "layer": "tests",
+   "title": "Design self-test: contrast, targets, motion, keyboard",
+   "intent": "The page is checked against the acquired design principles by code, not by eye: computed WCAG contrast for every token pair in both themes, 44 px boxes on every control, a prefers-reduced-motion block, a title and data table for every chart.",
+   "parallel": true,
+   "depends_on": [
+    "T4",
+    "T5"
+   ],
+   "files": {
+    "create": [
+     "tests/claude/test_plan_design.py"
+    ],
+    "modify": [],
+    "test": [
+     "tests/claude/test_plan_design.py"
+    ]
+   },
+   "touches": [
+    "t_design",
+    "render",
+    "lore"
+   ],
+   "red": {
+    "test": "tests/claude/test_plan_design.py::test_contrast_aa_both_themes",
+    "code": "for theme in ('light','dark'): for fg,bg in pairs(theme): assert contrast(fg,bg) >= 4.5, (theme,fg,bg)",
+    "run": "python3 -m unittest tests.claude.test_plan_design"
+   },
+   "green": {
+    "sketch": "parse the token maps out of TEMPLATE; relative-luminance formula; walk CSS for min-height/min-width on .btn",
+    "run": "python3 -m unittest tests.claude.test_plan_design"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_plan_design",
+    "scripts/gate.sh"
+   ],
+   "risk": {
+    "level": "low",
+    "note": ""
+   },
+   "effort": {
+    "minutes": 60
+   },
+   "infographic": {
+    "type": "bar",
+    "title": "Checklist items covered by the self-test (of 25)",
+    "data": [
+     [
+      "automated",
+      8
+     ],
+     [
+      "manual",
+      17
+     ]
+    ]
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T10",
+   "wave": "W4",
+   "kind": "change",
+   "layer": "docs",
+   "title": "README, PRIVACY, SECURITY, CHANGELOG, version 4.18.0",
+   "intent": "Users learn what the new files are and where they are written; the security scope lists tools/plan-render; the changelog carries the release notes; plugin.json bumps the version.",
+   "parallel": true,
+   "depends_on": [
+    "T7",
+    "T8"
+   ],
+   "files": {
+    "create": [],
+    "modify": [
+     "README.md",
+     "PRIVACY.md",
+     "SECURITY.md",
+     "CHANGELOG.md",
+     ".claude-plugin/plugin.json"
+    ],
+    "test": [
+     "tests/claude/test_readme.py"
+    ]
+   },
+   "touches": [
+    "readme"
+   ],
+   "red": {
+    "test": "tests/claude/test_readme.py::test_files_it_writes_lists_plans_dir",
+    "code": "assert 'plans/<feature>/' in readme_section('Files it writes')",
+    "run": "python3 -m unittest tests.claude.test_readme"
+   },
+   "green": {
+    "sketch": "Skills row for /blueprint; Files-it-writes rows; CHANGELOG ## [4.18.0] — date",
+    "run": "python3 -m unittest tests.claude.test_readme"
+   },
+   "verify": [
+    "python3 -m unittest tests.claude.test_readme",
+    "claude plugin validate --strict"
+   ],
+   "risk": {
+    "level": "low",
+    "note": ""
+   },
+   "effort": {
+    "minutes": 30
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T11",
+   "wave": "W4",
+   "kind": "verify",
+   "layer": "tests",
+   "title": "Gate, fresh verifier, Playwright pass on the rendered page",
+   "intent": "scripts/gate.sh must be GO; a reviewer that has not seen the work re-reads the diff; a local Playwright script loads the static page, walks the keyboard map, checks the reduced-motion path and runs axe-core with zero serious violations.",
+   "parallel": false,
+   "depends_on": [
+    "T9",
+    "T10"
+   ],
+   "files": {
+    "create": [
+     "tests/e2e/plan_walkthrough.spec.js"
+    ],
+    "modify": [],
+    "test": [
+     "tests/e2e/plan_walkthrough.spec.js"
+    ]
+   },
+   "touches": [
+    "gate",
+    "t_render",
+    "t_design"
+   ],
+   "red": {
+    "test": "tests/e2e/plan_walkthrough.spec.js — 'keyboard reaches every control'",
+    "code": "await page.keyboard.press('Tab') × n; expect(focusedIds).toEqual(expectedOrder)",
+    "run": "npx playwright@1.56.0 test tests/e2e/plan_walkthrough.spec.js"
+   },
+   "green": {
+    "sketch": "fix whatever the gate, verifier or axe report",
+    "run": "scripts/gate.sh && npx playwright@1.56.0 test"
+   },
+   "verify": [
+    "scripts/gate.sh",
+    "npx playwright@1.56.0 test tests/e2e/plan_walkthrough.spec.js"
+   ],
+   "risk": {
+    "level": "medium",
+    "note": "verifier findings are expected — 4.17 had 4 blockers on first pass"
+   },
+   "effort": {
+    "minutes": 90
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  },
+  {
+   "id": "T12",
+   "wave": "W4",
+   "kind": "rollout",
+   "layer": "docs",
+   "title": "Branch, PR #23, merge, tag v4.18.0",
+   "intent": "Ship on a feature branch through a REST-created PR (GraphQL is blocked in this environment), merge after GO, create the annotated tag on your machine and push it, then the GitHub Release.",
+   "parallel": false,
+   "depends_on": [
+    "T11"
+   ],
+   "files": {
+    "create": [],
+    "modify": [],
+    "test": []
+   },
+   "touches": [
+    "readme",
+    "gate"
+   ],
+   "red": {
+    "test": "n/a — rollout step",
+    "code": "",
+    "run": "gh api repos/:owner/magician/pulls -f head=feat/plan-walkthrough -f base=main"
+   },
+   "green": {
+    "sketch": "merge via REST; git tag -a v4.18.0; git push origin v4.18.0 (from your machine)",
+    "run": "git push origin v4.18.0"
+   },
+   "verify": [
+    "gh api repos/:owner/magician/releases/tags/v4.18.0"
+   ],
+   "risk": {
+    "level": "low",
+    "note": "tag push blocked from the container — done on your machine, as for 4.17.0"
+   },
+   "effort": {
+    "minutes": 20
+   },
+   "review": {
+    "status": "pending",
+    "note": "",
+    "edited_text": ""
+   }
+  }
+ ],
+ "metrics": {
+  "steps": 12,
+  "parallel": 7,
+  "sequential": 5,
+  "minutes": 765,
+  "by_layer": {
+   "docs": 3,
+   "tools": 5,
+   "skills": 2,
+   "tests": 2
+  }
+ },
+ "sources": [
+  {
+   "id": "S1",
+   "label": "proposals/plan-walkthrough-design.md",
+   "href": "proposals/plan-walkthrough-design.md"
+  },
+  {
+   "id": "S2",
+   "label": "lore/deep/design-principles.md#review-checklist"
+  },
+  {
+   "id": "S3",
+   "label": "decisions/2026-11-01-v4.17.0-design-principles.md"
+  },
+  {
+   "id": "S4",
+   "label": "adoption-deck.html (reference pattern)"
+  }
+ ]
+}
