@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.0] — 2026-11-01
+
+**Static plan walkthrough.** `/blueprint` now writes one plan source, `plan.json`, and renders two
+documents from it: `plan.md`, the task list `/orchestrate` and `/ward` execute, and `plan.html`, a
+self-contained page that walks a reviewer through the plan step by step: an architecture map whose
+components light up as each step plays, the failing test and the command that proves it, risk and
+effort, and charts drawn only where the plan has the data. Both files come from the same source, so a
+revision can never leave them out of sync. The review gate stays in chat in this release; the page
+keeps local tallies and asks the reviewer to reply as `T7: …`.
+
+### Added
+- **`plan.json`, schema `magician.plan/1`.** The single source of a plan: Global Constraints copied
+  verbatim from the spec, explicit waves, one step per task with its RED test, GREEN sketch, verify
+  commands, files, risk, effort and the components it touches, plus the Step 0 context (stack,
+  `kg blast` rows, components and edges). Field-by-field schema, validation rules and the `plan.md`
+  rendering contract in `skills/blueprint/references/plan-schema.md`; a complete worked example in
+  `plan-example.json`.
+- **`plan-render` bundled command** (Python 3, stdlib only, no network). `check` validates a plan
+  and exits 2 with one line per violation: strict JSON, ids `T<n>` in position, resolvable
+  dependencies with no cycles or forward references, no two parallel steps in one wave writing the
+  same file, every step with `red.run`, `green.run` and `verify`, every `touches` id declared as a
+  component, a monotonic version, no control characters or forged headings in text, no secrets,
+  only project-relative paths, no destructive commands, size under 256 KiB. `md` and `html` run the
+  same check first. `md` renders `plan.md` in the Task shape the executors already parse, with deferred steps
+  under `## Deferred — not executed this run` and a `<!-- magician.plan/1 v<n> sha256:… -->` trailer.
+  `html` renders `plan.html` (`--theme light|dark|auto`, `--static`, `--mermaid`). `diff` summarises
+  the changes between two versions. `all` runs check, writes both documents next to the JSON and
+  snapshots the version into `history/plan.v<n>.json` (same options as `html`). Exit codes: 0, 1 when
+  the file cannot be read, 2 for invalid JSON or violations, 64 without a subcommand. Same JSON,
+  byte-identical output.
+- **`plan.html` walkthrough.** One file, inline CSS and JS, the plan inlined as JSON, a
+  Content-Security-Policy that forbids every remote load, no fonts or libraries fetched; it opens
+  from `file://` and from a GitHub or Confluence attachment. Light theme by default, dark as the same
+  design, with a header toggle that follows the system preference. Play / Previous / Next / Restart
+  and 0.5× / 1× / 2× speed, with an adaptive dwell of 4–10 seconds by the length of the step. A
+  timeline of waves, an architecture map of layers and components where the current step's nodes
+  glow and new components carry a "new" badge, and a detail panel with files, RED and GREEN, verify
+  commands, risk, effort and dependencies. Infographics where the data exists: tasks per wave,
+  effort by layer, parallel versus sequential, blast radius, critical path, a risk matrix and
+  per-step charts the planner declares; all inline SVG with a title, a description and a hidden data
+  table. "Show plan document" opens `plan.md` rendered as HTML with the wave graph, and a Copy
+  button. Review toolbar with Approve, Request change, Edit and Defer per step and Approve plan and
+  Reject plan in the header: in this release they keep local marks (a tally chip in the header)
+  and copy a chat line such as `T7: …` for the session; Edit changes the step's intent. Keyboard-
+  complete, visible focus, 44 px targets, reduced-motion aware.
+- **`/blueprint review <plan-dir>` and `--static`.** `review` reopens an existing plan folder,
+  re-renders it and presents the gate again. `--static` is accepted and is a no-op, reserved for the
+  live review loop.
+- **References** `skills/blueprint/references/walkthrough.md` (what the page shows, chart
+  applicability, keyboard map) and `plan-format-legacy.md` (the single-file `plan.md` format, kept
+  for Claude chat and Cowork, which ship no plugin tools).
+
+### Changed
+- **`/blueprint`** rewritten around `plan.json`: read the spec and research, `kg blast` the spec's
+  paths when the index exists, map files, decompose, write `plan.json`, run `plan-render all`, fix
+  every `check` violation, then the same `AskUserQuestion` gate as before. A revision edits
+  `plan.json`, bumps `version` and re-renders; `plan.md` and `plan.html` are never edited by hand.
+  Plans now live in `.workspace/shared/plans/<date>-<feature>/`. Pre-approves `plan-render`, its
+  full path in `tools/`, and `kg blast`.
+- **`/orchestrate` and `/ward task <N>`** read `plan.json` when the chosen plan is a folder: waves
+  are explicit, steps marked `deferred` are excluded, task N is `steps[N-1]`, and a `plan.md` whose
+  trailer version differs from `plan.json` is reported as stale. A single legacy `plan.md` is parsed
+  as before.
+- **`/manifest` Phase 2** names the three files `/blueprint` writes; GATE 3 is unchanged.
+- **README, PRIVACY.md, SECURITY.md.** The `/blueprint` row, the plan folder under "Files it
+  writes", `plan-render` under bundled commands and the skills that run it without asking;
+  `plan.html` is a static page with no network calls that embeds the same information as `plan.md`;
+  `tools/plan-render` is in scope, with what it validates and the rule that reviewer text is never
+  executed.
+
+Next (4.19): the live review loop — the page served by the companion server, change requests and
+approvals flowing back to the same session without a chat turn, and Artifact mode.
+
 ## [4.17.0] — 2026-11-01
 
 **Design grounded in the app and the platform.** When `/conjure` proposes UI, it now starts from what

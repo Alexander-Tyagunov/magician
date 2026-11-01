@@ -102,7 +102,7 @@ Each stage has its own skill, and `/manifest` runs them in order. Claude can als
 |---|---|---|
 | Research | `/magic` | Findings in `.workspace/shared/research/` |
 | Design | `/conjure` | An approved spec in `.workspace/shared/specs/` |
-| Plan | `/blueprint` | A test-first plan in `.workspace/shared/plans/` |
+| Plan | `/blueprint` | A test-first plan in `.workspace/shared/plans/`, with a walkthrough page you can open in your browser |
 | Build | `/orchestrate`, `/ward` | Code and tests, one behaviour at a time |
 | Verify | `/certify` | Test, type, lint and build results |
 | Review | `/scrutinize`, `/divine` | Findings ranked by severity |
@@ -122,6 +122,7 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/sentinel` | Dependency auditors in report mode only: `npm audit`, `pip-audit`, `safety check`, `govulncheck ./...` and `cargo audit` |
 | `/deploy` | Edits to CI configuration in `.github/workflows/`, `.gitlab-ci.yml` and `.circleci/` |
 | `/conjure` | Starting and stopping its local preview server. Opening the preview in your browser asks first |
+| `/blueprint` | `plan-render`, which checks the plan it wrote and renders `plan.md` and `plan.html` from it, and `kg blast` |
 
 `/knowledge-graph` and `/weave` also run `kg refresh`, which builds or updates the code index in `~/.claude/magician/knowledge-graph/`, and `kg query` and `kg blast` save their results to a cache in that folder. The remaining grants are read-only commands, such as `kg check` and `kg neighbors`, the read commands of `jira` and `confluence`, and `gh` views; creating and editing files inside `.workspace/`, `.claude/skills/` or magician's data folder; and `/almanac`'s edits to `CLAUDE.md` and `.gitignore`.
 
@@ -133,7 +134,7 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/manifest` | Run the full lifecycle with four approval points |
 | `/magic` | Research a question across documentation, the web and local files |
 | `/conjure` | Agree on a design and spec before writing code, following the app's current design and the platform's guidelines |
-| `/blueprint` | Turn an approved spec into a test-first plan |
+| `/blueprint` | Turn an approved spec into a test-first plan with a visual walkthrough you review in the browser |
 | `/portal` | Isolate a feature in its own git worktree |
 | `/orchestrate` | Build a plan with parallel agents |
 | `/weave` | Deliver many related items as one tracked workflow |
@@ -182,6 +183,7 @@ The commands ship in the plugin's `tools/` folder. At session start, a hook writ
 | `magician-ui` | Turns the status line, voice and lore on or off, and removes settings earlier versions added | None |
 | `magician-statusline` | Draws the status line from the data Claude Code passes to it | None |
 | `magician-scan` | Scans a folder for security issues and prints each match with its file, line and a short snippet; credential values are redacted | None |
+| `plan-render` | Checks a `plan.json` written by `/blueprint` and renders `plan.md` and a self-contained `plan.html` walkthrough from it; keeps earlier versions in `history/` | None |
 
 ## Configuration
 
@@ -259,6 +261,7 @@ Claude Code gives each plugin a data folder, usually `~/.claude/plugins/data/mag
 | `~/.claude/magician/` | Preferences in `cli-ui.json`, the status line renderer, status markers, the code index | Status markers 7 days; the rest until you delete it |
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups taken before `magician-ui` edits your settings | Newest 3 |
 | `.workspace/` in your project | Specs, plans, research, decisions, post-mortems, `/conjure` designs and mockups, the design preview's chat log, `/divine` review diffs and `/transmute` session state | Until you delete it |
+| `.workspace/shared/plans/<date>-<feature>/` in your project | `plan.json`, the plan `/blueprint` wrote; `plan.md` and `plan.html`, rendered from it; and `history/`, one `plan.v<n>.json` per earlier version. `plan.html` is a static page: it opens from the file, loads nothing from the network and sends nothing | Until you delete it |
 | `.magician/` in your project | Optional `voice` and `lore.off` files you create | Until you delete it |
 
 The `/jira` and `/confluence` skills add to their memory files, `jira-memory.md` and `confluence-memory.md`, without asking, and say "Remembered" when they do. Edit or delete those files to clear them.

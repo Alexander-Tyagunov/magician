@@ -39,8 +39,8 @@ GATE 4: PR title and final go-ahead (before /seal)
 7. Gate with **AskUserQuestion** — options: **Approve spec** (proceed to planning), **Request changes** (revise the spec first). **End your turn at the call; wait for the choice.** A free-form "approved / looks good" counts as Approve.
 
 ### Phase 2: Planning [GATE 3]
-8. Run /blueprint — create task plan with parallelism map
-9. Write plan to `.workspace/shared/plans/`
+8. Run /blueprint — create the task plan with its parallelism map
+9. /blueprint writes `plan.json`, and renders `plan.md` (what /orchestrate executes) and `plan.html` (the walkthrough the user can open) into `.workspace/shared/plans/<date>-<feature>/`; point the user at `plan.html` when presenting the gate
 10. Gate with **AskUserQuestion** — options: **Approve plan** (proceed to Phase 3), **Request changes** (revise the plan first). **End your turn at the call; wait for the choice. Do NOT proceed to Phase 3 until Approve arrives.** A free-form "approved / looks good" counts as Approve.
 
 ### Phase 3: Isolation [GATE 3.5]

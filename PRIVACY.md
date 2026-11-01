@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective date: 2026-09-28.
+Effective date: 2026-11-01.
 
 This policy covers magician, the Claude Code plugin in this repository, from version 4.15.0 onwards. It explains what magician reads and stores on your computer, what it sends and to whom, and how to remove it.
 
@@ -36,6 +36,7 @@ The plugin data folder is the folder Claude Code gives each plugin, usually `~/.
 | `~/.claude/magician/status/` | Per-session status line markers such as the active skill name, written only while the status line is on | 7 days |
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups of your Claude Code settings, taken before `magician-ui` changes them, readable only by you | The newest 3 |
 | `.workspace/` in your projects | Specs, plans, research notes, decision records, post-mortems, `/conjure` designs and mockups, `/divine` review diffs and `/transmute` session state | Until you delete them |
+| `.workspace/shared/plans/<date>-<feature>/` in your projects | The plan `/blueprint` writes as `plan.json`, the `plan.md` and `plan.html` rendered from it, and earlier versions in `history/`. `plan.html` is a self-contained static page with no network calls: it opens from the file, loads no fonts, libraries or images from anywhere, and sends nothing. It embeds the same information as `plan.md`: file paths, test names, commands, diff sketches and effort and risk notes | Until you delete them |
 | `.workspace/local/` in your projects | The `/conjure` design preview's log of your clicks and chat messages, and its server files | Until you delete them |
 | `.magician/` in your projects | Optional voice and lore files you create yourself | Until you delete them |
 

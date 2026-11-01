@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-Security fixes go into the latest minor release of magician, currently 4.15. Older releases don't receive fixes, so please update before reporting a problem you found on one.
+Security fixes go into the latest minor release of magician, currently 4.18. Older releases don't receive fixes, so please update before reporting a problem you found on one.
 
 | Version | Supported |
 |---|---|
-| 4.15.x (latest minor) | Yes |
+| 4.18.x (latest minor) | Yes |
 | Earlier versions | No |
 
 ## Reporting a vulnerability
@@ -31,7 +31,7 @@ magician is maintained by one person, so complex issues can take longer; you'll 
 In scope:
 
 - The hook scripts in `scripts/` and the hook list in `hooks/hooks.json`.
-- The bundled commands in `tools/` and the launchers magician writes for them, including how they handle credentials, build requests and write files.
+- The bundled commands in `tools/` and the launchers magician writes for them, including how they handle credentials, build requests and write files. This includes `tools/plan-render`: it validates `plan.json` before rendering (secret patterns, absolute home paths, destructive command forms in verify commands) and writes only the three plan files and the `history/` snapshot next to it; the `plan.html` it writes loads nothing from the network, and text a reviewer types into the page is never executed, by the page or by Claude.
 - Skill or agent instructions that could lead Claude to take an unsafe action, or to act without the confirmation the README describes.
 - The `/conjure` preview server.
 - Any network access, stored data or settings change that the README and privacy policy don't disclose.

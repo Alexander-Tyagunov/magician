@@ -27,7 +27,8 @@ HOOK = ROOT / "scripts" / "tools-path.sh"
 ENV_KEY = "CLAUDE_" + "ENV_FILE"
 # Every launcher shadows a command of the same name in Claude's shell, so a new bundled command is a
 # reviewed change to this set, never a side effect of adding a file to tools/.
-SHIPPED = ["confluence", "ctx", "jira", "kg", "magician-scan", "magician-statusline", "magician-ui"]
+SHIPPED = ["confluence", "ctx", "jira", "kg", "magician-scan", "magician-statusline", "magician-ui",
+           "plan-render"]
 
 
 def _bash() -> str:
