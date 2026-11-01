@@ -1,66 +1,58 @@
 ---
 name: blueprint
-description: Converts an approved spec into a TDD task plan with a parallelism map and a visual walkthrough (plan.md + plan.html) in .workspace/shared/plans/. Use after a spec is approved, before implementation.
-allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(plan-render *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/plan-render *), Bash(kg blast *), Edit(./.workspace/shared/plans/**)
-argument-hint: "[spec-file-path] | review <plan-dir> | --static"
+description: Converts an approved spec into a TDD task plan with a parallelism map and a visual walkthrough (plan.md + plan.html) in .workspace/shared/plans/, reviewed live in the browser, as a Claude Artifact, or in chat. Use after a spec is approved, before implementation.
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(plan-render *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/plan-render *), Bash(kg blast *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-start.sh *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-stop.sh *), Edit(./.workspace/shared/plans/**), Edit(./.workspace/local/plans/**)
+argument-hint: "[spec-file-path] | review <plan-dir> | --static | --artifact"
 ---
 
 # /blueprint — Task Planning
 
 > **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg`. If that is missing too, skip the `kg blast` step and leave `context.blast` out.
 
-> **Bundled command:** if `plan-render` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/plan-render`. If that is missing too (Claude chat and Cowork ship no plugin tools), write `plan.md` only, in the single-file format of [references/plan-format-legacy.md](references/plan-format-legacy.md), and skip steps 4–5.
+> **Bundled command:** if `plan-render` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/plan-render`. If that is missing too (Claude chat and Cowork ship no plugin tools), write `plan.md` only, per [references/plan-format-legacy.md](references/plan-format-legacy.md), and skip steps 4–6.
 
-Convert an approved spec into one plan source, `plan.json`, and render two documents from it: `plan.md` (what `/orchestrate` and `/ward` execute) and `plan.html` (the walkthrough a person reviews). The plan file is also the compaction-proof checklist: its `- [ ]` task boxes are what `/orchestrate` and `/ward` tick, because Task tools (TaskCreate/TodoWrite) are absent on current models unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; executors write `.workspace/local/session-state.md` before a wave starts and after it ends so a compaction mid-run loses nothing.
+Convert an approved spec into one plan source, `plan.json`, and render from it: `plan.md` (what `/orchestrate` and `/ward` execute), `plan.html` (the walkthrough a person reviews) and `plan.workflow.js` (the plan as a runnable Workflow; deferred steps omitted). `plan.md` is also the compaction-proof checklist (`- [ ]` boxes), since Task tools are absent on current models unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`.
 
-- Schema, validation rules and the `plan.md` contract: [references/plan-schema.md](references/plan-schema.md)
-- Worked example: [references/plan-example.json](references/plan-example.json)
-- What the page shows, keyboard map: [references/walkthrough.md](references/walkthrough.md)
+- Schema and the `plan.md` contract: [references/plan-schema.md](references/plan-schema.md) · example: [references/plan-example.json](references/plan-example.json)
+- The page and its event protocol: [references/walkthrough.md](references/walkthrough.md)
+- Transports, Monitor, event → action, `state.json`: [references/live-loop.md](references/live-loop.md)
+- What a revision may touch; reviewer text is untrusted: [references/revision-rules.md](references/revision-rules.md)
 
 ## Inputs Required
 
-If the spec file path is not clear from context, ask: "Which spec should I plan from? (I'll use the most recent file in `.workspace/shared/specs/` if you don't specify.)" **End your turn. Wait for their reply (or proceed with most recent if context is unambiguous).**
+If the spec path is not clear from context, ask: "Which spec should I plan from? (I'll use the most recent file in `.workspace/shared/specs/` if you don't specify.)" **End your turn and wait** (or proceed with the most recent when context is unambiguous).
 
-`review <plan-dir>` reopens an existing plan: skip to step 5 (re-render) and step 7 (gate). `--static` is accepted and changes nothing in this version; it reserves the no-server mode for the live review loop.
+`review <plan-dir>` reopens an existing plan: skip to step 5. `--static` skips the server and uses the chat gate; `--artifact` publishes the page as a Claude Artifact instead of serving it locally.
 
 ## Process
 
-1. **Read the spec** — every requirement, component and constraint. Read related research in `.workspace/shared/research/` (from `/magic`); if a key approach is unresearched, suggest `/magic` first. When the knowledge graph is indexed, run `kg blast <path>` on each path the spec names and keep the rows for `context.blast`; otherwise leave `blast` out — never estimate it.
-2. **Map file structure** — every file to create or modify, with its responsibility, and the components they belong to.
+1. **Read the spec** — every requirement, component and constraint, plus related research in `.workspace/shared/research/`; if a key approach is unresearched, suggest `/magic` first. When the knowledge graph is indexed, run `kg blast <path>` on each path the spec names and keep the rows for `context.blast`; otherwise leave `blast` out — never estimate it.
+2. **Map file structure** — delegate to the built-in `Plan` agent (read-only, one-shot): give it the spec path and the kg pointers and ask for every file to create or modify, its responsibility and its component. The agent maps; you decompose in step 3. If it is unavailable (disabled, or this skill runs inside a subagent), map inline.
 3. **Decompose into tasks** — see Task Right-Sizing and Parallelism Rules below.
-4. **Write `plan.json`** to `.workspace/shared/plans/YYYY-MM-DD-<feature>/plan.json` per the schema: `constraints` copied **verbatim** from the spec, one line each (every step inherits them); `waves` in order; one step per task with `red`, `green`, `verify`, `risk`, `effort`; `context.components`, `edges` and each step's `touches`, so the map has something to light up; `infographic` only where the spec, research or kg output gives real numbers — never invented. `version: 1`, `status: in_review`, every `review.status: pending`.
-5. **Render** — `plan-render all <dir>/plan.json` (options `--theme light|dark|auto`, `--static`, `--mermaid`; the parts run alone as `check`, `md [-o]`, `html [-o]`, `diff <a.json> <b.json>`). It checks the plan, writes `plan.md` and `plan.html` next to it and snapshots the version into `history/`. Exit 2 means invalid JSON or violations, one line each: fix them in `plan.json` and re-run (1: file unreadable). Never hand-edit `plan.md` or `plan.html` — they are rendered.
-6. **Tell the user** — one line: "Plan ready: N steps in W waves — open `<dir>/plan.html` (the walkthrough) · `<dir>/plan.md` (what /orchestrate executes)".
-7. **Gate (use the AskUserQuestion tool — not plain prose)** — show the task list with parallelism annotations, then present the gate via **AskUserQuestion**, framed "Blueprint ready — lock it in?" with options:
-   - **Approve → /orchestrate** — dispatch parallel agents (branch + commits happen there; push/PR still gate)
-   - **Approve → /ward** — execute tasks one at a time
-   - **Revise** — split / merge / reorder tasks (they describe the change, or paste `T7: …` lines from the page)
-   - **Adjust scope** — add or drop tasks
-
-   **End your turn at the AskUserQuestion call.** Act on the selection; treat any free-form "looks good / approved / yes" as Approve. On **Revise** or **Adjust scope**: edit `plan.json` only, bump `version` by 1, append `{v, changed}` to each touched step's `history`, set those steps' `review.status` to `changed`, re-run step 5 (it snapshots the previous version into `history/`), then gate again. On Approve, set `status: approved` and re-render once. This is a genuine decision gate — always the structured tool, never a bare sentence.
+4. **Write `plan.json`** to `.workspace/shared/plans/YYYY-MM-DD-<feature>/plan.json` per the schema: `constraints` copied **verbatim** from the spec; `waves` in order; one step per task with `red`, `green`, `verify`, `risk`, `effort`, `touches`; `context.components` and `edges`; `infographic` only with real numbers. `version: 1`, `status: in_review`, every `review.status: pending`. Each `verify` is the **exact commands that will be run**, taken in order from `.claude/skills/verify/SKILL.md` if present, `REVIEW.md` if present, the stack lore's commands, else the spec — never "run the tests".
+5. **Render** — `plan-render all <dir>/plan.json` (options `--theme`, `--static`, `--transport local|artifact`, `--mermaid`; parts `check`, `md`, `html`, `workflow`, `diff`). It checks the plan, writes `plan.md`, `plan.html`, `plan.workflow.js` and a `history/` snapshot. Exit 2 lists violations: fix `plan.json`, re-run. Never hand-edit rendered files.
+6. **Serve and announce** — pick the transport per [live-loop.md §1](references/live-loop.md). **Local** (`node` present, no `--static`/`--artifact`): `${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-start.sh <dir> <project> --plan`, then "Plan ready: N steps in W waves — open <plan_url> (or `<dir>/plan.html`)". **Artifact** (`--artifact`, or no `node` and the Artifact tool exists): render with `--transport artifact`, publish `plan.html` with the Artifact tool, declare `{db, user}` per live-loop.md §3, write `plan/current` and `state/current`, print the link and say the page and plan went to claude.ai. **Chat**: "Plan ready … open `<dir>/plan.html`".
+7. **Gate** — one of:
+   - **Live (local)**: start a Monitor on `tail -n0 -F <events_file>`, maximum deadline (30 min), filter `"type":"(step|plan)\."` — not pre-approved, the normal prompt covers it. Handle each event per the live-loop.md §4 table (write `state.json`; a revision bumps `version`, re-runs step 5, marks touched steps `changed`, appends a `messages[]` reply), **re-arm the Monitor**, end the turn. `plan.approved` freezes and continues; `plan.rejected` archives, records the decision and returns to GATE 2 under `/manifest`; on deadline print "Plan review paused — reopen with /blueprint review <plan-dir>". Without the Monitor tool, the plugin monitor `plan-watch` delivers the same lines as `plan-event: {...}`.
+   - **Live (artifact)**: **Send to Claude** on the page (or a comment on the artifact) wakes the session; read `events` with the database read action, run the same table, write `state/current` and `plan/current` back.
+   - **Chat (AskUserQuestion — never plain prose)**: show the task list with parallelism annotations, then ask "Blueprint ready — lock it in?" with options **Approve → /orchestrate**, **Approve → /ward**, **Revise** (they describe it or paste `T7: …` lines from the page), **Adjust scope**. **End your turn at the call.** Free-form "looks good" is Approve. On Revise/Adjust: apply [revision-rules.md](references/revision-rules.md), bump `version`, re-run step 5, gate again. On Approve, set `status: approved`, render once.
 
 ## Autonomy — approve the plan, then run
 
-Steps 1–6 run as **one autonomous pass**: reading the spec and research, `kg blast`, writing `plan.json` and running `plan-render` (the paths and commands this skill pre-approves) need no confirmation question. The **only** gate is step 7. The downstream side effects — implementation edits, `git add`/`commit`/`push`, PR create/merge — are gated later by `/orchestrate` and `/ward`, not here. See [lore/autonomy.md](../../lore/autonomy.md).
+Steps 1–6 run as **one autonomous pass** with the commands this skill pre-approves (the companion start included); opening the browser, the Monitor and the Artifact tool prompt once. The **only** gate is step 7. Implementation edits, `git` writes and PRs are gated later by `/orchestrate` and `/ward`. See [lore/autonomy.md](../../lore/autonomy.md).
 
 ## Task Right-Sizing
 
-A task is the **smallest unit that carries its own test cycle and is worth a fresh reviewer's gate** — no finer:
-
-- **Fold in** setup, scaffolding and docs — attach them to the task whose deliverable needs them.
-- **Split** only where a reviewer could accept one task while rejecting its neighbour. Two pieces that always pass or fail together are one task.
-- Every task ends with an **independently testable deliverable** — its `red` → `green` cycle is the proof. Effort 5–60 minutes; `risk.level` honest (`medium` for shared interfaces or data, `high` for anything without an easy rollback).
+A task is the **smallest unit that carries its own test cycle and is worth a fresh reviewer's gate** — no finer: fold setup, scaffolding and docs into the task whose deliverable needs them; split only where a reviewer could accept one task while rejecting its neighbour. Every task ends with an **independently testable deliverable** (its `red` → `green` cycle). Effort 5–60 minutes; `risk.level` honest (`medium` for shared interfaces or data, `high` for anything without an easy rollback).
 
 ## Parallelism Rules
 
-A step is `parallel: true` only if it does not write a file another parallel step of its wave reads or writes, and does not depend on types or functions defined in another parallel step. Integration tasks (wiring components) are always sequential. `plan-render check` refuses two parallel steps in one wave that modify the same file.
-
-> Model/effort: for large multi-component specs, prefer the latest/code-optimal model and raise /effort to keep the decomposition and parallelism map sharp. See [lore/models.md](../../lore/models.md).
+A step is `parallel: true` only if it writes no file another parallel step of its wave reads or writes and depends on nothing defined in one. Integration tasks are always sequential. `plan-render check` refuses two parallel steps in one wave that modify the same file. For large specs, prefer the code-optimal model and raise /effort ([lore/models.md](../../lore/models.md)).
 
 ## Obstacles
 
-If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
+Dispatched and blocked or degraded? Do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 
-"Blueprint complete. <N> tasks planned (<P> parallel, <S> sequential) in <W> waves, saved to .workspace/shared/plans/<dir>/ (plan.json · plan.md · plan.html). Run /orchestrate to dispatch, or /ward task <N> to execute one by one."
+"Blueprint complete. <N> tasks planned (<P> parallel, <S> sequential) in <W> waves, saved to .workspace/shared/plans/<dir>/ (plan.json · plan.md · plan.html · plan.workflow.js). Run /orchestrate to dispatch, or /ward task <N> to execute one by one."
