@@ -1,11 +1,11 @@
 {
-  "recorded_at": "2026-11-01T21:55:15Z",
-  "offline_always_on_tokens": 1598,
+  "recorded_at": "2026-11-01T22:55:50Z",
+  "offline_always_on_tokens": 1609,
   "offline_skill_body_tokens": {
     "accelerate": 1291,
     "almanac": 1328,
     "autopsy": 1277,
-    "blueprint": 1777,
+    "blueprint": 1858,
     "certify": 1281,
     "chronicle": 1655,
     "confluence": 1431,
@@ -16,8 +16,8 @@
     "jira": 2243,
     "knowledge-graph": 1486,
     "magic": 4294,
-    "manifest": 1807,
-    "orchestrate": 3053,
+    "manifest": 2218,
+    "orchestrate": 3427,
     "portal": 729,
     "scrutinize": 2261,
     "seal": 1459,
@@ -25,12 +25,12 @@
     "statusline": 2254,
     "transmute": 4352,
     "unravel": 1573,
-    "ward": 1772,
-    "weave": 2696
+    "ward": 1845,
+    "weave": 2918
   },
-  "cli_always_on_tokens": 1487,
+  "cli_always_on_tokens": 1498,
   "cli_on_invoke_tokens": {
-    "manifest": 1800,
+    "manifest": 2200,
     "knowledge-graph": 1500,
     "scrutinize": 2200,
     "statusline": 2200,
@@ -52,9 +52,9 @@
     "blueprint": 1800,
     "seal": 1500,
     "transmute": 4300,
-    "weave": 2700,
+    "weave": 2900,
     "portal": 730,
-    "orchestrate": 3000,
+    "orchestrate": 3400,
     "agent:guardian": 1100,
     "agent:verifier": 720,
     "agent:fixer": 860,
@@ -62,5 +62,5 @@
     "agent:simplifier": 640,
     "agent:gatekeeper": 990
   },
-  "ste_findings": 3482
+  "ste_findings": 3541
 }

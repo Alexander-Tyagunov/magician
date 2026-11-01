@@ -104,7 +104,7 @@ Each stage has its own skill, and `/manifest` runs them in order. Claude can als
 |---|---|---|
 | Research | `/magic` | Findings in `.workspace/shared/research/` |
 | Design | `/conjure` | An approved spec in `.workspace/shared/specs/` |
-| Plan | `/blueprint` | A test-first plan in `.workspace/shared/plans/`, with a walkthrough page you can open in your browser |
+| Plan | `/blueprint` | A test-first plan in `.workspace/shared/plans/`, with a walkthrough page you review live in your browser or as a Claude Artifact |
 | Build | `/orchestrate`, `/ward` | Code and tests, one behaviour at a time |
 | Verify | `/certify` | Test, type, lint and build results |
 | Review | `/scrutinize`, `/divine` | Findings ranked by severity |
@@ -124,7 +124,7 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/sentinel` | Dependency auditors in report mode only: `npm audit`, `pip-audit`, `safety check`, `govulncheck ./...` and `cargo audit` |
 | `/deploy` | Edits to CI configuration in `.github/workflows/`, `.gitlab-ci.yml` and `.circleci/` |
 | `/conjure` | Starting and stopping its local preview server. Opening the preview in your browser asks first |
-| `/blueprint` | `plan-render`, which checks the plan it wrote and renders `plan.md` and `plan.html` from it, and `kg blast` |
+| `/blueprint` | `plan-render`, which checks the plan it wrote and renders `plan.md`, `plan.html` and `plan.workflow.js` from it; `kg blast`; and starting and stopping the local plan page server. Opening the page in your browser, watching its events and publishing it as an artifact ask first |
 
 `/knowledge-graph` and `/weave` also run `kg refresh`, which builds or updates the code index in `~/.claude/magician/knowledge-graph/`, and `kg query` and `kg blast` save their results to a cache in that folder. The remaining grants are read-only commands, such as `kg check` and `kg neighbors`, the read commands of `jira` and `confluence`, and `gh` views; creating and editing files inside `.workspace/`, `.claude/skills/` or magician's data folder; and `/almanac`'s edits to `CLAUDE.md` and `.gitignore`.
 
@@ -136,9 +136,9 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/manifest` | Run the full lifecycle with four approval points |
 | `/magic` | Research a question across documentation, the web and local files |
 | `/conjure` | Agree on a design and spec before writing code, following the app's current design and the platform's guidelines |
-| `/blueprint` | Turn an approved spec into a test-first plan with a visual walkthrough you review in the browser |
+| `/blueprint` | Turn an approved spec into a test-first plan with a visual walkthrough you review live in the browser or as a Claude Artifact; change requests from the page come back to the same session |
 | `/portal` | Isolate a feature in its own git worktree |
-| `/orchestrate` | Build a plan with parallel agents |
+| `/orchestrate` | Build a plan with parallel agents, or run its `plan.workflow.js` as one workflow |
 | `/weave` | Deliver many related items as one tracked workflow |
 | `/ward` | Build one behaviour at a time, test first |
 | `/unravel` | Debug from a hypothesis and evidence, then add a regression test |
@@ -186,7 +186,7 @@ The commands ship in the plugin's `tools/` folder. At session start, a hook writ
 | `magician-statusline` | Draws the status line from the data Claude Code passes to it | None |
 | `magician-scan` | Scans a folder for security issues and prints each match with its file, line and a short snippet; credential values are redacted | None |
 | `ste-lint` | Checks the prose of a Markdown file against the STE-lite rules and prints each finding with its line, for example a sentence over the word limit; skips code, tables and quoted text | None |
-| `plan-render` | Checks a `plan.json` written by `/blueprint` and renders `plan.md` and a self-contained `plan.html` walkthrough from it; keeps earlier versions in `history/` | None |
+| `plan-render` | Checks a `plan.json` written by `/blueprint` and renders `plan.md`, a self-contained `plan.html` walkthrough and a `plan.workflow.js` workflow from it; keeps earlier versions in `history/` | None |
 
 ## Configuration
 
@@ -258,9 +258,14 @@ Hooks are scripts Claude Code runs on session events. They make no network calls
 
 At session start magician also shows you two notices of its own: a one-time hint to run `/almanac` in a new project, and, if 4.14 or earlier recorded adding permission rules or auto mode, a weekly reminder that repeats until you run `magician-ui cleanup`. It records each session's start time in its data folder, and writes status markers only when the status line is on. If cli-ui.json can't be read, magician leaves it as is and session start keeps reading its old values, so the reminder and the markers continue until you fix or delete the file.
 
-### Background monitor
+### Background monitors
 
-The first time you run `/deploy` in a session, a monitor starts checking GitHub Actions every 90 seconds, for up to three hours, for new failed runs on the current branch. It uses your installed `gh` login, prints only the run ID and stores nothing. It stays silent when `gh`, a git repository, an `origin` remote or a branch is missing.
+A monitor is a script Claude Code starts the first time you run a given skill in an interactive session and reads line by line until it exits. Both of magician's are plain bash.
+
+| Monitor | Starts with | What it does |
+|---|---|---|
+| `ci-watch` | `/deploy` | Checks GitHub Actions every 90 seconds, for up to three hours, for new failed runs on the current branch. It uses your installed `gh` login, prints only the run ID and stores nothing. It stays silent when `gh`, a git repository, an `origin` remote or a branch is missing |
+| `plan-watch` | `/blueprint` | Follows the plan page's local events file (`.workspace/local/plans/<feature>/state/events.jsonl`) and prints each new line, at most 2 KB with control characters removed, so a change request you make on the page reaches the session; exits after three hours or when `state.json` says the plan is approved or rejected. It makes no network calls and is the fallback when Claude Code's own `Monitor` tool, which `/blueprint` prefers and which asks first, is not available |
 
 ### Files it writes
 
@@ -276,10 +281,11 @@ Claude Code gives each plugin a data folder, usually `~/.claude/plugins/data/mag
 | Data folder | Integration opt-outs, your `/almanac` workspace choice, the pull request versions `/divine` has reviewed, a 30-second Jira and Confluence cache, and pacing and marker files | Until you uninstall |
 | Data folder | Per project, the detected stack (archetype, technologies, log SDKs) with the git commit and manifest sizes it was read at, and, with `auto_format` on, one time stamp per formatted file path | The stack until the next detection or uninstall; the stamps one hour |
 | `.workspace/local/` in your project | `obstacles.jsonl`, one line per blocked or degraded magician agent run, and `session-state.md`, the running state skills write for compaction | Until you delete them |
+| `.workspace/local/plans/<date>-<feature>/state/` in your project | The plan page's review state while `/blueprint` serves it: `events.jsonl` (the requests you typed on the page, step ids and timestamps), `state.json` (what Claude wrote back: versions, step marks, its replies) `server.json` (port and token of the local server) and `plan-watch.offset` (how far the monitor has read). Gitignored | Until you delete them |
 | `~/.claude/magician/` | Preferences in `cli-ui.json` (status line, voice, STE-lite and lore), the status line renderer, status markers, the code index | Status markers 7 days; the rest until you delete it |
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups taken before `magician-ui` edits your settings | Newest 3 |
 | `.workspace/` in your project | Specs, plans, research, decisions, post-mortems, `/conjure` designs and mockups, the design preview's chat log, `/divine` review diffs and `/transmute` session state | Until you delete it |
-| `.workspace/shared/plans/<date>-<feature>/` in your project | `plan.json`, the plan `/blueprint` wrote; `plan.md` and `plan.html`, rendered from it; and `history/`, one `plan.v<n>.json` per earlier version. `plan.html` is a static page: it opens from the file, loads nothing from the network and sends nothing | Until you delete it |
+| `.workspace/shared/plans/<date>-<feature>/` in your project | `plan.json`, the plan `/blueprint` wrote; `plan.md`, `plan.html` and `plan.workflow.js`, rendered from it; and `history/`, one `plan.v<n>.json` per earlier version. `plan.html` opens from the file, loads nothing from the network and, when served locally, talks only to the local server. `plan.workflow.js` is run by `/orchestrate` through Claude Code's Workflow tool, which asks first; nothing is copied into `.claude/workflows/` | Until you delete it |
 | `.magician/` in your project | Optional `voice`, `ste`, `ste-paths` (globs of Markdown files the STE-lite check also covers), `ste-terms` (words it must not flag) and `lore.off` files you create | Until you delete it |
 
 The `/jira` and `/confluence` skills add to their memory files, `jira-memory.md` and `confluence-memory.md`, without asking, and say "Remembered" when they do. Edit or delete those files to clear them.
@@ -290,9 +296,10 @@ The `/jira` and `/confluence` skills add to their memory files, `jira-memory.md`
 - `/seal`, `/deploy`, `/divine`, `/autopsy`, `/jira` and the CI monitor use your own `gh` login, and `/divine` can use `glab`, to talk to GitHub or GitLab. `/seal` also pushes to your git remote.
 - Research skills use Claude Code's web tools, which follow your permission settings. If you added the Context7 documentation MCP server, `/magic`, `/divine` and `/transmute` may query it without a prompt.
 - `/transmute` can open pages on hosts you name in your Chrome browser, through the Claude in Chrome tools, and read their text and network requests into the conversation. Each browser action goes through your normal permission prompt, the skill is told to stay read-only and mask secrets, and it asks in chat before typing into a page.
+- The plan page `/blueprint` serves uses the same local server as the `/conjure` design preview: it listens on `127.0.0.1` only, on a random port, under a path that holds a per-run token, and serves the plan folder. The page loads nothing from the network; the requests you make on it go to that server, which appends them to the local events file. Claude reads that file through its `Monitor` tool (which runs only `tail` on it and asks first) or the `plan-watch` monitor. Nothing leaves your machine. In artifact mode, which `/blueprint` uses only when you pass `--artifact` or when Node is missing and the session has the Artifact tool, it uploads `plan.html` and `plan.json` to claude.ai as a private artifact and reads your review from the artifact's database; it tells you so in the "Plan ready" line.
 - The `/conjure` preview server listens on `127.0.0.1` only. Its page loads one pinned diagram library, mermaid 10.9.3, from jsDelivr in your browser, with an integrity hash so the browser rejects any other file, and hosted web fonts only if you ask for them. When it designs, `/conjure` may fetch guideline pages from m3.material.io, developer.apple.com, fluent2.microsoft.design and figma.com; each fetch goes through Claude Code's normal WebFetch prompt, and the pages are only read. `/conjure` can also use a Playwright MCP server, if you have one, to screenshot its design pages; opening a page in that browser asks first.
 - `/sentinel` may run a dependency auditor: `npm audit` sends the dependency list to the npm registry; `pip-audit` sends package names and versions to PyPI (or OSV, if you choose it); `safety check` downloads Safety's vulnerability database and, when you use a Safety API key, sends the package list to Safety's servers; `govulncheck` asks the Go vulnerability database at vuln.go.dev about the modules you use, and the go command downloads any module missing from its cache from your module proxy (proxy.golang.org by default); and `cargo audit` downloads the RustSec advisory database from GitHub and, to spot yanked versions, fetches the crates.io index entry of each crate in Cargo.lock.
-- `/magic`, `/conjure`, `/autopsy`, `/accelerate`, `/scrutinize` and `/divine` can offer to publish a result as a Claude Artifact, and do so only if you accept.
+- `/magic`, `/conjure`, `/autopsy`, `/accelerate`, `/scrutinize` and `/divine` can offer to publish a result as a Claude Artifact, and do so only if you accept. `/blueprint` publishes its plan page as an artifact only in artifact mode, described above.
 
 Nothing goes to the author, and there is no telemetry. Text magician adds to your session is part of your conversation, so Claude Code sends it to your model provider like any other text.
 

@@ -10,6 +10,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
 (`evals/results/budget.json`) is reset by this release.
 
+### Batch 3 — live plan review, Artifact mode, plan → workflow
+
+**Added**
+- Live review loop: `/blueprint` serves `plan.html` from the companion server
+  (`tools/companion/`, moved from `/conjure` and shared by both skills) on `127.0.0.1` under a
+  per-run token path; the page's review toolbar and ✦ helper post events (`step.review`,
+  `step.change_request`, `step.edit`, `plan.change_request`, `plan.approved`, `plan.rejected`) to
+  `events.jsonl`; Claude is woken by a `Monitor` on that file (or the `plan-watch` plugin monitor as
+  the fallback), revises the step, re-renders, and the page hot-swaps the card with a version badge
+  and a what-changed panel — no return to chat. Server contract in `tools/companion/PROTOCOL.md`
+  (same-origin check, 8 KB cap, known types and step ids only, no CORS, writes only
+  `events.jsonl`); `state.json` schema in `skills/blueprint/references/walkthrough.md`; the
+  Claude-side algorithm and revision budget in `references/live-loop.md` and
+  `references/revision-rules.md` (reviewer text is untrusted: never into shell, quoted only inside a
+  labelled fence; one step plus its named dependents per revision; more than three steps means a
+  re-plan).
+- Artifact mode (`/blueprint --artifact`, or automatically when there is no Node but the Artifact
+  tool exists): `plan-render html --transport artifact` renders the same page for claude.ai, where
+  it writes events with the artifact `db` capability and follows `state/current` and
+  `plan/current` snapshots; falls back to static with a notice when no database is granted.
+- `plan-render workflow`: an approved plan becomes `plan.workflow.js` — one phase per wave,
+  `parallel()` for parallel steps, sequential steps in dependency order, bounded return schemas,
+  deferred steps omitted, no non-deterministic calls; `/orchestrate` runs it with the Workflow tool
+  when present and falls back to waves; `/weave` accepts it as the composed workflow.
+- `/blueprint` delegates file mapping to the built-in `Plan` agent; `/manifest` recommends plan
+  mode for Phases 0–2; each step's `verify` is the exact commands from the project's `verify`
+  skill, `REVIEW.md`, the stack lore or the spec, in that order.
+- Tests: `test_companion.py` (20), `test_plan_watch.py` (9), workflow generator and live-loop
+  accessibility tests; a local-only Playwright end-to-end run (`tests/e2e/`) that drives the real
+  server through a change request, a revision and an approval.
+
+**Changed**
+- `/conjure` scripts are thin wrappers over `tools/companion/`; the companion refuses screen
+  names that resolve outside their folder and logs to the state folder instead of the caller's
+  stdout (two pre-existing bugs).
+
 ### Batch 2 — STE-lite (simplified technical English, STE-inspired)
 
 **Added**
