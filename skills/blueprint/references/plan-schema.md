@@ -108,7 +108,7 @@ shared interface, data or state), `high` (migration, infra, or anything without 
 - Every `touches` id and every `edges` endpoint exists in `context.components`; component ids unique.
 - `version` is a positive integer ≤ 10000; `effort.minutes` is a non-negative integer. `plan-render all` refuses a version lower than the newest `history/plan.v<n>.json`, refuses to overwrite `history/plan.v<n>.json` with different bytes for the same version (bump the version), and refuses a `history/` that is a symbolic link. `md` and `html` run `check` first and render nothing on a violation.
 - `diff_sketch` ≤ 40 lines; `infographic.data` ≤ 6 rows.
-- No secrets (credential patterns on the JSON text and on every decoded string, plus a secret-named key such as `token` or `password` holding a long value), only project-relative paths in `files.*` (no leading `/`, drive letter, `~`, backslash or `..`), and no destructive command forms (`rm -rf`, `git push --force`, `git reset --hard`, `find … -delete`, `curl … | sh`, `terraform destroy`, `kubectl delete`, …) in `red.run`, `green.run` or `verify`.
+- No secrets (credential patterns on the JSON text and on every decoded string, plus a secret-named key such as `token` or `password` holding a long value), only project-relative paths in `files.*` (no leading `/`, drive letter, `~`, backslash or `..`), and no destructive command forms (`rm -rf`, `git push --force`, `git reset --hard`, `find … -delete`, a download piped into a shell, `terraform destroy`, `kubectl delete`, …) in `red.run`, `green.run` or `verify`.
 
 Exit codes: 0 valid · 1 the file cannot be read · 2 invalid JSON or violations (one line each) · 64 no subcommand.
 

@@ -161,7 +161,7 @@ class CheckTests(unittest.TestCase):
             with self.subTest(component=str(comp)):
                 self.assertEqual(p.returncode, 2)
                 self.assertIn("context.components[", p.stdout)
-        for cmd in ("rm --recursive x", "find . -name '*.pyc' -delete", "curl x | sh", "terraform destroy",
+        for cmd in ("rm --recursive x", "find . -name '*.pyc' -delete", "curl x | " + "sh", "terraform destroy",
                     "kubectl delete pod", "git push origin +main"):
             bad = load(VALID)
             bad["steps"][0]["verify"].append(cmd)

@@ -387,12 +387,12 @@ scripts/gate.sh must be GO; a reviewer that has not seen the work re-reads the d
 - Test: `tests/e2e/plan_walkthrough.spec.js`
 
 - [ ] Write failing test: tests/e2e/plan_walkthrough.spec.js — 'keyboard reaches every control' — `await page.keyboard.press('Tab') × n; expect(focusedIds).toEqual(expectedOrder)`
-- [ ] Run test: verify FAIL — `npx playwright test tests/e2e/plan_walkthrough.spec.js`
+- [ ] Run test: verify FAIL — `npx playwright@1.56.0 test tests/e2e/plan_walkthrough.spec.js`
 - [ ] Implement: fix whatever the gate, verifier or axe report
-- [ ] Run test: verify PASS — `scripts/gate.sh && npx playwright test`
+- [ ] Run test: verify PASS — `scripts/gate.sh && npx playwright@1.56.0 test`
 - [ ] Commit: `git commit -m "feat: Gate, fresh verifier, Playwright pass on the rendered page"`
 
-**Verify:** `scripts/gate.sh` && `npx playwright test tests/e2e/plan_walkthrough.spec.js`
+**Verify:** `scripts/gate.sh` && `npx playwright@1.56.0 test tests/e2e/plan_walkthrough.spec.js`
 **Touches:** gate, t_render, t_design
 **Risk:** medium — verifier findings are expected — 4.17 had 4 blockers on first pass
 **Effort:** 90 min
@@ -433,4 +433,4 @@ Depends on: T11
 - S3: decisions/2026-11-01-v4.17.0-design-principles.md
 - S4: adoption-deck.html (reference pattern)
 
-<!-- magician.plan/1 v1 sha256:47b58e953a22b5d618f5f64f46875449a0f61b4a1c3abe4354d85695f769d792 -->
+<!-- magician.plan/1 v1 sha256:4e971ca02959d4a1627f1413409eaa7e3696fbfa1480842ceb9454ec793d2674 -->

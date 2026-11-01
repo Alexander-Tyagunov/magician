@@ -890,15 +890,15 @@
    "red": {
     "test": "tests/e2e/plan_walkthrough.spec.js — 'keyboard reaches every control'",
     "code": "await page.keyboard.press('Tab') × n; expect(focusedIds).toEqual(expectedOrder)",
-    "run": "npx playwright test tests/e2e/plan_walkthrough.spec.js"
+    "run": "npx playwright@1.56.0 test tests/e2e/plan_walkthrough.spec.js"
    },
    "green": {
     "sketch": "fix whatever the gate, verifier or axe report",
-    "run": "scripts/gate.sh && npx playwright test"
+    "run": "scripts/gate.sh && npx playwright@1.56.0 test"
    },
    "verify": [
     "scripts/gate.sh",
-    "npx playwright test tests/e2e/plan_walkthrough.spec.js"
+    "npx playwright@1.56.0 test tests/e2e/plan_walkthrough.spec.js"
    ],
    "risk": {
     "level": "medium",
