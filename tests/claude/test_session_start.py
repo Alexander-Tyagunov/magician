@@ -165,10 +165,11 @@ class OutputShapeTests(unittest.TestCase):
             chron.mkdir()
             (chron / "20260101T000000Z-old.json").write_text(json.dumps(
                 {"working_dir": os.path.realpath(proj), "summary": "a" + "é" * 900}, ensure_ascii=False), encoding="utf-8")
-            doc = sb.out(proj, {"session_id": "big", "source": "compact"})
+            doc = sb.out(proj, {"session_id": "big", "source": "compact"}, MAGICIAN_STE="1", MAGICIAN_VOICE="warrior")
             ctx = _ctx(doc)
             self.assertLessEqual(len(ctx), BUDGET)
             self.assertLessEqual(len(ctx.encode("utf-8")), BUDGET)
+            self.assertIn("STE-lite selected", ctx)
             self.assertIn("[security] ", ctx)
             self.assertIn("Previous magician session in this directory: ", ctx)
             self.assertIn("decided €", ctx)
@@ -292,6 +293,43 @@ class WordingTests(unittest.TestCase):
             self.assertIn("(voice: scribe)", _ctx(sb.out(proj, {"source": "startup"})))
             self.assertIn("Warrior level", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_VOICE="warrior")))
             self.assertNotIn("Output style selected", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_VOICE="bard")))
+
+    def test_ste_note_is_off_by_default_and_follows_the_voice_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"})))
+            ctx = _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="1"))
+            note = ctx[ctx.index("STE-lite selected in magician"):]
+            self.assertLessEqual(len(note), 600, "the STE note stays under 600 characters")
+            self.assertGreater(ctx.index("STE-lite selected"), ctx.index("(voice: scribe)"))
+            self.assertIn("lore/ste.md", note)
+            self.assertIn("no compliance claim", note)
+            for needle in ("25 words", "20 words", "6 sentences", "no semicolons, contractions or Latin abbreviations", "active voice", "stay verbatim"):
+                self.assertIn(needle, note)
+            for bad in (";", "n't", "e.g.", "i.e."):
+                self.assertNotIn(bad, note, "the STE note is written in STE-lite itself")
+            self.assertIsNone(IMPERATIVE.search(note))
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="1", MAGICIAN_VOICE="bard")),
+                          "the STE flag is orthogonal to the voice")
+
+    def test_ste_precedence_env_then_project_file_then_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            (sb.mag / "cli-ui.json").write_text('{"state": "enabled", "ste": true}', encoding="utf-8")
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"session_id": "s1", "source": "startup"})))
+            voice = json.loads((sb.mag / "status" / "s1.voice.json").read_text(encoding="utf-8"))
+            self.assertEqual((voice["level"], voice["ste"]), ("scribe", True))
+            (proj / ".magician").mkdir()
+            (proj / ".magician" / "ste").write_text("off\n", encoding="utf-8")
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"session_id": "s2", "source": "startup"})))
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="on")))
+            (proj / ".magician" / "ste").write_text("on", encoding="utf-8")
+            (sb.mag / "cli-ui.json").write_text('{"ste": false}', encoding="utf-8")
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"})))
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="0")))
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="0", MAGICIAN_LORE="0")))
 
 
 class LoreTests(unittest.TestCase):

@@ -72,6 +72,12 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/format.sh",
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/ste-lint-hook.sh",
+            "async": false,
+            "timeout": 10
           }
         ]
       }

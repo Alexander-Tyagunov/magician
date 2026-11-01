@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
 (`evals/results/budget.json`) is reset by this release.
 
+### Batch 2 — STE-lite (simplified technical English, STE-inspired)
+
+**Added**
+- `lore/ste.md` and `lore/deep/ste.md`: the STE-lite rule layer (sentence limits 25/20 words, one
+  instruction per sentence, imperative steps, condition before command, six sentences per paragraph,
+  active voice and simple tenses, no semicolons, contractions or Latin abbreviations, identifiers
+  verbatim in backticks, facts and hedges never dropped) with magician's own avoid→use word list and
+  rewrite patterns. Paraphrased; the standard's text and dictionary are not shipped; no compliance
+  claim is made anywhere.
+- `magician-ui ste on|off|status`: an STE flag orthogonal to the voice level (env `MAGICIAN_STE`,
+  then `.magician/ste`, then `cli-ui.json`; default off). When on, session start adds a note under
+  600 chars with the checkable rules. `status` shows the effective state and its source.
+- Output style `magician:ste` (`/output-style magician:ste`) with `keep-coding-instructions`.
+- `tools/ste-lint`: a deterministic checker for Markdown prose (rules S1, S2, P1, V2, V3, W2, W3,
+  W4, W6, C1 as errors; S3, S4, S5, V1, V4, W1, N1, L1 as warnings), STE word counting, code,
+  tables, URLs, quotes and frontmatter excluded, `.magician/ste-terms` allow-list, `--json`,
+  `--max`, `--strict`; exit 0 clean, 1 findings, 2 usage.
+- `PostToolUse` hook `scripts/ste-lint-hook.sh`: when STE is on and a written Markdown file lives
+  under `.workspace/shared/` (or matches `.magician/ste-paths`), returns up to ten findings as
+  context so Claude fixes them in the same turn; never blocks.
+- Eval `evals/ste-spec-writing/` (regex and rubric graders for an STE-lite spec).
+- Gate tier "STE-lite (warn)" that counts findings over magician's own prose and records
+  `ste_findings` in `evals/results/budget.json` (3,482 at this batch; warn-only).
+
+**Changed**
+- Guard hardening: obfuscated delete heads (`r''m`, `\rm`, `$(echo rm)`, backquoted echo), `cd`
+  or `pushd` into a root or home folder followed by a delete of `.`, a subshell around the delete,
+  `truncate` of system files are hard blocks; cwd-wide `rm -rf .`, `xargs rm -rf`, unfiltered
+  `find . -delete`, `truncate` outside the working directory, `git push --force` (also `+refspec`)
+  without `--force-with-lease`, and `git reset --hard` are soft blocks with a reason. Benign
+  neighbours (`find build -name '*.o' -delete`, `--force-with-lease`, `git reset --soft`) stay
+  allowed.
+
 ### Batch 1 — model and effort currency, token diet, hooks, security refresh
 
 **Added**

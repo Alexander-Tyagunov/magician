@@ -1,0 +1,687 @@
+#!/usr/bin/env python3
+"""magician ste-lint — STE-lite checker for Markdown prose (stdlib only, no network, read-only).
+
+Checks written deliverables (specs, plans, research notes, skill bodies) against the checkable part
+of magician's STE-lite ruleset: a paraphrase of a few Simplified Technical English habits, with
+magician's own short avoid/use word list. It ships no rule text and no dictionary of the ASD-STE100
+standard and claims no compliance with it. The tool never modifies a file.
+
+Usage:
+  ste-lint [options] <file.md>...      check one or more Markdown files
+  ste-lint [options] --stdin           check Markdown read from stdin (reported as <stdin>)
+  ste-lint -h | --help
+
+Options:
+  --max N          print at most N findings (default 10; 0 = no cap); the total is always reported
+  --json           one JSON object on stdout instead of lines
+  --terms FILE     allow-list, one term per line (a word, identifier or sentence-initial word that
+                   a rule must not flag); .magician/ste-terms in the current folder loads by itself
+  --strict         heuristic (warn) rules count as errors
+
+Output lines:  path:line: RULE: message        (an error, from a deterministic rule)
+               path:line: warn RULE: message   (a warning, from a heuristic rule)
+
+Exit codes:  0 no errors (warnings alone still exit 0, except with --strict)
+             1 at least one error
+             2 usage error, or a file that cannot be read
+
+Excluded from every check: YAML frontmatter, fenced code blocks, inline code, URLs and link
+targets, tables, blockquotes and "quoted text", headings and HTML comments. Inline code, a path,
+a number with its unit, a hyphenated group and a quoted span count as one word each; a
+parenthetical counts as one word of its sentence and is measured on its own.
+
+Deterministic rules (errors): S1 S2 P1 V2 V3 W2 W3 W4 W6 C1.
+Heuristic rules (warnings): S3 S4 S5 V1 V4 W1 N1 L1.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+
+LIMIT_DESCRIPTIVE = 25
+LIMIT_PROCEDURAL = 20
+LIMIT_SENTENCES = 6
+DEFAULT_MAX = 10
+TERMS_FILE = os.path.join(".magician", "ste-terms")
+
+# ---------------------------------------------------------------- word list (W4) --------------
+# magician's own avoid -> use list, paraphrased from knowledge/aste100.md section 4. Keys are
+# lowercase; a key with spaces is a phrase. A verb key matches its usual inflections. Words that
+# are also software technical verbs (execute, validate, implement, enable, allow, provide,
+# component, verify) are left out on purpose: the exemption for technical nouns and verbs applies.
+AVOID = {
+    "prior to": "before", "previous to": "before", "subsequent to": "after",
+    "in order to": "to", "utilize": "use", "utilise": "use", "sufficient": "enough",
+    "adequate": "enough", "adjacent": "next to", "commence": "start", "initiate": "start",
+    "terminate": "stop", "conclude": "end", "carry out": "do", "accomplish": "do",
+    "achieve": "complete", "additional": "more", "assist": "help", "attempt": "try",
+    "ensure": "make sure", "guarantee": "make sure", "indicate": "show", "modify": "change",
+    "alter": "change", "obtain": "get", "acquire": "get", "necessitate": "need",
+    "permit": "let", "locate": "find", "retain": "keep", "in the event that": "if",
+    "regarding": "about", "concerning": "about", "with respect to": "about",
+    "by means of": "with", "therefore": "so", "consequently": "so", "hence": "so",
+    "nevertheless": "but", "numerous": "many", "various": "several", "demonstrate": "show",
+    "furnish": "give", "optimal": "best", "facilitate": "help", "functionality": "function",
+    "frequently": "often", "immediately": "now",
+}
+# Verbs on the list: the regex also matches -s, -es, -ed, -d, -ing forms (utilizes, modified).
+VERBS = {"utilize", "utilise", "commence", "initiate", "terminate", "conclude", "accomplish",
+         "achieve", "assist", "attempt", "ensure", "guarantee", "indicate", "modify", "alter",
+         "obtain", "acquire", "necessitate", "permit", "locate", "retain", "demonstrate",
+         "furnish", "facilitate"}
+
+
+def _verb_pattern(base: str) -> str:
+    if base.endswith("y"):
+        return r"(?:%s|%s(?:ies|ied|ying))" % (re.escape(base), re.escape(base[:-1]))
+    stem = base[:-1] if base.endswith("e") else base
+    return r"(?:%s|%s(?:s|es|ed|d|ing))" % (re.escape(base), re.escape(stem))
+
+
+AVOID_RE = re.compile(
+    r"\b(?:" + "|".join(
+        _verb_pattern(k) if k in VERBS else re.escape(k).replace(r"\ ", r"\s+")
+        for k in sorted(AVOID, key=len, reverse=True)) + r")\b", re.I)
+
+
+def _avoid_key(text: str) -> str:
+    low = re.sub(r"\s+", " ", text.lower())
+    if low in AVOID:
+        return low
+    for base in VERBS:
+        if re.fullmatch(_verb_pattern(base), low):
+            return base
+    return low
+
+
+# ---------------------------------------------------------------- grammar word sets ------------
+IMPERATIVE = {
+    "add", "adjust", "allow", "apply", "assign", "attach", "build", "call", "change", "check",
+    "choose", "clean", "clear", "click", "close", "collect", "commit", "compare", "compile",
+    "configure", "confirm", "connect", "copy", "create", "declare", "define", "delete", "deploy",
+    "describe", "disable", "do", "document", "download", "drop", "edit", "enable", "enter",
+    "export", "extract", "fetch", "fill", "find", "fix", "follow", "generate", "give", "go",
+    "import", "include", "insert", "install", "keep", "leave", "let", "limit", "link", "list",
+    "load", "log", "make", "map", "mark", "merge", "mount", "move", "name", "note", "open",
+    "parse", "pass", "paste", "pick", "place", "point", "press", "print", "pull", "push", "put",
+    "read", "rebase", "record", "register", "release", "reload", "remove", "rename", "repeat",
+    "replace", "report", "reset", "resolve", "restart", "restore", "return", "review", "revert",
+    "rewrite", "run", "save", "scan", "search", "see", "select", "send", "set", "show", "skip",
+    "sort", "specify", "split", "start", "stop", "store", "submit", "switch", "tag", "test",
+    "turn", "type", "unset", "update", "upgrade", "upload", "use", "wait", "watch", "wrap",
+    "write",
+}
+BE = {"is", "are", "was", "were", "be", "been", "being", "am"}
+HAVE = {"have", "has", "had", "having"}
+IRREGULAR_PP = {
+    "begun", "become", "bound", "bought", "broken", "brought", "built", "caught", "chosen", "cut",
+    "done", "drawn", "driven", "fed", "found", "frozen", "given", "gone", "gotten", "grown",
+    "held", "hidden", "hit", "kept", "known", "led", "left", "let", "lit", "lost", "made", "met",
+    "overridden", "paid", "put", "read", "rebuilt", "reset", "run", "seen", "sent", "set",
+    "shown", "shut", "sold", "spent", "split", "spoken", "taken", "taught", "thought", "thrown",
+    "told", "understood", "withdrawn", "won", "written",
+}
+NOT_PP = {"need", "feed", "seed", "speed", "breed", "bleed", "deed", "reed", "weed", "shed",
+          "bed", "red", "wed", "sled", "shred", "embed", "hundred", "naked", "wicked", "sacred"}
+NOT_GERUND = {"thing", "something", "nothing", "anything", "everything", "morning", "evening",
+              "string", "during", "ring", "bring", "spring", "sing", "king", "wing", "swing",
+              "sibling", "ceiling", "sterling", "darling", "meaning", "warning", "setting",
+              "settings", "mapping", "mappings", "listing", "listings", "string", "strings"}
+ADJ_PP = {"limited", "related", "detailed", "interested", "unused", "tired", "supposed",
+          "advanced", "fixed", "based", "aged", "hundred", "united", "mixed", "allowed", "needed",
+          "required", "complicated", "dedicated", "intended", "enabled", "disabled", "expected"}
+UNITS = {"ms", "s", "sec", "secs", "min", "mins", "h", "hr", "hrs", "d", "b", "kb", "mb", "gb",
+         "tb", "kib", "mib", "gib", "tib", "bytes", "px", "pt", "em", "mm", "cm", "m", "km", "g",
+         "kg", "hz", "khz", "mhz", "ghz", "fps", "rpm", "v", "a", "w", "%", "°c", "°f", "ns",
+         "µs", "us", "x"}
+LATIN = re.compile(r"(?<![\w.])(?:e\.g\.|i\.e\.|etc\.|vs\.|viz\.|cf\.|et al\.|n\.b\.)", re.I)
+CONTRACTION = re.compile(
+    r"\b(?:[A-Za-z]+n[’']t|[A-Za-z]+[’'](?:re|ll|ve|d|m)"
+    r"|(?:it|that|there|here|what|who|he|she|let|where|how|when|which)[’']s)\b", re.I)
+EXPAND = {"n't": " not", "'re": " are", "'ll": " will", "'ve": " have", "'d": " would",
+          "'m": " am", "'s": " is"}
+IDENT = re.compile(
+    r"(?<![\w`/.-])(?:"
+    r"[a-z][a-z0-9]*(?:[A-Z][a-z0-9]+)+"                         # camelCase
+    r"|[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+"                     # snake_case
+    r"|(?:\.{1,2}/|~/|/|\.[\w-]+/)[\w.-]+(?:/[\w.-]+)*/?"         # ./a/b, ~/x, /etc/x, .workspace/shared
+    r"|[\w-]+(?:/[\w.-]+)*/[\w-]+\.[A-Za-z0-9]{1,6}"                # src/app.py (a/b alone is a word pair)
+    r"|[A-Za-z][\w-]*\.(?:md|py|js|ts|tsx|jsx|json|sh|yaml|yml|toml|txt|html|css|cfg|ini|sql|go|rs)\b"
+    r"|--?[a-zA-Z][\w-]*(?:=\S*)?"                                 # -h, --max=10
+    r")(?![\w`/])")
+PRODUCT_NAMES = {"node.js", "vue.js", "next.js", "nuxt.js", "deno.js", "asp.net", ".net",
+                 "ph.d", "e.g", "i.e", "vs", "etc"}
+TITLE_WORD = re.compile(r"[A-Z][A-Za-z0-9]+|[A-Z]{2,}[A-Za-z0-9]*")
+NOMINAL = re.compile(
+    r"\b(?:perform(?:s|ed|ing)?|carr(?:y|ies|ied|ying)\s+out|execut(?:e|es|ed|ing)|do|does|did"
+    r"|mak(?:e|es|ing)|made)\s+(?:a|an|the)\s+(\w+(?:tion|sion|ment|ance|ence))\b", re.I)
+STEP_PHRASE = re.compile(
+    r"\b(?:you should|you need to|you can then|it is recommended to|make sure to)\b", re.I)
+LIST_MARK = re.compile(r"^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$")
+LABEL = re.compile(r"^\s*(?:\*\*|__)?(WARNING|CAUTION)(?:\*\*|__)?\s*:\s*(.*)$")
+
+
+# ---------------------------------------------------------------- findings ---------------------
+class Finding:
+    __slots__ = ("path", "line", "rule", "level", "message", "term")
+
+    def __init__(self, path, line, rule, level, message, term=""):
+        self.path, self.line, self.rule, self.level = path, line, rule, level
+        self.message, self.term = message, term
+
+    def text(self, strict: bool) -> str:
+        lvl = "" if (self.level == "error" or strict) else "warn "
+        return "%s:%d: %s%s: %s" % (self.path, self.line, lvl, self.rule, self.message)
+
+    def as_dict(self, strict: bool) -> dict:
+        return {"path": self.path, "line": self.line, "rule": self.rule,
+                "level": "error" if strict else self.level, "message": self.message}
+
+
+# ---------------------------------------------------------------- markdown -> prose units -------
+class Unit:
+    """One checkable prose unit: a paragraph, a list item or a labelled note line."""
+    __slots__ = ("line", "text", "procedural", "label", "list_item", "first")
+
+    def __init__(self, line, text, procedural=False, label="", list_item=False, first=""):
+        self.line, self.text, self.procedural = line, text, procedural
+        self.label, self.list_item, self.first = label, list_item, first
+
+
+def _strip_frontmatter(lines: list) -> int:
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() in ("---", "..."):
+                return i + 1
+    return 0
+
+
+def _mask_inline(text: str) -> str:
+    """Inline exclusions become single placeholder words: code spans, URLs, link targets, quoted
+    spans, HTML entities and tags. The placeholders are plain words so the word count treats each
+    as one word and no rule reads their content."""
+    text = re.sub(r"<!--.*?-->", " ", text)
+    text = re.sub(r"`+[^`]*`+", " CODE ", text)
+    text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r" \1 ", text)               # [text](url) -> text
+    text = re.sub(r"!?\[([^\]]*)\]\[[^\]]*\]", r" \1 ", text)
+    text = re.sub(r"<(?:https?://|mailto:)[^>]*>", " URL ", text)
+    text = re.sub(r"(?:https?://|www\.)\S+", " URL ", text)
+    text = re.sub(r"</?[A-Za-z][^>]*>", " ", text)
+    text = re.sub(r"&[A-Za-z#0-9]+;", " ", text)
+    text = re.sub(r'"[^"\n]*"|“[^”\n]*”', " QUOTE ", text)
+    text = re.sub(r"(?<!\w)[*_]{1,3}(?=\S)|(?<=\S)[*_]{1,3}(?!\w)", "", text)   # emphasis marks
+    return text
+
+
+def units_of(markdown: str) -> list:
+    lines = markdown.split("\n")
+    start = _strip_frontmatter(lines)
+    units = []
+    para_lines = []     # (lineno, text)
+    fence = None
+    in_html = False
+    last_list_line = 0
+
+    def flush():
+        if not para_lines:
+            return
+        text = " ".join(t for _, t in para_lines)
+        units.append(Unit(para_lines[0][0], text))
+        del para_lines[:]
+
+    for idx in range(start, len(lines)):
+        raw = lines[idx]
+        lineno = idx + 1
+        stripped = raw.strip()
+        if fence is not None:
+            if stripped.startswith(fence):
+                fence = None
+            continue
+        m = re.match(r"^\s{0,3}(`{3,}|~{3,})", raw)
+        if m:
+            flush()
+            fence = m.group(1)[0] * 3
+            continue
+        if in_html:
+            if "-->" in raw:
+                in_html = False
+            continue
+        if stripped.startswith("<!--") and "-->" not in stripped:
+            flush()
+            in_html = True
+            continue
+        if not stripped:
+            flush()
+            continue
+        if (raw.startswith("    ") or raw.startswith("\t")) and not para_lines \
+                and not (units and units[-1].list_item and last_list_line == lineno - 1):
+            flush()                              # an indented code block
+            continue
+        if stripped.startswith(("#", ">", "|", "<")) or re.match(r"^(?:-{3,}|\*{3,}|_{3,})$", stripped):
+            flush()
+            continue
+        lab = LABEL.match(stripped)
+        if lab:
+            flush()
+            units.append(Unit(lineno, lab.group(2), procedural=True, label=lab.group(1).upper()))
+            continue
+        lm = LIST_MARK.match(raw)
+        if lm:
+            flush()
+            body = lm.group(4)
+            body = re.sub(r"^\[[ xX]\]\s+", "", body)
+            units.append(Unit(lineno, body, procedural=lm.group(3) is not None, list_item=True,
+                              first=body))
+            last_list_line = lineno
+            continue
+        if not para_lines and units and units[-1].list_item and raw.startswith((" ", "\t")) \
+                and last_list_line == lineno - 1:
+            units[-1].text += " " + stripped     # a wrapped list item continues on an indented line
+            last_list_line = lineno
+            continue
+        para_lines.append((lineno, stripped))
+    flush()
+    return units
+
+
+# ---------------------------------------------------------------- sentences and words ----------
+ABBREV = re.compile(r"\b(?:e\.g|i\.e|etc|vs|viz|cf|al|no|fig|approx|mr|mrs|dr|st)\.", re.I)
+
+
+def split_sentences(text: str) -> list:
+    """Sentences of one unit, with the character offset where each starts. A colon that ends the
+    unit (introducing a list) ends the sentence; a period inside a word (3.5, v1.2) does not."""
+    protected = ABBREV.sub(lambda m: m.group(0).replace(".", "\x00"), text)
+    protected = re.sub(r"(?<=\w)\.(?=\w)", "\x00", protected)
+    out = []
+    pos = 0
+    for m in re.finditer(r"[.!?]+(?:[\"'”’)\]]*)(?:\s+|$)|:\s*$", protected):
+        chunk = protected[pos:m.end()]
+        if chunk.strip():
+            out.append((pos, chunk.replace("\x00", ".").strip()))
+        pos = m.end()
+    tail = protected[pos:]
+    if tail.strip():
+        out.append((pos, tail.replace("\x00", ".").strip()))
+    return out
+
+
+def count_words(sentence: str) -> int:
+    """STE-style count: a parenthetical is one word, a number with its unit is one word, and any
+    whitespace-free token (inline-code placeholder, path, hyphenated group) is one word."""
+    s = re.sub(r"\([^()]*\)", " PAREN ", sentence)
+    tokens = [t for t in re.split(r"\s+", s) if t and re.search(r"[\w%°]", t)]
+    n = 0
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        nxt = tokens[i + 1].strip(".,;:!?)").lower() if i + 1 < len(tokens) else ""
+        if re.fullmatch(r"[~≈<>]?[+-]?\d[\d,]*(?:\.\d+)?", tok.rstrip(".,;:")) and nxt in UNITS:
+            i += 2
+        else:
+            i += 1
+        n += 1
+    return n
+
+
+def parentheticals(sentence: str) -> list:
+    return re.findall(r"\(([^()]*)\)", sentence)
+
+
+def first_word(sentence: str) -> str:
+    m = re.match(r"[^\w]*([\w'’-]+)", sentence)
+    return m.group(1) if m else ""
+
+
+def is_procedural(sentence: str) -> bool:
+    w = first_word(sentence).lower()
+    if w in IMPERATIVE:
+        return True
+    if w in ("if", "when", "after", "before", "then"):
+        m = re.search(r",\s*(\w+)", sentence)
+        return bool(m and m.group(1).lower() in IMPERATIVE)
+    if w in ("do", "never") or sentence.lower().startswith("do not"):
+        return True
+    return False
+
+
+def _is_pp(word: str) -> bool:
+    w = word.lower().strip(",.;:")
+    if w in NOT_PP or w in ADJ_PP:
+        return False
+    if w in IRREGULAR_PP:
+        return True
+    return len(w) >= 4 and (w.endswith("ed") or w.endswith("en") and w not in ("open", "even",
+                                                                                "often", "seven"))
+
+
+# ---------------------------------------------------------------- the rules --------------------
+class Linter:
+    def __init__(self, allow: set):
+        self.allow = {t.lower() for t in allow}
+        self.findings = []
+
+    def allowed(self, term: str) -> bool:
+        return term.lower().strip("`") in self.allow
+
+    def add(self, path, line, rule, level, message, term=""):
+        if term and self.allowed(term):
+            return
+        self.findings.append(Finding(path, line, rule, level, message, term))
+
+    def lint(self, path: str, markdown: str) -> None:
+        for unit in units_of(markdown):
+            self.check_unit(path, unit)
+
+    def check_unit(self, path: str, u: Unit) -> None:
+        text = _mask_inline(u.text)
+        sentences = split_sentences(text)
+        line = u.line
+        if len(sentences) > LIMIT_SENTENCES:
+            self.add(path, line, "P1", "error",
+                     "%d sentences in one paragraph; split it (limit %d)" % (len(sentences), LIMIT_SENTENCES))
+        for m in re.finditer(r";", text):
+            self.add(path, line, "W2", "error", "semicolon; split the sentence or use a connecting word")
+        for m in CONTRACTION.finditer(text):
+            word = m.group(0)
+            self.add(path, line, "W3", "error",
+                     'contraction "%s"; write "%s"' % (word, _expand(word)), term=word)
+        for m in LATIN.finditer(text):
+            self.add(path, line, "W6", "error", '"%s"; write %s' % (m.group(0), _latin_fix(m.group(0))))
+        for m in AVOID_RE.finditer(text):
+            key = _avoid_key(m.group(0))
+            use = AVOID.get(key, "")
+            if use:
+                self.add(path, line, "W4", "error", '"%s"; use "%s"' % (m.group(0), use), term=key)
+        for m in IDENT.finditer(text):
+            ident = m.group(0)
+            low = ident.lower().strip("./")
+            if low in PRODUCT_NAMES or ident in ("CODE", "URL", "QUOTE", "PAREN") \
+                    or re.fullmatch(r"[\d./-]+", ident) or ident.startswith("--") and len(ident) == 2:
+                continue
+            if ident.startswith("-") and not re.match(r"--?[a-zA-Z]", ident):
+                continue
+            self.add(path, line, "C1", "error",
+                     'identifier "%s" outside backticks; write it as `%s`' % (ident, ident), term=ident)
+        for m in NOMINAL.finditer(text):
+            self.add(path, line, "V4", "warn",
+                     '"%s"; use the verb instead of the noun' % m.group(0), term=m.group(1))
+        if u.label:
+            n = count_words(text)
+            if n > LIMIT_PROCEDURAL:
+                self.add(path, line, "N1", "warn",
+                         "%s text has %d words (limit %d)" % (u.label, n, LIMIT_PROCEDURAL))
+            fw = first_word(text).lower()
+            if not (fw in IMPERATIVE or fw in ("if", "when", "before", "after", "do", "never")):
+                self.add(path, line, "N1", "warn",
+                         "%s text starts with \"%s\"; start with a command or the condition" % (u.label, first_word(text)))
+        for offset, sentence in sentences:
+            procedural = u.procedural or is_procedural(sentence)
+            n = count_words(sentence)
+            if u.label:
+                pass                             # N1 measures a WARNING/CAUTION line as a whole
+            elif procedural and n > LIMIT_PROCEDURAL:
+                self.add(path, line, "S2", "error",
+                         "%d words in a step; split it (limit %d)" % (n, LIMIT_PROCEDURAL))
+            elif n > LIMIT_DESCRIPTIVE:
+                self.add(path, line, "S1", "error",
+                         "%d words; split the sentence (limit %d)" % (n, LIMIT_DESCRIPTIVE))
+            for inner in parentheticals(sentence):
+                k = count_words(inner)
+                if k > LIMIT_DESCRIPTIVE:
+                    self.add(path, line, "S1", "error",
+                             "%d words inside parentheses; split it (limit %d)" % (k, LIMIT_DESCRIPTIVE))
+            fw = first_word(sentence)
+            fwl = fw.lower()
+            if fwl.endswith("ing") and len(fwl) > 4 and fwl not in NOT_GERUND and fw not in ("CODE",):
+                self.add(path, line, "V3", "error",
+                         'sentence starts with "%s"; start with the verb or the noun' % fw, term=fw)
+            self.check_tenses(path, line, sentence, procedural)
+            if procedural:
+                self.check_step(path, line, sentence)
+            self.check_series(path, line, sentence)
+            self.check_cluster(path, line, sentence)
+
+    def check_tenses(self, path, line, sentence, procedural):
+        words = sentence.split()
+        for i in range(len(words) - 1):
+            a = words[i].lower().strip(",.;:()")
+            b = words[i + 1]
+            bl = b.lower().strip(",.;:()")
+            if a in HAVE and (_is_pp(b) or bl == "been"):
+                self.add(path, line, "V2", "error",
+                         'perfect tense "%s %s"; use the simple past or present' % (words[i], b), term=bl)
+            elif a in BE and bl.endswith("ing") and len(bl) > 4 and bl not in NOT_GERUND \
+                    and bl not in ("following", "during"):
+                self.add(path, line, "V2", "error",
+                         'progressive form "%s %s"; use the simple present' % (words[i], b), term=bl)
+            elif a in BE and _is_pp(b) and bl not in ("been",):
+                by = i + 2 < len(words) and words[i + 2].lower() == "by"
+                if procedural or by:
+                    self.add(path, line, "V1", "warn",
+                             'passive voice "%s %s"; use the active form' % (words[i], b), term=bl)
+
+    def check_step(self, path, line, sentence):
+        low = sentence.lower()
+        if "at the same time" not in low:
+            second = re.search(r"\b(?:and then|, then)\s+(\w+)", low)
+            if not second:
+                m = re.search(r"\band\s+(\w+)", low)
+                second = m if m and m.group(1) in IMPERATIVE and "," not in low[:m.start()] else None
+            if second:
+                self.add(path, line, "S3", "warn",
+                         "two instructions in one sentence; one instruction per sentence")
+        m = STEP_PHRASE.search(sentence)
+        if m:
+            self.add(path, line, "S4", "warn", '"%s" in a step; use the imperative form' % m.group(0))
+        fw = first_word(sentence).lower()
+        if fw in IMPERATIVE and re.search(r"\s(?:if|when|unless)\s", low):
+            self.add(path, line, "S5", "warn", "condition after the command; put the condition first")
+
+    def check_series(self, path, line, sentence):
+        items = re.split(r",\s+", sentence)
+        if len(items) >= 4 and re.search(r",\s+(?:and|or)\s", sentence):
+            self.add(path, line, "L1", "warn",
+                     "a series of %d items in one sentence; use a vertical list" % len(items))
+
+    def check_cluster(self, path, line, sentence):
+        words = sentence.split()
+        run = []
+        for idx, w in enumerate(words[1:], 1):
+            clean = w.strip(",.;:()")
+            if clean and TITLE_WORD.fullmatch(clean) and clean not in ("CODE", "URL", "QUOTE", "PAREN", "I"):
+                run.append(clean)
+                if not w.endswith((",", ".", ";", ":")):
+                    continue
+            if len(run) >= 4:
+                self.add(path, line, "W1", "warn",
+                         'noun cluster of %d words "%s"; rewrite with "of" or "for", or hyphenate' % (len(run), " ".join(run)),
+                         term=" ".join(run))
+            run = []
+        if len(run) >= 4:
+            self.add(path, line, "W1", "warn",
+                     'noun cluster of %d words "%s"; rewrite with "of" or "for", or hyphenate' % (len(run), " ".join(run)),
+                     term=" ".join(run))
+
+    def check_lists(self, path: str, markdown: str) -> None:
+        """L1, second half: items of one list that mix a capital and a lowercase first letter."""
+        lines = markdown.split("\n")
+        start = _strip_frontmatter(lines)
+        fence = None
+        group = []
+        group_line = 0
+
+        def close():
+            if len(group) >= 2:
+                caps = {c for c in group if c.isalpha()}
+                if any(c.isupper() for c in caps) and any(c.islower() for c in caps):
+                    self.add(path, group_line, "L1", "warn",
+                             "list items mix capitalised and lowercase first words")
+            del group[:]
+
+        for idx in range(start, len(lines)):
+            raw = lines[idx]
+            stripped = raw.strip()
+            if fence is not None:
+                if stripped.startswith(fence):
+                    fence = None
+                continue
+            m = re.match(r"^\s{0,3}(`{3,}|~{3,})", raw)
+            if m:
+                fence = m.group(1)[0] * 3
+                close()
+                continue
+            lm = LIST_MARK.match(raw)
+            if lm:
+                body = re.sub(r"^\[[ xX]\]\s+", "", lm.group(4))
+                body = _mask_inline(body).strip()
+                if not group:
+                    group_line = idx + 1
+                if body and body.split()[0] not in ("CODE", "URL", "QUOTE"):
+                    group.append(body[0])
+                continue
+            if not stripped or not raw.startswith((" ", "\t")):
+                close()
+        close()
+
+
+def _expand(word: str) -> str:
+    w = word.replace("’", "'")
+    low = w.lower()
+    if low == "won't":
+        return "will not"
+    if low == "can't":
+        return "cannot"
+    if low == "let's":
+        return "let us"
+    for suffix, full in EXPAND.items():
+        if low.endswith(suffix):
+            return w[:-len(suffix)] + full
+    return w
+
+
+def _latin_fix(abbr: str) -> str:
+    low = abbr.lower().rstrip(".")
+    return {"e.g": '"for example"', "i.e": '"that is"', "etc": '"and so on", or list every item',
+            "vs": '"against" or "compared with"', "viz": '"namely"', "cf": '"compare"',
+            "et al": '"and others"', "n.b": '"note"'}.get(low, "the full words")
+
+
+# ---------------------------------------------------------------- cli ---------------------------
+def usage(stream) -> None:
+    stream.write(__doc__.lstrip("\n"))
+
+
+def load_terms(path: str) -> set:
+    terms = set()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            t = raw.strip()
+            if t and not t.startswith("#"):
+                terms.add(t)
+    return terms
+
+
+def main(argv: list) -> int:
+    paths = []
+    use_stdin = False
+    max_n = DEFAULT_MAX
+    as_json = False
+    strict = False
+    terms_files = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-h", "--help"):
+            usage(sys.stdout)
+            return 0
+        if a == "--stdin":
+            use_stdin = True
+        elif a == "--json":
+            as_json = True
+        elif a == "--strict":
+            strict = True
+        elif a == "--max" or a.startswith("--max="):
+            if a == "--max":
+                i += 1
+                val = argv[i] if i < len(argv) else ""
+            else:
+                val = a[6:]
+            if not re.fullmatch(r"\d+", val):
+                sys.stderr.write("ste-lint: --max needs a whole number\n")
+                return 2
+            max_n = int(val)
+        elif a == "--terms" or a.startswith("--terms="):
+            if a == "--terms":
+                i += 1
+                val = argv[i] if i < len(argv) else ""
+            else:
+                val = a[8:]
+            if not val:
+                sys.stderr.write("ste-lint: --terms needs a file\n")
+                return 2
+            terms_files.append(val)
+        elif a == "--":
+            paths.extend(argv[i + 1:])
+            break
+        elif a.startswith("-") and a != "-":
+            sys.stderr.write("ste-lint: unknown option '%s' (see ste-lint --help)\n" % a)
+            return 2
+        else:
+            paths.append(a)
+        i += 1
+    if not paths and not use_stdin:
+        sys.stderr.write("ste-lint: give one or more Markdown files, or --stdin (see ste-lint --help)\n")
+        return 2
+    allow = set()
+    if os.path.isfile(TERMS_FILE):
+        terms_files.insert(0, TERMS_FILE)
+    for tf in terms_files:
+        try:
+            allow |= load_terms(tf)
+        except OSError as exc:
+            sys.stderr.write("ste-lint: cannot read terms file %s: %s\n" % (tf, exc.strerror or exc))
+            return 2
+    linter = Linter(allow)
+    inputs = []
+    if use_stdin:
+        inputs.append(("<stdin>", sys.stdin.read()))
+    for p in paths:
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                inputs.append((p, fh.read()))
+        except OSError as exc:
+            sys.stderr.write("ste-lint: cannot read %s: %s\n" % (p, exc.strerror or exc))
+            return 2
+    for path, text in inputs:
+        linter.lint(path, text)
+        linter.check_lists(path, text)
+    order = {"error": 0, "warn": 1}
+    findings = sorted(linter.findings, key=lambda f: (f.path, f.line, order[f.level], f.rule))
+    errors = sum(1 for f in findings if f.level == "error" or strict)
+    warnings = len(findings) - errors
+    shown = findings if max_n == 0 else findings[:max_n]
+    if as_json:
+        doc = {"files": [p for p, _ in inputs], "total": len(findings), "shown": len(shown),
+               "errors": errors, "warnings": warnings, "strict": strict,
+               "findings": [f.as_dict(strict) for f in shown]}
+        sys.stdout.write(json.dumps(doc, indent=2) + "\n")
+    else:
+        for f in shown:
+            sys.stdout.write(f.text(strict) + "\n")
+        if len(findings) > len(shown):
+            sys.stdout.write("... %d more (%d findings in all)\n" % (len(findings) - len(shown), len(findings)))
+        elif findings:
+            sys.stdout.write("%d finding%s (%d error%s, %d warning%s)\n" % (
+                len(findings), "" if len(findings) == 1 else "s", errors, "" if errors == 1 else "s",
+                warnings, "" if warnings == 1 else "s"))
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except BrokenPipeError:
+        sys.exit(0)

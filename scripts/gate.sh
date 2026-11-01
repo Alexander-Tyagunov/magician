@@ -18,6 +18,9 @@
 #      always-on tokens or a skill body over 6,000 tokens, and when the offline always-on estimate
 #      grew by more than 10% over the value recorded in evals/results/budget.json, unless the top
 #      CHANGELOG entry mentions "token budget". Both numbers are recorded in that file on every run.
+#   5. STE-lite (warn only): `tools/ste-lint --max 200` over skills/*/SKILL.md, README.md and lore/*.md;
+#      prints the finding count and the rules that fire most, records the count as `ste_findings` in
+#      evals/results/budget.json (merged into the file the token-budget tier wrote), and never fails.
 #   (The Codex package is built and gated on the `codex-plugin` branch.)
 #
 # The behavioral eval suite (claude plugin eval --trust-plugin) spends API budget and needs the
@@ -278,7 +281,51 @@ EOF_DETAILS
 }
 run_tier "Token budget (always-on under ${MAX_ALWAYS_ON}, skill bodies under ${MAX_SKILL_BODY}, growth under ${GROWTH_PCT}%)" check_token_budget
 
-# ---- Tier 5: behavioral evals (opt-in, local only) ---------------------------------------------
+# ---- Tier 5: STE-lite over magician's own prose (always; warn only, never fails) ---------------
+# Skill bodies, the README and the lore cores are read by the model and by people; the count of
+# ste-lint findings is a size and clarity signal recorded next to the token budget. The tier
+# prints the count and the rules that fire most and passes whatever the count is.
+STE_LINT="$ROOT/tools/ste-lint"
+# Reads ste-lint's JSON report on stdin, prints one summary line, and merges ste_findings into the
+# budget file (argument 1) without touching its other keys.
+STE_MERGE='
+import json, sys
+from collections import Counter
+budget = sys.argv[1]
+try:
+    doc = json.load(sys.stdin)
+except ValueError:
+    print("unreadable report"); sys.exit(0)
+total = int(doc.get("total", 0))
+tally = Counter(f.get("rule", "?") for f in doc.get("findings", []))
+top = ", ".join("%s %d" % (r, c) for r, c in tally.most_common(6))
+print("%d findings (%d errors, %d warnings) over %d files; most frequent among the first %d: %s" % (
+    total, doc.get("errors", 0), doc.get("warnings", 0), len(doc.get("files", [])), doc.get("shown", 0), top or "none"))
+try:
+    cur = json.load(open(budget, encoding="utf-8"))
+    if not isinstance(cur, dict):
+        cur = {}
+except (OSError, ValueError):
+    cur = {}
+cur["ste_findings"] = total
+with open(budget, "w", encoding="utf-8") as fh:
+    json.dump(cur, fh, indent=2)
+    fh.write("\n")
+'
+check_ste_lite() {
+  local n
+  if [ ! -x "$STE_LINT" ]; then
+    echo "tools/ste-lint not executable; STE-lite tier skipped"
+    return 0
+  fi
+  n=$(cd "$ROOT" && "$STE_LINT" --json --max 200 skills/*/SKILL.md README.md lore/*.md 2>/dev/null | "$PY" -c "$STE_MERGE" "$BUDGET_FILE")
+  echo "STE-lite: ${n:-no report}"
+  echo "recorded as ste_findings in ${BUDGET_FILE#$ROOT/} (warn only; the gate never fails on this count)"
+  return 0
+}
+run_tier "STE-lite (warn)" check_ste_lite
+
+# ---- Tier 6: behavioral evals (opt-in, local only) ---------------------------------------------
 if [ "$RUN_EVALS" = "1" ]; then
   if command -v claude >/dev/null 2>&1; then
     eval_cmd=(claude plugin eval --trust-plugin "$ROOT" --threshold "$THRESHOLD" --json "$ROOT/.gate-evals.json")

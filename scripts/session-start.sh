@@ -390,6 +390,32 @@ ${VOICE_CORE} Scribe level (default): necessary explanation and structure stay, 
   *)       VOICE_NOTE="" ;;   # bard → native verbosity, nothing injected
 esac
 
+# ── STE-lite — simplified technical English for prose (default OFF) ──────────
+# Orthogonal to the voice: the voice sets length, STE-lite sets grammar. When on, one note (under 600
+# characters) with the checkable rules follows the voice note. STE-inspired, paraphrased, no compliance
+# claim; code, identifiers, numbers and error text stay verbatim. Resolution (first match wins): env
+# MAGICIAN_STE=1|0 → per-project .magician/ste (content on/off) → cli-ui.json "ste": true|false → off.
+STE_ON=0
+_sc=""
+case "$(printf '%s' "${MAGICIAN_STE:-}" | tr '[:upper:]' '[:lower:]')" in
+  1|on|true|yes)   _sc=on ;;
+  0|off|false|no)  _sc=off ;;
+esac
+if [ -z "$_sc" ] && [ -f ".magician/ste" ]; then
+  _ps="$(head -c64 .magician/ste 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+  case "$_ps" in 1|on|true|yes) _sc=on ;; 0|off|false|no) _sc=off ;; esac
+fi
+if [ -z "$_sc" ] && [ -f "$UI_CFG" ] && grep -qE '"ste"[[:space:]]*:[[:space:]]*true' "$UI_CFG" 2>/dev/null; then
+  _sc=on
+fi
+[ "$_sc" = on ] && STE_ON=1
+STE_NOTE=""
+if [ "$STE_ON" = 1 ]; then
+  STE_NOTE="
+
+STE-lite selected in magician (STE-inspired, no compliance claim). A descriptive sentence has 25 words or fewer, and a step has 20 words or fewer with one instruction and an imperative verb. A condition comes before its command, and a paragraph has one topic and 6 sentences or fewer. Sentences use the active voice and simple tenses, with no \`-ing\` word first and no semicolons, contractions or Latin abbreviations. Three or more items go in a vertical list, and code, identifiers, numbers and error text stay verbatim (details: \`lore/ste.md\` under the plugin root)."
+fi
+
 # ── Previous session in THIS directory (chronicle; off when session_history=false) ──
 # Only records whose working_dir equals the physical cwd count; the current session's own record is skipped.
 CHRONICLE_NOTE=""
@@ -521,11 +547,11 @@ LORE_HDR=" Magician lore (baseline guidance; this repository's own conventions t
 "
 DEEP_TEXT="
 Deep-dive files: lore/deep/<stack>.md under the plugin root, one '## ' section per anchor id a core lists; Grep '^## ' gives line numbers for a Read with offset/limit."
-TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
+TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}"
 _fixed=$(( ${#HEAD} + 1 + ${#STACK_NOTE} + ${#LORE_HDR} + ${#DEEP_TEXT} + ${#TAIL} ))   # cores add their exact cost below
 if [ "$_fixed" -gt "$BUDGET" ] && [ -n "$REFERENCES_NOTE" ]; then   # references are the first note to go
   _fixed=$(( _fixed - ${#REFERENCES_NOTE} )); REFERENCES_NOTE=""
-  TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
+  TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}"
 fi
 _room=$(( BUDGET - _fixed ))
 [ "$_room" -lt "$MAX_LORE" ] && MAX_LORE=$_room
@@ -606,7 +632,8 @@ if grep -qE '"state"[[:space:]]*:[[:space:]]*"enabled"' "$UI_CFG" 2>/dev/null; t
     _en=false; [ "$LORE_ENABLED" = 1 ] && _en=true
     _now=$(date +%s)
     printf '{"enabled": %s, "count": %s, "cores": [%s], "ts": %s}\n' "$_en" "${_cnt:-0}" "$_cores" "$_now" > "$_st/${SID_SAFE}.lore.json" 2>/dev/null
-    printf '{"level": "%s", "ts": %s}\n' "$VOICE_LEVEL" "$_now" > "$_st/${SID_SAFE}.voice.json" 2>/dev/null
+    _se=false; [ "$STE_ON" = 1 ] && _se=true
+    printf '{"level": "%s", "ste": %s, "ts": %s}\n' "$VOICE_LEVEL" "$_se" "$_now" > "$_st/${SID_SAFE}.voice.json" 2>/dev/null
     find "$_st" -maxdepth 1 -type f \( -name '*.lore.json' -o -name '*.voice.json' -o -name '*.effort.json' -o -name '*.spark' \) -mtime +7 -exec rm -f {} + 2>/dev/null
   fi
 fi

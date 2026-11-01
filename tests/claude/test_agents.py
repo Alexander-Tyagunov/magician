@@ -195,7 +195,10 @@ class AgentDefinitionTests(unittest.TestCase):
         registered and dispatchable."""
         agents = {p.stem for p in agent_files()}
         skills = {p.parent.name for p in SKILLS.glob("*/SKILL.md")}
-        known = agents | skills
+        # Output styles are also addressed as `magician:<name>` (`/output-style magician:ste`), so
+        # they count as resolvable references too.
+        styles = {p.stem for p in (ROOT / "output-styles").glob("*.md")}
+        known = agents | skills | styles
         ref = re.compile(r"magician:([a-z0-9][\w-]*)")
 
         dangling: dict[str, list[str]] = {}

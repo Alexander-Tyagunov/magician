@@ -47,6 +47,7 @@ STRICT = ("pattern-detect.sh", "chronicle-stop.sh", "format.sh", "notify.sh", "c
 GUARD = "destructive-guard.sh"          # the one hook allowed to exit 2 (it blocks the tool call)
 ENV_WRITERS = ("userconfig-env.sh", "tools-path.sh")  # the hooks allowed to touch CLAUDE_ENV_FILE
 TOOLS_LINKER = "tools-path.sh"  # names the plugin tools folder to write launchers; runs nothing from it
+LINT_RUNNER = "ste-lint-hook.sh"  # the one hook that runs a bundled command: tools/ste-lint, by plugin root
 
 # Steering phrases that must never appear in text a hook writes into Claude's context.
 IMPERATIVE = re.compile(
@@ -104,7 +105,7 @@ INTERPRETERS = ("python[0-9.]*", "node", "nodejs", "perl", "ruby", "php", "lua",
                 "gawk", "mawk", "nawk", "jq", "pwsh", "powershell", "tclsh", "expect", "Rscript", "osascript",
                 "osacompile")
 PLUGIN_CLIS = ("ctx", "kg", "jira", "confluence", "magician-ui", "magician-statusline", "magician-scan",
-               "gate.sh")
+               "ste-lint", "gate.sh")
 LAUNCHERS = (_j("n", "px"), _j("bun", "x"), _j("u", "vx"), _j("pnpm", r"\s+dlx"), _j("yarn", r"\s+dlx"),
              _j("pip", r"x\s+run"), _j("uv", r"\s+run"), _j("npm", r"\s+exec"), _j("go", r"\s+run"))
 INSTALLS = tuple(_j(tool, r"\s+", verb) for tool, verb in (
@@ -295,6 +296,22 @@ class StaticScriptTests(unittest.TestCase):
             self.assertTrue(_computed_program_sites(s), s)
         for s in missed:
             self.assertFalse(_computed_program_sites(s), s)
+
+    def test_only_the_lint_hook_names_the_bundled_linter(self) -> None:
+        """ste-lint-hook.sh runs tools/ste-lint by the plugin root (the one bundled command a hook
+        runs, read-only, on the file the event names); no other hook names it or the tools folder,
+        and the runner names nothing else in it."""
+        for name, text in self.texts.items():
+            code = _code(text)
+            with self.subTest(script=name):
+                if name == LINT_RUNNER:
+                    self.assertEqual(code.count("/tools/ste-lint"), 1)
+                    self.assertRegex(code, r'LINT="\$\{CLAUDE_PLUGIN_ROOT:-[^\n]*\}/tools/ste-lint"')
+                    self.assertIn('[ -x "$LINT" ] || exit 0', code)
+                    self.assertIn('"$LINT" --max 10 "$F"', code)
+                elif name != TOOLS_LINKER:
+                    self.assertNotIn("/tools/", code)
+                    self.assertNotIn("ste-lint", code)
 
     def test_ci_watch_reads_only_the_run_number(self) -> None:
         text = self.texts["ci-watch.sh"]
@@ -1078,6 +1095,99 @@ class StopFailureTests(_SandboxCase):
         state.write_text("# s\n", encoding="utf-8")
         doc = json.loads(self.sb.run(self.SCRIPT, {}).stdout)
         self.assertIn("holds the running state", doc["systemMessage"])
+
+
+class SteLintHookTests(_SandboxCase):
+    """PostToolUse(Write|Edit) STE-lite check: off by default, on through env, .magician/ste or
+    cli-ui.json (in that order), only for Markdown under .workspace/shared/ or an opted-in glob,
+    findings returned as additionalContext, never a block, exit 0 on anything."""
+    SCRIPT = "ste-lint-hook.sh"
+    PROSE = "We utilize the cache prior to the build.\n"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.proj = self.sb.work
+        self.shared = self.proj / ".workspace" / "shared" / "specs"
+        self.shared.mkdir(parents=True)
+        self.spec = self.shared / "login.md"
+        self.spec.write_text(self.PROSE, encoding="utf-8")
+        self.other = self.proj / "docs"
+        self.other.mkdir()
+        self.note = self.other / "note.md"
+        self.note.write_text(self.PROSE, encoding="utf-8")
+
+    def _payload(self, path: Path, tool: str = "Write") -> dict:
+        return {"hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": {"file_path": str(path)}}
+
+    def _ctx(self, proc: subprocess.CompletedProcess) -> str:
+        doc = json.loads(proc.stdout)
+        self.assertEqual(set(doc), {"hookSpecificOutput"})
+        self.assertEqual(doc["hookSpecificOutput"]["hookEventName"], "PostToolUse")
+        self.assertNotIn("decision", doc)
+        return doc["hookSpecificOutput"]["additionalContext"]
+
+    def test_off_by_default(self) -> None:
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec))
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(self.spec.read_text(encoding="utf-8"), self.PROSE)
+
+    def test_on_and_under_shared_workspace_reports_findings(self) -> None:
+        for tool in ("Write", "Edit"):
+            proc = self.sb.run(self.SCRIPT, self._payload(self.spec, tool), MAGICIAN_STE="1")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            ctx = self._ctx(proc)
+            self.assertTrue(ctx.startswith("STE-lite: fix these in the same turn"))
+            self.assertIn(str(self.spec) + ":1: W4:", ctx)
+            self.assertIn('"utilize"', ctx)
+            self.assertIn('"prior to"', ctx)
+            self.assertLessEqual(len(ctx), BUDGET)
+        self.assertEqual(self.spec.read_text(encoding="utf-8"), self.PROSE, "the hook never edits the file")
+
+    def test_on_but_outside_the_shared_workspace_is_silent(self) -> None:
+        proc = self.sb.run(self.SCRIPT, self._payload(self.note), MAGICIAN_STE="1")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        txt = self.proj / ".workspace" / "shared" / "plain.txt"
+        txt.write_text(self.PROSE, encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(txt), MAGICIAN_STE="1")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""), "only Markdown is checked")
+
+    def test_ste_paths_globs_opt_a_folder_in(self) -> None:
+        mag = self.proj / ".magician"
+        mag.mkdir()
+        (mag / "ste-paths").write_text("# project prose\n\ndocs/*.md\n", encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(self.note), MAGICIAN_STE="1")
+        self.assertIn(str(self.note) + ":1: W4:", self._ctx(proc))
+        elsewhere = self.proj / "README.md"
+        elsewhere.write_text(self.PROSE, encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(elsewhere), MAGICIAN_STE="1")
+        self.assertEqual(proc.stdout, "", "a file no glob names stays silent")
+
+    def test_precedence_env_then_project_file_then_cli_ui(self) -> None:
+        mag = self.proj / ".magician"
+        mag.mkdir()
+        (mag / "ste").write_text("on\n", encoding="utf-8")
+        self.assertIn("W4", self._ctx(self.sb.run(self.SCRIPT, self._payload(self.spec))))
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec), MAGICIAN_STE="0")
+        self.assertEqual(proc.stdout, "", "env off wins over the project file")
+        (mag / "ste").write_text("off\n", encoding="utf-8")
+        (self.sb.mag / "cli-ui.json").write_text('{"ste": true}', encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec))
+        self.assertEqual(proc.stdout, "", "the project file off wins over cli-ui.json")
+        (mag / "ste").unlink()
+        self.assertIn("W4", self._ctx(self.sb.run(self.SCRIPT, self._payload(self.spec))))
+        (self.sb.mag / "cli-ui.json").write_text('{"ste": false}', encoding="utf-8")
+        self.assertEqual(self.sb.run(self.SCRIPT, self._payload(self.spec)).stdout, "")
+
+    def test_clean_prose_and_bad_events_are_silent(self) -> None:
+        self.spec.write_text("Use the cache before the build.\n", encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec), MAGICIAN_STE="1")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        for payload in ("", "not json", "{}", '{"tool_input":{"file_path":"relative.md"}}',
+                        json.dumps(self._payload(self.shared / "missing.md"))):
+            with self.subTest(payload=payload):
+                proc = self.sb.run(self.SCRIPT, payload, MAGICIAN_STE="1")
+                self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertFalse(self.sb.envfile.exists())
 
 
 class CloudSessionTests(_SandboxCase):

@@ -62,7 +62,9 @@ EXPECTED_WIRING = {
     "UserPromptSubmit": [(None, [("pattern-detect.sh", {})])],
     # The guard fails closed: a timeout or crash blocks the call (onFailure, v2.1.295+), within 5 s.
     "PreToolUse": [("Bash|PowerShell", [("destructive-guard.sh", {"timeout": 5, "onFailure": "block"})])],
-    "PostToolUse": [("Write|Edit", [("format.sh", {"async": True})])],
+    # ste-lint-hook.sh waits for the linter (sync, explicit) so its findings land in the same turn.
+    "PostToolUse": [("Write|Edit", [("format.sh", {"async": True}),
+                                    ("ste-lint-hook.sh", {"async": False, "timeout": 10})])],
     "PreCompact": [("auto|manual", [("pre-compact.sh", {"timeout": 10})])],
     "SubagentStop": [("^magician:", [("subagent-stop.sh", {"timeout": 10})])],
     "PreModelSwitch": [(None, [("pre-model-switch.sh", {"timeout": 10})])],
@@ -182,7 +184,8 @@ class HookWiringTests(unittest.TestCase):
     def test_only_the_hooks_the_model_need_not_wait_for_are_async(self) -> None:
         """chronicle-stop.sh (Stop) and format.sh (PostToolUse) run async with no asyncRewake: the
         model does not wait for a session record or a formatter. The guard and the context hooks
-        stay synchronous, since their output or verdict is needed before the next step."""
+        stay synchronous, since their output or verdict is needed before the next step; the STE
+        lint hook says so explicitly (async: false), since it shares format.sh's matcher."""
         for event, _group, hook in self._hooks():
             with self.subTest(command=hook["command"]):
                 self.assertNotIn("asyncRewake", hook)
@@ -192,6 +195,10 @@ class HookWiringTests(unittest.TestCase):
                 elif _script_of(hook["command"]) == "format.sh":
                     self.assertEqual(event, "PostToolUse")
                     self.assertIs(hook.get("async"), True)
+                elif _script_of(hook["command"]) == "ste-lint-hook.sh":
+                    self.assertEqual(event, "PostToolUse")
+                    self.assertIs(hook.get("async"), False)   # explicit: Claude waits for the findings
+                    self.assertEqual(hook.get("timeout"), 10)
                 else:
                     self.assertNotIn("async", hook)
 
