@@ -132,7 +132,7 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/almanac` | Set up a project workspace, once per project |
 | `/manifest` | Run the full lifecycle with four approval points |
 | `/magic` | Research a question across documentation, the web and local files |
-| `/conjure` | Agree on a design and spec before writing code |
+| `/conjure` | Agree on a design and spec before writing code, following the app's current design and the platform's guidelines |
 | `/blueprint` | Turn an approved spec into a test-first plan |
 | `/portal` | Isolate a feature in its own git worktree |
 | `/orchestrate` | Build a plan with parallel agents |
@@ -269,7 +269,7 @@ The `/jira` and `/confluence` skills add to their memory files, `jira-memory.md`
 - `/seal`, `/deploy`, `/divine`, `/autopsy`, `/jira` and the CI monitor use your own `gh` login, and `/divine` can use `glab`, to talk to GitHub or GitLab. `/seal` also pushes to your git remote.
 - Research skills use Claude Code's web tools, which follow your permission settings. If you added the Context7 documentation MCP server, `/magic`, `/divine` and `/transmute` may query it without a prompt.
 - `/transmute` can open pages on hosts you name in your Chrome browser, through the Claude in Chrome tools, and read their text and network requests into the conversation. Each browser action goes through your normal permission prompt, the skill is told to stay read-only and mask secrets, and it asks in chat before typing into a page.
-- The `/conjure` preview server listens on `127.0.0.1` only. Its page loads one pinned diagram library, mermaid 10.9.3, from jsDelivr in your browser, with an integrity hash so the browser rejects any other file, and hosted web fonts only if you ask for them. `/conjure` can also use a Playwright MCP server, if you have one, to screenshot its design pages; opening a page in that browser asks first.
+- The `/conjure` preview server listens on `127.0.0.1` only. Its page loads one pinned diagram library, mermaid 10.9.3, from jsDelivr in your browser, with an integrity hash so the browser rejects any other file, and hosted web fonts only if you ask for them. When it designs, `/conjure` may fetch guideline pages from m3.material.io, developer.apple.com, fluent2.microsoft.design and figma.com; each fetch goes through Claude Code's normal WebFetch prompt, and the pages are only read. `/conjure` can also use a Playwright MCP server, if you have one, to screenshot its design pages; opening a page in that browser asks first.
 - `/sentinel` may run a dependency auditor: `npm audit` sends the dependency list to the npm registry; `pip-audit` sends package names and versions to PyPI (or OSV, if you choose it); `safety check` downloads Safety's vulnerability database and, when you use a Safety API key, sends the package list to Safety's servers; `govulncheck` asks the Go vulnerability database at vuln.go.dev about the modules you use, and the go command downloads any module missing from its cache from your module proxy (proxy.golang.org by default); and `cargo audit` downloads the RustSec advisory database from GitHub and, to spot yanked versions, fetches the crates.io index entry of each crate in Cargo.lock.
 - `/magic`, `/conjure`, `/autopsy`, `/accelerate`, `/scrutinize` and `/divine` can offer to publish a result as a Claude Artifact, and do so only if you accept.
 
@@ -318,12 +318,12 @@ Lore is magician's bundled guidance for specific technologies: a short core file
 |---|---|
 | Languages and runtimes | 9, including Python, Go, Rust, Java, Kotlin, Swift and TypeScript |
 | Frameworks and libraries | 70, from web frameworks and ORMs to UI styling, data and machine learning |
-| Databases | 30 engines across relational, analytics, document, key-value, vector, graph and search, plus a shared guide |
-| Logging and observability | 6 platforms with their query languages, plus a general logging guide |
+| Databases | 30: 29 engines across relational, analytics, document, key-value, vector, graph and search, plus a shared guide |
+| Logging and observability | 8: 7 platforms with their query languages, plus a general logging guide |
 | Infrastructure | 4: Docker, Kubernetes, Terraform and GitHub Actions |
-| Working practices | 12, including security, verification, test-driven development, git and models |
+| Working practices | 13, including security, verification, test-driven development, git, models and design principles |
 
-The [lore folder](lore/) holds all 133 core files, and the [deep-dive folder](lore/deep/) holds 110 deep dives. Turn lore off by asking Claude to run `magician-ui lore off`, with a `.magician/lore.off` file in the project, or with `MAGICIAN_LORE=0`.
+The [lore folder](lore/) holds all 134 core files, and the [deep-dive folder](lore/deep/) holds 111 deep dives. Turn lore off by asking Claude to run `magician-ui lore off`, with a `.magician/lore.off` file in the project, or with `MAGICIAN_LORE=0`.
 
 ## Workspace
 

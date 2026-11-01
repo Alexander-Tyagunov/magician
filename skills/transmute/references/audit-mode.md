@@ -23,6 +23,13 @@ Measure against a budget (the `/accelerate` baseline-first stance — measure be
 - **Perf/cost**: slow steps, chatty/redundant round-trips, oversized payloads, request fan-out,
   expensive vendor calls (from the network layer).
 - **UX friction**: dead ends, confusing states, missing feedback, excessive steps.
+- **Guideline fit**: measure against the platform's guideline set too — read the
+  [review checklist](../../../lore/deep/design-principles.md#review-checklist) and the matching platform
+  section ([#material-3](../../../lore/deep/design-principles.md#material-3),
+  [#apple-hig](../../../lore/deep/design-principles.md#apple-hig),
+  [#fluent-2](../../../lore/deep/design-principles.md#fluent-2) or
+  [#design-systems](../../../lore/deep/design-principles.md#design-systems); Grep `^## ` then Read
+  offset/limit) and label each UX finding with the guideline it fails.
 - **A11y**: missing labels/roles, contrast, keyboard traps (from `read_page` a11y info).
 - **Staleness**: outdated vendor/library versions (context7), deprecated APIs.
 - **Errors**: console errors, failing requests.

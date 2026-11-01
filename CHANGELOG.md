@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.17.0] — 2026-11-01
+
+**Design grounded in the app and the platform.** When `/conjure` proposes UI, it now starts from what
+the app already looks like and measures every new decision against the public guideline set for the
+target platform: Material 3, Apple's Human Interface Guidelines, Microsoft Fluent 2, or design-system
+practice for a neutral web app. The current design is followed unless you ask for a rework, the
+guideline set and every deliberate deviation are written down, and no mockup is shown before it
+passes a review checklist. `/transmute`'s audit mode measures a live flow against the same set.
+
+### Added
+- **`lore/design-principles.md` and `lore/deep/design-principles.md`.** A core and a deep dive with
+  five sections: `material-3`, `apple-hig`, `fluent-2`, `design-systems` and `review-checklist`. The
+  lore is paraphrased guidance in magician's own words, not copied text; the core's Sources line
+  names the sites it draws on, and the design-systems section names the article it summarises. Live
+  guideline pages are consulted only when online, and only read.
+- **`/conjure` GATE 3 step 0.** Before the three directions, the skill inventories the current design
+  (`brand.md`, `design-tokens.css`, the app's stylesheets and theme files, its component library,
+  screenshots) and follows it unless a rework was asked for or the app has no design yet. It picks
+  the guideline set by platform, reads the matching deep-lore section, consults the live page for
+  each specific component with WebFetch or `/magic` when online, keeps the three directions inside
+  the current design's constraints, and runs the review checklist before any mockup is presented,
+  listing in the mockup description the items it could not satisfy.
+- **`skills/conjure/references/design-principles.md`.** The target-to-guideline table with URLs and
+  deep-lore anchors, the current-design-first rule with its inventory and two exceptions, how to
+  consult a live page safely (fetch the specific component page, paraphrase, cite the URL, never
+  paste guideline text into a mockup), the brand.md template lines and the checklist pointer.
+- **Brand book "Guidelines applied" section.** `brand.md` records which guideline set was applied,
+  the sections and pages consulted, whether the current design was followed or reworked, and each
+  deliberate deviation with its reason.
+
+### Changed
+- **`/transmute` audit mode.** A2′ gains a guideline-fit bullet: read the review checklist and the
+  matching platform section, and label each UX finding with the guideline it fails.
+- **README.** The `/conjure` row says it follows the app's current design and the platform's
+  guidelines.
+
 ## [4.16.1] — 2026-09-28
 
 **`magician-scan` arguments.** `magician-scan --help` scanned a path named `--help` and reported it
