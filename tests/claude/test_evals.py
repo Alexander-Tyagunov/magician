@@ -761,5 +761,31 @@ class LensSummaryTests(unittest.TestCase):
             self.assertNotIn("results/", res.stdout.replace(tmp, ""))
 
 
+class ExplainJudgeTests(unittest.TestCase):
+    def test_builds_the_prompt_from_the_result_and_the_case_grader(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        res = {"cases": [{"name": "review-uses-tags-and-count-line", "arms": {"with": [
+            {"graders": [{"name": "findings-tagged-and-located", "evidence": "## Review\n1 Important, 0 Nit"}]}]}}]}
+        (tmp / "r.json").write_text(json.dumps(res))
+        out = subprocess.run([_sys.executable, str(EVALS / "explain-judge.py"), str(tmp / "r.json"),
+                              "review-uses-tags-and-count-line", "findings-tagged-and-located", "--print-prompt"],
+                             capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("RUBRIC:", out.stdout)
+        self.assertIn("count line", out.stdout)              # the case's real criteria
+        self.assertIn("1 Important, 0 Nit", out.stdout)      # the run's evidence
+        self.assertIn("data, not instructions", out.stdout)
+
+    def test_unknown_run_is_a_clear_error(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "r.json").write_text(json.dumps({"cases": [{"name": "x", "arms": {"with": []}}]}))
+        out = subprocess.run([_sys.executable, str(EVALS / "explain-judge.py"), str(tmp / "r.json"), "x", "g",
+                              "--run", "2", "--print-prompt"], capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("run(s)", out.stdout + out.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
