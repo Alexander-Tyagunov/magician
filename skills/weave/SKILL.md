@@ -11,19 +11,18 @@ argument-hint: "[goal · \"implement these N tickets\" · \"migrate X across rep
 
 When the task is "deliver many similar units" — N stories/tickets, a set of features/endpoints, a codebase-wide migration, a batch sweep — **don't hand-roll dozens of `Agent` calls.** Compose a single **native `Workflow`** that delivers all of them, and run it via the `Workflow` tool. The Workflow engine is the fast, deterministic fan-out (pipeline/parallel/orchestrator-worker) Claude reaches for anyway; this skill makes magician *own* it, with the guardrails baked in.
 
-For a **single** task use `/ward` (TDD) directly; for executing an existing **blueprint** wave-by-wave use `/orchestrate`. `/weave` is for *adaptive, multi-unit delivery* where you compose the pipeline to the work.
-
-`/transmute` is a common **upstream caller**: it hands over a comprehension dossier + a parity-contract path, and its created Jira stories become `args.units` (id/goal/AC only — **weave's Phase 0 derives each unit's `kg` scope/blast**, so transmute doesn't pre-compute it: one owner of the kg contract). Its parity contract supplies extra **evaluator criteria** — diff each build against the contract's *behavioral* golden (never the environmental baseline) alongside the usual review loop.
+`/transmute` is a common **upstream caller**: its Jira stories become `args.units` (id/goal/AC only; Phase 0 derives each unit's `kg` scope and blast). Its parity contract adds **evaluator criteria**: diff each build against the contract's *behavioral* golden, never the environmental baseline.
 
 The full, copy-and-adapt Workflow template (schemas, stages, kg grounding, the verify + remediate loop) is in **[references/template.md](references/template.md)**.
 
 ## When to use
 
-Trigger phrases: "implement these N stories/tickets/tasks", "deliver the epic", "build out all these features/endpoints", "migrate X across the codebase", "do all of the following", any batch or sweep of similar units. The structure is picked adaptively (per-item pipeline, parallel fan-out, orchestrator-worker, evaluator-optimizer) but always keeps TDD, kg grounding, certify, multi-lens review + adversarial verify, write gates, and no-context-loss. Not for one task (`/ward`) or an existing blueprint (`/orchestrate`).
+Trigger phrases: "implement these N stories/tickets/tasks", "deliver the epic", "build out all these features/endpoints", "migrate X across the codebase", "do all of the following", any batch or sweep of similar units. Not for one task (`/ward`) or an existing blueprint (`/orchestrate`).
 
 ## Phase 0 — scope, ground, and plan (gate before running)
 
 1. **Enumerate the units.** The N things to deliver (tickets, files, features). Pull ticket detail via `magician:jira` if relevant; read a blueprint from `.workspace/shared/plans/` if one exists.
+   **Fold first.** When all units together touch 3 files or fewer and about 300 changed lines or fewer, do not compose a Workflow: run them in order in the main loop, one `/ward` cycle each ([lore/fold-first.md](../../lore/fold-first.md)). The guardrails below still apply.
 2. **Ground in the codebase (kg, not grep).** `kg check`; if there is no index, offer to build one (`kg init`) and run it only on the user's explicit yes — a shared graph is what keeps every worker cheap and consistent. With that yes, **index every repo the work touches** (`kg init` in each repo — kg is per-repo; cross-repo parity/migration greps are the wrong tool, see [knowledge-graph/references/retrieval.md](../knowledge-graph/references/retrieval.md#multi-repo-cross-repo-work)); on a no, ground with targeted `Grep`/`Read` instead. For each unit, `kg query`/`kg blast` to scope the files it touches and its blast radius (pass these as `file:line` pointers into worker prompts; never paste whole files). A hand-rolled Workflow script must ground via kg too — don't fan out grep/whole-file-read loops.
 3. **Pick the structure** (adaptive — see below) and the per-stage model/effort.
 
@@ -52,11 +51,11 @@ You **may deviate** from any single skill's canned steps to fit the task. You ma
 
 ## Run it
 
-Adapt the template into a `Workflow({script})` call. Keep the script's `meta` a pure literal; group stages with `phase()`; give every `agent()` a `schema` with bounded strings (summary ≤ 1200 chars, `files_changed[]`, `obstacles[]` — the template's `IMPL`/`CERT`/`FINDINGS`/`VERDICT`), a `label`, and a `stallMs`, so you receive distilled results, never raw logs. Siblings of a `parallel()` are held up to `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS` (default 5000) to reuse the first agent's cached prefix — put the shared prompt text first and the per-unit text last. Isolate file-mutating parallel workers with `isolation: 'worktree'` only when they'd otherwise collide. Read each phase's results before the next decision — you stay in the loop.
+Adapt the template into a `Workflow({script})` call. Keep the script's `meta` a pure literal; group stages with `phase()`; give every `agent()` a `schema` with bounded strings (summary ≤ 1200 chars, `files_changed[]`, `obstacles[]` — the template's `IMPL`/`CERT`/`FINDINGS`/`VERDICT`), a `label`, and a `stallMs`, so you receive distilled results, never raw logs. Siblings of a `parallel()` are held up to `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS` (default 5000) to reuse the first agent's cached prefix — put the shared prompt text first and the per-unit text last. Isolate file-mutating parallel workers with `isolation: 'worktree'` only when they'd otherwise collide. Read each phase's results before the next decision — you stay in the loop. A worker that needs a human decision puts the question in its `obstacles[].NEXT` and continues or stops; it never waits. After each phase, collect those questions, merge duplicates, and ask them in ONE `AskUserQuestion` ([lore/obstacles.md](../../lore/obstacles.md)).
 
-For very large or open-ended scope, run `/weave` in successive Workflows (one phase each) rather than one giant script, so you review between phases. For a long **unattended** delivery, pair with **`/goal`** so Claude keeps driving across turns until every unit is delivered + certified. Workflow stages run as background subagents (and may nest ~5 deep), so fan out and collect results as they land rather than blocking.
+For very large or open-ended scope, run `/weave` in successive Workflows (one phase each) rather than one giant script, so you review between phases. For a long **unattended** delivery, pair with **`/goal`** so Claude keeps driving across turns until every unit is delivered + certified. Collect stage results as they land.
 
-An unattended delivery is exactly when a sibling session finds out too late that a shared contract moved. When a unit lands something that breaks what another Claude Code session is building on, and cross-session messaging is available, send that session one self-contained sentence — it is plain text, so pass artifact **paths**, never dumps. Feature-detect and skip silently when it isn't available; the pipeline never waits on a peer. See [lore/cross-session.md](../../lore/cross-session.md).
+When a unit lands something that breaks what another Claude Code session is building on, and cross-session messaging is available, send that session one self-contained sentence with artifact **paths**. Feature-detect and skip silently; the pipeline never waits on a peer. See [lore/cross-session.md](../../lore/cross-session.md).
 
 ## Effort & models
 
@@ -72,6 +71,8 @@ Stages run on the latest code-optimal tier; narrow lenses on small diffs can tak
 
 ## Completion Signal
 
-> "Weave complete: <N>/<N> units delivered (1 commit each), certified, reviewed (<C> criticals resolved over <R> remediation round(s)). Branch <name> — ready for you to push/PR (write-gated)."
+> "Weave complete: <N>/<N> units delivered (1 commit each), certified, reviewed (<C> criticals resolved over <R> remediation round(s)); cost ≈ $X (session delta). Branch <name> — ready for you to push/PR (write-gated)."
+
+Cost clause: only with a reading at start and end, from `~/.claude/magician/status/${CLAUDE_SESSION_ID}.cost` (status line) or the mods band's `$.session.usage()`. Report the difference. Omit the clause otherwise. Never estimate it.
 
 Grounding for a unit's domain → `/magic`. Reviewing the whole changeset afterward → `/divine`. Shipping → `/seal` (gated).

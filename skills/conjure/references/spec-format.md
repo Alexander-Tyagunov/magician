@@ -8,6 +8,7 @@ Used at **GATE 4 (Spec Approval)**. Write the full spec to `.workspace/shared/sp
 **Goal:** <one sentence>
 **Archetype:** <from inspector>
 **Stack:** <from inspector>
+**North star:** <fits | conflicts because …; omit when .workspace/shared/north-star.md does not exist>
 
 ## Requirements
 - <requirement 1>

@@ -11,7 +11,8 @@ WHAT IT READS AND WRITES:
     numbers; it never opens the session transcript), ~/.claude/magician/cli-ui.json,
     and the per-session markers in ~/.claude/magician/status/ ($MAGICIAN_HOME overrides).
   * Runs `git rev-parse --abbrev-ref HEAD` in the session's directory (cached 5 s).
-  * Writes only under status/: <session>.spark (last 12 context % values) and
+  * Writes only under status/: <session>.spark (last 12 context % values),
+    <session>.cost (the session cost from the stdin JSON, for /weave and /orchestrate) and
     gitbranch-<hash> (the branch cache). At most once an hour it deletes status files
     older than 7 days, so the folder stays small.
 
@@ -145,6 +146,29 @@ def _spark(sid, pct):
         return ""
 
 
+def _save_cost(sid, cost):
+    """Persist the session cost Claude Code passed in (cost.total_cost_usd) to status/<sid>.cost as
+    JSON, written atomically and only when it changed. Fail-open: any error leaves the file as it was."""
+    try:
+        if not isinstance(cost, (int, float)) or isinstance(cost, bool) or cost < 0:
+            return
+        p = os.path.join(STATUS_DIR, f"{sid}.cost")
+        body = json.dumps({"session_id": sid, "total_cost_usd": round(float(cost), 6)})
+        try:
+            with open(p) as f:
+                if f.read() == body:
+                    return
+        except OSError:
+            pass
+        os.makedirs(STATUS_DIR, exist_ok=True)
+        tmp = f"{p}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            f.write(body)
+        os.replace(tmp, p)
+    except Exception:
+        pass
+
+
 def _git_branch(cwd):
     # Cache per-cwd with a 5s TTL so rapid re-renders skip the git subprocess (perf).
     try:
@@ -271,7 +295,7 @@ def _voice(sid):
 
 
 def _prune_status():
-    """Delete status files (per-session *.json / *.spark markers, gitbranch-* caches) not modified for
+    """Delete status files (per-session *.json / *.spark / *.cost markers, gitbranch-* caches) not modified for
     7 days. Cheap on the render path: one stat of the marker per call; the folder scan runs at most
     once per PRUNE_EVERY. Other names in the folder are never touched."""
     try:
@@ -288,7 +312,7 @@ def _prune_status():
         with os.scandir(STATUS_DIR) as it:
             for e in it:
                 n = e.name
-                if not (n.endswith((".json", ".spark")) or n.startswith("gitbranch-")):
+                if not (n.endswith((".json", ".spark", ".cost")) or n.startswith("gitbranch-")):
                     continue
                 try:
                     if e.is_file(follow_symlinks=False) and e.stat(follow_symlinks=False).st_mtime < cutoff:
@@ -316,6 +340,7 @@ def main():
     model = ((d.get("model") or {}).get("display_name")) or ""
     cwd = (d.get("workspace") or {}).get("current_dir") or d.get("cwd") or "."
     cost = (d.get("cost") or {}).get("total_cost_usd")
+    _save_cost(sid, cost)
 
     segs = []  # (priority, text) — lower priority kept first when width-constrained
     if "context" in comps and pct is not None:

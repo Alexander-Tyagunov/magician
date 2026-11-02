@@ -29,6 +29,28 @@ Skills should read correctly under any agent: say **"the agent"**, not "Claude",
 - Obstacles: the two-line pointer to [obstacles.md](obstacles.md), never the pasted block.
 - Evaluate with 10–20 prompts per skill including negative controls (`claude plugin eval`, or `codex exec --json --output-schema` headless), and track token usage per skill version.
 
+## Tool budget
+
+Tool choice degrades once a session holds more than about 30–50 tool definitions. Every definition also costs context on every turn.
+- Add one tool per user intent, not one per API endpoint. Group related operations behind that intent.
+- Prefer deferred loading (ToolSearch) for any MCP server that a session rarely needs.
+- A bundled CLI with subcommands (`kg`, `jira`, `ctx`) counts as one tool. Prefer it to a set of MCP tools for the same work.
+- Before a skill suggests another MCP server, count the tools the session already has. State that count in the suggestion.
+
+## Where does it live
+
+| Content | Place | Condition |
+|---|---|---|
+| A note in the always-on session-start context | `scripts/session-start.sh` | About 1/3 of sessions or more need it. Keep each note at 600 characters or fewer. |
+| Stack guidance | `lore/<stack>.md`, added by `pattern-detect.sh` on a signal | A prompt or a skill names the stack. Depth goes in `lore/deep/`. |
+| Everything else | The skill body, or the skill's `references/` | The skill is active. |
+
+Text in the always-on context is paid on every turn of every session. Volatile values (dates, SHAs) go last in it ([models.md](models.md#prompt-cache-rules)).
+
+## Advisory vs enforced
+
+A skill is advisory: the model reads it and can still do otherwise. A policy that must hold every time needs a hook, because a hook runs outside the model. A PreToolUse hook that exits 2 blocks the call. Write such a rule as a hook, and make the skill say that the hook enforces it. Magician writes no user settings, so a project hook ships as a template that the user installs (`/almanac` step 9). A text-matching hook is a guard rail against honest mistakes, not a security boundary: a determined agent can get around it. Real enforcement is server-side, for example protected environments and required reviewers.
+
 ## On Codex
 
 `scripts/build-codex.sh` makes the Codex and ChatGPT package from this tree (default `dist/codex/magician/`, gitignored). Each generated skill ends with an "On Codex" section. That section lists only the rows below that the skill uses.

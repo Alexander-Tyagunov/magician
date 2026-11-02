@@ -32,7 +32,7 @@ The offline gate (`tests/claude/test_evals.py`) checks the shape of every case o
 
 ### Fold-first routing and the expected failure
 
-`small-diff-stays-inline` and `large-plan-fans-out` (tags `routing`, `fold-first`) describe the fold-first behavior that batch 6 brings to `/divine`, `/scrutinize`, `/orchestrate` and `/weave`: small work stays in the main loop, and only parallel, independent work goes to subagents. Today `/divine` dispatches its lenses for every diff, so `small-diff-stays-inline` fails. It carries the `expected-fail` tag, so the flip check leaves it out until it first passes. Remove the tag when batch 6 lands and the case passes.
+`small-diff-stays-inline` and `large-plan-fans-out` (tags `routing`, `fold-first`) grade the fold-first rule in [`lore/fold-first.md`](../lore/fold-first.md), which batch 6 wired into `/divine`, `/scrutinize`, `/orchestrate` and `/weave`. A diff of 3 files or fewer and 300 changed lines or fewer stays in the main loop, with each lens file read as a checklist. A Quick review of such a diff makes no `Agent` call, and its verification runs in the main loop. Two or more independent `Parallel: YES` tasks in a wave still fan out. `small-diff-stays-inline` keeps its `expected-fail` tag until a paid eval run confirms that it passes, so the flip check leaves it out until then. Remove the tag after that run.
 
 `session-state-before-wave` grades the order with an `llm` rubric over the trace, not with `tool_order`. A `tool_order` grader can only name one `after` tool. Before batch 6 the first wave goes to an `Agent` call, after it a two-task wave may run inline with `Write` and `Edit`, and one grader cannot cover both paths.
 

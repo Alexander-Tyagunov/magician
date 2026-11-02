@@ -53,6 +53,18 @@ The recommended loop is **spec at high, implement and iterate at low/medium, ver
 
 Each model has its own cache, and so does each effort level — **except Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 on an API key or subscription, where an effort change keeps the cache**. On Bedrock, Vertex, the Claude apps gateway, HIPAA accounts or with `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` it still invalidates — hold one level for the run there. A model switch, compaction, the first fast-mode turn and an automatic safety fallback all invalidate too.
 
+### Prompt cache rules
+
+A cache write costs 1.25x the input price. A cache read costs 0.1x of it or less (the tier table above has the exact prices). A prefix that changes is written again at 1.25x on every turn, so keep the prefix stable:
+
+1. **Static first.** Put instructions, lore and reference text at the start of a prompt, and keep their order the same on every call.
+2. **Updates as messages.** Send new facts as a new message. Do not edit the system prompt or an earlier turn.
+3. **One model per cache.** Do not switch models in the middle of a cached run. Each model has its own cache, so a switch writes the whole prefix again.
+4. **A stable tool list.** Keep the same tool definitions in the same order for the whole run. Load extra tools as deferred tools (ToolSearch), not by changing the list.
+5. **Volatile last.** Put dates, commit SHAs, timestamps and counters at the end of the prompt, after the static text.
+
+Spawn prompts follow the same order ([subagent-context.md](subagent-context.md#rule-order-a-spawn-prompt-for-the-cache)).
+
 ### `ultracode` is a Claude Code setting, not an API effort level
 
 `/effort ultracode on` sends `xhigh` to the model *and* has Claude orchestrate dynamic workflows for substantive tasks. The status bar reports it as `xhigh` unless magician's own mode marker is set.
@@ -78,6 +90,7 @@ Anthropic's research on Claude's values across models & languages found the valu
 - **Critique / review / security / debugging** ([divine](../skills/divine/SKILL.md), [scrutinize](../skills/scrutinize/SKILL.md), [sentinel](../skills/sentinel/SKILL.md), [unravel](../skills/unravel/SKILL.md)) want the **cautious + candid + thorough** profile — the top tier (`opus`) at `high` for the correctness and security lenses; Haiku 5.5 at `high` is fine for the narrower simplification and test-coverage lenses, with an eval guarding against softened findings.
 - **Ideation / design dialogue** ([conjure](../skills/conjure/SKILL.md)) tolerates the warmer, briefer profiles.
 - **Re-verify posture after a model bump.** Don't assume a newer model is a drop-in on *behavior*; do not hardcode the research's per-version numbers. (anthropic.com/research/claude-values-models-languages.)
+- **Trust is per task type.** A model that runs reviews clean has not earned trust for deploys. After a model switch, retest the last task type that ran clean before an unattended run relies on it (the PostModelSwitch hook says so). `/chronicle consolidate` prints clean and blocked runs per agent.
 
 ## Currency rule (history/planning/orchestration skills)
 

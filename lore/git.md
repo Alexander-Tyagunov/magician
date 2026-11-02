@@ -1,3 +1,4 @@
 Common AI mistakes: committing secrets; force-pushing to shared branches; large binary files in history; vague commit messages ("fix stuff", "changes").
 Commands: stage: `git add -p` (partial), log: `git log --oneline`, diff: `git diff --staged`.
 Gotchas: conventional commits (feat/fix/chore) enable changelog generation; `git rebase -i` for local cleanup before push; .gitignore must be committed; use GPG signing for verified commits.
+Agent-scale VCS: many agents commit in parallel, so keep each change small (one intent, about 300 diff lines or fewer). State the intent in the branch name, the commit and the PR (`/seal` adds an Intent line). Treat CI after the merge as a test stage too: watch it and fix forward with a new small PR, and revert only when the fix is not clear. Ship a risky change behind a feature flag, with the revert step written in the PR.

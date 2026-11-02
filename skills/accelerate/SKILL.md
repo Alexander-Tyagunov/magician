@@ -89,6 +89,12 @@ This is a **bounded evaluator-optimizer loop**: if the target isn't met, return 
 
 For a result worth circulating, you can publish the baseline→optimized report as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose proprietary/internal system detail or secrets to a public link.**
 
+**Dashboard offer.** Offer a Dashboard artifact (a page that re-runs its queries) only when both conditions hold:
+- the session has the Artifact tool;
+- the metrics come from a warehouse or a query source (BigQuery, Snowflake, Redshift, ClickHouse, a metrics database), not from a one-off local benchmark.
+
+Ask once, in one sentence, after the Phase 5 report. Do not build it without a yes. Keep it account-private, and never put credentials in the page.
+
 ## Obstacles
 
 If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.

@@ -44,10 +44,12 @@ When a UI was designed, the spec's Design Artifacts section binds implementation
 
 ```bash
 git add .workspace/shared/specs/YYYY-MM-DD-<feature>.md
+git add .workspace/shared/decisions/YYYY-MM-DD-<feature>-<decision>.md
+git add .workspace/shared/intents/YYYY-MM-DD-<feature>.md
 git commit -m "docs: add spec for <feature>"
 ```
 
-Stage only the approved spec. Claude Code asks before the `git add` (only the commit is pre-approved); if the user declines it, stop without committing.
+Run one `git add` per file, and only for a file that exists: `git add` of a missing path fails and stages nothing. Repeat the decisions line once per decision record this session wrote. Run the intents line only when `/manifest` wrote an intent file. Stage only the approved spec, its decision records and its intent file. Claude Code asks before the `git add` (only the commit is pre-approved); if the user declines it, stop without committing.
 
 Stop the visual companion if running (`${CLAUDE_SKILL_DIR}/scripts/vc-stop.sh <design-dir>`). Then say:
 

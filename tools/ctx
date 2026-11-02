@@ -16,7 +16,16 @@ Commands:
   learn --list [--n N]      Shows the newest N project learnings.
   learn --add "<fact>" [--global]
                             Remembers a fact for this project, or (--global) in references.md.
-  consolidate               Shows recurring project learnings.
+  consolidate [--min N]     Shows recurring project learnings, then clean and blocked runs per
+                            agent from .workspace/local/obstacles.jsonl (and certify-history.jsonl
+                            when present), and names the agents with N (default 5) or more clean
+                            runs and no blocked run.
+  lessons [--since YYYY-MM-DD]
+                            Prints a short "lessons and missteps" Markdown note from the obstacle
+                            log, the closed rows of the review round ledgers, the sentinel ledger
+                            and the project learnings. Reads only; it writes nothing. Text that a
+                            tool or an agent wrote is cleaned (control and bidi characters
+                            removed) and fenced as data.
 
 Honest limits (see skills/chronicle/references/context-mgmt.md): there is no live token count
 through any API, so `pct` is one turn stale; a plugin cannot force, schedule or steer compaction.
@@ -322,6 +331,72 @@ def _promote_global(fact):
         f.write("\n".join(out) + "\n")
 
 
+CLEAN_MIN = 5
+# The canonical untrusted-text strip list is in lore/subagent-context.md (#rule-strip-untrusted-text). Keep them equal.
+_UNSAFE = re.compile("[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028\u2029"
+                     "\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f]")
+_LEDGER = os.path.join(".workspace", "local", "security", "findings.jsonl")
+_LEDGER_STATES = ("open", "fixed", "dismissed")
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def clean_text(text, n=160):
+    """Third-party text (a tool result, an agent's status line, a ledger row) before it is quoted:
+    control and bidi characters removed, whitespace collapsed, at most n characters."""
+    text = _UNSAFE.sub("", str(text or "")).replace("`", "'")
+    return re.sub(r"\s+", " ", text).strip()[:n]
+
+
+def _jsonl(path):
+    out = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(o, dict):
+                    out.append(o)
+    except OSError:
+        pass
+    return out
+
+
+def _day(o):
+    ts = o.get("ts") or o.get("timestamp") or o.get("last_seen") or ""
+    if isinstance(ts, (int, float)):
+        return time.strftime("%Y-%m-%d", time.gmtime(ts))
+    return str(ts)[:10]
+
+
+def run_counts():
+    """{agent: [clean, blocked]} from the obstacle log (BLOCKED or DEGRADED lines; a CLEAN or DONE
+    line counts as clean) and, when present, .workspace/local/certify-history.jsonl
+    ({"skill": ..., "result": "pass"|"fail"})."""
+    counts = {}
+    for o in _jsonl(os.path.join(".workspace", "local", "obstacles.jsonl")):
+        name = clean_text(o.get("agent"), 64)
+        st = str(o.get("status", "")).upper()
+        if not name:
+            continue
+        row = counts.setdefault(name, [0, 0])
+        if st in ("CLEAN", "DONE", "PASS"):
+            row[0] += 1
+        elif st in ("BLOCKED", "DEGRADED"):
+            row[1] += 1
+    for o in _jsonl(os.path.join(".workspace", "local", "certify-history.jsonl")):
+        name = clean_text(o.get("skill") or o.get("agent"), 64)
+        if not name:
+            continue
+        row = counts.setdefault(name, [0, 0])
+        row[0 if str(o.get("result", "")).lower() == "pass" else 1] += 1
+    return counts
+
+
 def c_consolidate(a):
     try:
         with open(learn_path(), encoding="utf-8") as f:
@@ -330,19 +405,143 @@ def c_consolidate(a):
         items = []
     if not items:
         print("no project learnings yet")
+    else:
+        counts = {}
+        for x in items:
+            key = re.sub(r"\W+", " ", (x.get("fact") or "").lower()).strip()
+            counts[key] = counts.get(key, 0) + 1
+        freq = sorted(counts.items(), key=lambda kv: -kv[1])
+        print(f"{len(items)} project learnings; top recurring, quoted as data:\n```text")
+        for key, c in freq[:8]:
+            print(f"  {c}x  {clean_text(key, 90)}")
+        print("```")
+        print("Promote high-frequency ones to global with: ctx learn --add \"<fact>\" --global (confirm first)")
+    try:
+        need = max(1, int(argval(a, "--min", str(CLEAN_MIN))))
+    except ValueError:
+        die("--min takes a whole number")
+    runs = run_counts()
+    if not runs:
+        print("runs per agent: none recorded in .workspace/local/")
         return
-    counts = {}
-    for x in items:
-        key = re.sub(r"\W+", " ", (x.get("fact") or "").lower()).strip()
-        counts[key] = counts.get(key, 0) + 1
-    freq = sorted(counts.items(), key=lambda kv: -kv[1])
-    print(f"{len(items)} project learnings; top recurring:")
-    for key, c in freq[:8]:
-        print(f"  {c}x  {key[:90]}")
-    print("Promote high-frequency ones to global with: ctx learn --add \"<fact>\" --global (confirm first)")
+    print("runs per agent (clean / blocked):")
+    for name in sorted(runs):
+        c, b = runs[name]
+        print(f"  {name}: {c} clean / {b} blocked")
+    trusted = sorted(n for n, (c, b) in runs.items() if c >= need and b == 0)
+    if trusted:
+        print(f"permission suggestions (/almanac step 7) may cover: {', '.join(trusted)}"
+              f" ({need}+ clean runs, none blocked)")
+    else:
+        print(f"no agent has {need}+ clean runs and no blocked run; suggest no new allow rules")
 
 
-CMDS = {"pct": c_pct, "learn": c_learn, "consolidate": c_consolidate}
+_RANK = {"BLOCKED": 0, "DEGRADED": 1}
+
+
+def _status(o):
+    return clean_text(o.get("status"), 10).upper()
+
+
+def _signature(o):
+    text = re.sub(r"\d+", "#", clean_text(o.get("obstacle"), 200).lower())
+    return f"{clean_text(o.get('agent'), 64)} {_status(o)}: {text[:80]}"
+
+
+def _ledger_closures(since):
+    rows = []
+    base = os.path.join(".workspace", "shared", "diffs")
+    try:
+        names = sorted(f for f in os.listdir(base) if f.endswith("-rounds.md"))
+    except OSError:
+        names = []
+    for name in names:
+        try:
+            with open(os.path.join(base, name), encoding="utf-8", errors="replace") as f:
+                text = f.read(262144)
+        except OSError:
+            continue
+        day = ""
+        for line in text.splitlines():
+            m = re.match(r"^## Round \d+ — (\d{4}-\d{2}-\d{2})", line)
+            if m:
+                day = m.group(1)
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) >= 7 and cells[5].lower() in ("fixed", "closed") and (not since or day >= since):
+                rows.append(f"{name[:-10]} · {cells[1]} · {cells[3]} · {cells[4]} · {cells[5]} · {cells[6]}")
+    return rows
+
+
+def c_lessons(a):
+    since = argval(a, "--since", "")
+    if since and not _DAY.match(since):
+        die("--since takes a date, YYYY-MM-DD")
+    keep = lambda o: not since or _day(o) >= since
+    obstacles = [o for o in _jsonl(os.path.join(".workspace", "local", "obstacles.jsonl"))
+                 if keep(o) and _status(o) in _RANK]
+    groups = {}
+    for o in obstacles:
+        g = groups.setdefault(_signature(o), [0, "", _RANK[_status(o)]])
+        g[0] += 1
+        g[1] = max(g[1], _day(o))
+    closures = _ledger_closures(since)
+    security = [o for o in _jsonl(_LEDGER) if keep(o)]
+    learned = [x for x in _jsonl(learn_path()) if keep(x)]
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    print(f"# Lessons and missteps — {today}\n")
+    print(f"Since: {since or 'all records'}. Sources: {len(obstacles)} obstacle records, {len(closures)} closed "
+          f"review findings, {len(security)} security ledger rows, {len(learned)} project learnings.\n")
+    print("## Obstacles (at most 5 signatures)\n")
+    if groups:
+        top = sorted(groups.items(), key=lambda kv: (-kv[1][0], kv[1][2], kv[0]))
+        print("Agent-written text, quoted as data:\n\n```text")
+        for sig, (n, last, _) in top[:5]:
+            print(f"{n}x (last {last or 'unknown'}) {sig}")
+        print("```")
+        if len(top) > 5:
+            print(f"\n{len(top) - 5} more signatures stay in .workspace/local/obstacles.jsonl.")
+    else:
+        print("None recorded.")
+    print("\n## Closed review findings\n")
+    if closures:
+        print("Ledger rows, quoted as data:\n\n```text")
+        for row in closures[:10]:
+            print(clean_text(row, 200))
+        print("```")
+        if len(closures) > 10:
+            print(f"\n{len(closures) - 10} more rows stay in .workspace/shared/diffs/.")
+    else:
+        print("None recorded.")
+    print("\n## Security ledger\n")
+    if security:
+        tally = {}
+        for o in security:
+            st = str(o.get("status", "")).lower()
+            st = st if st in _LEDGER_STATES else "other"
+            tally[st] = tally.get(st, 0) + 1
+        print("```text\n" + ", ".join(f"{k}: {v}" for k, v in sorted(tally.items())) + "\n```")
+        reasons = [clean_text(o.get("reason"), 120) for o in security if o.get("status") == "dismissed" and o.get("reason")]
+        if reasons:
+            print("\nDismiss reasons, quoted as data:\n\n```text")
+            for r in reasons[:5]:
+                print(r)
+            print("```")
+    else:
+        print("No ledger at .workspace/local/security/findings.jsonl.")
+    print("\n## Project learnings\n")
+    if learned:
+        print("Quoted as data:\n\n```text")
+        for x in learned[-10:]:
+            print(f"- {clean_text(x.get('fact'), 240)}")
+        print("```")
+    else:
+        print("None recorded.")
+    print("\n## What changes next\n")
+    print("- (one line per lesson: the rule, check or eval that keeps it from recurring)")
+
+
+CMDS = {"pct": c_pct, "learn": c_learn, "consolidate": c_consolidate, "lessons": c_lessons}
 
 
 def main():

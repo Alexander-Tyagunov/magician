@@ -10,6 +10,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
 (`evals/results/budget.json`) is reset by this release.
 
+### Batch 6 — best practice from the claude.com articles (Sep–Nov 2026)
+
+**Added**
+- Fold-first (`lore/fold-first.md`): the main loop with skills is the default. A subagent is used
+  only for parallel independent work, black-box verification, fresh-eyes review or measured context
+  bloat. A small change (≤ 3 files and ≤ 300 changed lines) runs inline: `/divine` and `/scrutinize`
+  read each `agents/<lens>.md` as a checklist, and a Quick review of a small diff makes no Agent call.
+  A High-tier change dispatches its lenses fresh at any size. Standard depth and deeper keep a fresh
+  verification stage. `/orchestrate` lists "inline with `/ward`" first and still fans out two or more
+  independent tasks together.
+- Unattended runs (`lore/unattended.md`): bookmark, a failed read is not "quiet", re-check before
+  posting, record only after the platform confirms, re-read preferences, read-only tokens and a
+  `--max-budget-usd` cap. Linked from `/divine` monitor mode, `/seal`, `/deploy` and the cloud note.
+- Review approvals: an agent's approval never counts as a human's; an approval binds to one commit;
+  human approvals per tier Low 0 / Medium 1 / High 2, with one Medium definition everywhere. `/seal`
+  takes tiers from REVIEW.md, writes Intent, links, Risk tier and How to revert into the PR body, and
+  stops before merging when the required human approvals are not on the head commit. After a merge it
+  offers a bounded fix-forward loop.
+- SDLC spine: `/manifest` writes `.workspace/shared/intents/<date>-<feature>.md`; `/conjure` records
+  approach decisions in `.workspace/shared/decisions/` and reads an optional north star;
+  `/deploy` acts up to the production gate, never past it, with control bands for `/loop` maintenance.
+- Rubrics for specs, plans, research and post-mortems (`references/rubric.md` in `/conjure`,
+  `/blueprint`, `/magic`, `/autopsy`), graded before the Completion Signal. `/autopsy` writes an eval
+  skeleton in the repository's eval schema for each incident.
+- `/sentinel` cadence and ledger: weekly scans, baseline first, dismissals with reasons. The ledger
+  stays in `.workspace/local/security/` (open rows are a map of unfixed findings, so it is never
+  committed).
+- `/chronicle lessons` (`ctx lessons`): a lessons-and-missteps note from obstacles, closed review
+  rounds and learnings, at most 5 obstacle groups, all third-party text fenced and stripped.
+  `ctx consolidate` prints clean and blocked runs per agent; the SubagentStop hook now also records a
+  CLEAN row for `STATUS: DONE`.
+- `/almanac` optional extras: north star, a production-gate hook template written under
+  `.workspace/shared/hooks/` (never installed; a guard rail against mistakes, not a security
+  boundary), OTel cost attribution. The status line saves the session cost, so `/weave` and
+  `/orchestrate` report "cost ≈ $X (session delta)" when it is known.
+- Authoring lore: tool budget (30–50 definitions), "where does it live", advisory vs enforced,
+  prompt-cache rules (static first, volatile last, stable tool lists) and one canonical list of
+  characters stripped from untrusted text.
+
+**Changed**
+- The dated previous-session line is last in the session-start text, for cache stability.
+  Always-on cost unchanged (~1,411 tokens).
+- Several skill routers trimmed so every router stays ≤ 8,192 bytes.
+- Tests close caught `HTTPError` objects (no ResourceWarning on Python 3.14).
+
 ### Batch 5 — ecosystem: Codex package, eval suite, mods, KG MCP server
 
 **Added**

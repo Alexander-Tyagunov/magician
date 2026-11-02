@@ -648,6 +648,33 @@ class PreviousSessionTests(unittest.TestCase):
             self.assertIn("THIS-DIR", _ctx(sb.out(proj, {"source": "startup"},
                                                   CLAUDE_PLUGIN_OPTION_SESSION_HISTORY="true")))
 
+    def test_dated_line_is_last_so_the_static_prefix_stays_cached(self) -> None:
+        """The previous-session line carries a date and changes every session. It is the last line of
+        the context, after the voice and STE notes, so everything before it is the same from one
+        session to the next (lore/models.md, prompt cache rules: volatile last)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            d = sb.data / "chronicle"
+            d.mkdir()
+            (d / "20261001T090000Z-old.json").write_text(json.dumps(
+                {"timestamp": "2026-10-01T10:00:00Z", "working_dir": os.path.realpath(proj),
+                 "summary": "3 commit(s) on main"}), encoding="utf-8")
+            for extra in ({}, {"MAGICIAN_STE": "1"}, {"CLAUDE_CODE_REMOTE": "1", "MAGICIAN_VOICE": "warrior"}):
+                with self.subTest(**extra):
+                    ctx = _ctx(sb.out(proj, {"session_id": "now", "source": "startup"}, **extra))
+                    self.assertEqual(ctx.splitlines()[-1],
+                                     "Previous magician session in this directory: 3 commit(s) on main (ended 2026-10-01)")
+            (d / "20261001T090000Z-old.json").write_text(json.dumps(
+                {"timestamp": "not-a-date", "working_dir": os.path.realpath(proj), "summary": "S"}), encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "now", "source": "startup"}))
+            self.assertTrue(ctx.endswith("Previous magician session in this directory: S"), "no date, no suffix")
+            (d / "20261001T090000Z-old.json").write_text(json.dumps(
+                {"timestamp": "2026-10-01T10:00:00Z", "working_dir": os.path.realpath(proj), "summary": ""}),
+                encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "now", "source": "startup"}))
+            self.assertNotIn("Previous magician session", ctx, "no summary, no line (not a bare date)")
+
 
 class ProjectNoteTests(unittest.TestCase):
     def test_knowledge_graph_index_note_and_throttled_suggestion(self) -> None:

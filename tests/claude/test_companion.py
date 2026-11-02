@@ -95,7 +95,8 @@ class _Server:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, dict(r.headers), r.read()
         except urllib.error.HTTPError as e:
-            return e.code, dict(e.headers), e.read()
+            with e:   # close the error's response, or Python 3.14 warns "Implicitly cleaning up <HTTPError>"
+                return e.code, dict(e.headers), e.read()
 
     def events(self) -> list:
         f = self.state_dir / "events.jsonl"

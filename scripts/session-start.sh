@@ -423,6 +423,9 @@ fi
 
 # ── Previous session in THIS directory (chronicle; off when session_history=false) ──
 # Only records whose working_dir equals the physical cwd count; the current session's own record is skipped.
+# The line carries a date, so it is the volatile part of the context: TAIL puts it last, after every
+# static note, which keeps the static prefix the same from one session to the next (prompt cache).
+# _cap trims from the end, so over the budget the dated line is the first text to go.
 CHRONICLE_NOTE=""
 case "$(printf '%s' "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" | tr '[:upper:]' '[:lower:]')" in
   false|0|no|off) ;;
@@ -437,6 +440,9 @@ case "$(printf '%s' "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" | tr '[:uppe
         _c=$(head -c8192 "$PLUGIN_DATA/chronicle/$_f" 2>/dev/null | tr -d '\n\r')
         [ "$(_json_unescape "$(_json_field "$_c" working_dir)")" = "$PWD_P" ] || continue
         _s=$(_trunc 300 "$(_json_unescape "$(_json_field "$_c" summary)")")
+        _d=$(_json_field "$_c" timestamp); _d=${_d:0:10}
+        re_day='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        [ -n "$_s" ] && [[ $_d =~ $re_day ]] && _s="${_s} (ended ${_d})"   # no summary: no line at all
         [ -n "$_s" ] && CHRONICLE_NOTE="
 Previous magician session in this directory: ${_s}"
         break
@@ -507,7 +513,7 @@ fi
 CLOUD_NOTE=""
 if [ "${CLAUDE_CODE_REMOTE:-}" = 1 ]; then
   CLOUD_NOTE="
-Cloud session (CLAUDE_CODE_REMOTE=1): the launcher and credential hooks are skipped here, so magician's bundled commands run by full path only, as tools/<name> under the plugin root."
+Cloud session (CLAUDE_CODE_REMOTE=1): the launcher and credential hooks are skipped here, so magician's bundled commands run by full path only, as tools/<name> under the plugin root. Scheduled or unattended runs follow lore/unattended.md."
 fi
 
 # ── Post-compaction / resume: conventions the compaction may have dropped ──
@@ -554,11 +560,11 @@ LORE_HDR=" Magician lore (baseline guidance; this repository's own conventions t
 "
 DEEP_TEXT="
 Deep-dive files: lore/deep/<stack>.md under the plugin root, one '## ' section per anchor id a core lists; Grep '^## ' gives line numbers for a Read with offset/limit."
-TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}"
+TAIL="${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}${CHRONICLE_NOTE}"
 _fixed=$(( ${#HEAD} + 1 + ${#STACK_NOTE} + ${#LORE_HDR} + ${#DEEP_TEXT} + ${#TAIL} ))   # cores add their exact cost below
 if [ "$_fixed" -gt "$BUDGET" ] && [ -n "$REFERENCES_NOTE" ]; then   # references are the first note to go
   _fixed=$(( _fixed - ${#REFERENCES_NOTE} )); REFERENCES_NOTE=""
-  TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}"
+  TAIL="${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}${CHRONICLE_NOTE}"
 fi
 _room=$(( BUDGET - _fixed ))
 [ "$_room" -lt "$MAX_LORE" ] && MAX_LORE=$_room

@@ -173,7 +173,7 @@ class SkillDefinitionTests(unittest.TestCase):
             "seal": ["git add -A", 'git commit -m "feat: login"', "git push -u origin HEAD",
                      'gh pr create --title "Login" --body "Adds login"', "gh pr checks 42 --watch",
                      "gh run view 99 --log-failed", "gh pr merge --squash --delete-branch"],
-            "sentinel": [*SEARCH, "mkdir -p .workspace/local", "touch .workspace/local/security-scan.active",
+            "sentinel": [*SEARCH, "mkdir -p .workspace/local/security", "touch .workspace/local/security-scan.active",
                          "magician-scan .", "npm audit", "npm audit --json", "pip-audit", "pip-audit -f json",
                          "safety check", "govulncheck ./...", "cargo audit"],
             "statusline": ["magician-ui status", "magician-ui voice status"],

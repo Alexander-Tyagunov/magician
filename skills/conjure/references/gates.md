@@ -4,7 +4,7 @@ Read this once the mode is chosen (GATE 0, [design-mode.md](design-mode.md)). Th
 
 ## Step 1 — Explore
 
-Read relevant files, recent git log, existing specs in `.workspace/shared/specs/`, and any prior research in `.workspace/shared/research/` (from `/magic`, or a `/transmute` comprehension dossier when redesigning an existing feature — design against its recorded UX contract). Note detected stack and archetype from session additionalContext. Do this silently before asking anything. If a design decision hinges on external evidence you don't have (library choice, prior art, API capabilities), suggest running `/magic` first — it returns a research artifact you then design from.
+Read relevant files, recent git log, existing specs in `.workspace/shared/specs/`, and any prior research in `.workspace/shared/research/` (from `/magic`, or a `/transmute` comprehension dossier when redesigning an existing feature — design against its recorded UX contract). When `.workspace/shared/north-star.md` exists, read it and check each approach against it. The spec carries one line, `**North star:** fits` or `**North star:** conflicts because <reason>`; a conflict is shown to the user at GATE 4, not hidden. Note detected stack and archetype from session additionalContext. Do this silently before asking anything. If a design decision hinges on external evidence you don't have (library choice, prior art, API capabilities), suggest running `/magic` first — it returns a research artifact you then design from.
 
 ## Step 2 — Clarify (one question per turn)
 
@@ -21,6 +21,20 @@ Present 2–3 approaches.
 **Surface A (artboards):** show the same three cards as one artboard each in the `/design` artifact. Tell the user the link and a one-sentence summary of each approach. End your turn. On the next turn read their terminal reply or artifact comment for the choice.
 
 **Text mode (C):** present the approaches in text, then call `AskUserQuestion` — *"Which approach would you like to go with?"* — with one option per approach (2–3 concrete options). End your turn at the call; act on the chosen approach.
+
+**Record the decision.** When the user picks an approach, write `.workspace/shared/decisions/YYYY-MM-DD-<feature>-approach.md` before GATE 2:
+
+```markdown
+# Decision: <feature> approach
+
+**Date:** YYYY-MM-DD · **Status:** accepted · **Source:** /conjure GATE 1
+**Context:** <the problem and the constraints, 2–3 sentences>
+**Options:** <each approach in one line, with its main trade-off>
+**Chosen:** <the approach> because <the user's reason, or the deciding trade-off>
+**Consequences:** <what this makes easier, and what it rules out>
+```
+
+Write one file per decision. A later reversal gets a new file with `Status: supersedes <old file>`, never an edit. Every later approach decision in the dialogue (a GATE 2 change of component or data store, a GATE 3 direction) gets its own file the same way. The GATE 4 commit stages these files with the spec.
 
 **Do not present architecture until the user confirms an approach.**
 

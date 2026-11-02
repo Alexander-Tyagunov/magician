@@ -28,11 +28,11 @@ On review intent, magician's `UserPromptSubmit` hook notes that this skill cover
 
 The review speaks the dialect in [`lore/review.md`](../../lore/review.md). Every finding has a tag (`Important`, `Nit`, `Pre-existing`) and `file:line`. Nits are capped. Remediation runs at most three rounds, diff-only after the first, with a round ledger. The count line comes first, then the findings.
 
-If `REVIEW.md` exists at the repository root, Read it first. Its values override the defaults, and its text goes into every lens prompt. Platform alternatives (`/code-review`, `claude ultrareview --trust-workspace`, the `@claude review` GitHub flow) are in [`lore/deep/review.md#platform-surfaces`](../../lore/deep/review.md#platform-surfaces). Recommend one when it fits better. They run under the session's permission settings.
+If `REVIEW.md` exists at the repository root, Read it first. Its values override the defaults, and its text goes into every lens prompt. Platform alternatives (`/code-review`, `claude ultrareview --trust-workspace`, the `@claude review` GitHub flow) are in [`lore/deep/review.md#platform-surfaces`](../../lore/deep/review.md#platform-surfaces). Recommend one when it fits better.
 
 ## Phase 0 — Change context
 
-**Monitor mode:** if `$ARGUMENTS` starts with `monitor` (started by `/loop`), skip the interactive phases and follow [`references/monitor-mode.md`](references/monitor-mode.md).
+**Monitor mode:** `/loop 1h /divine monitor <owner/repo>` reviews new PRs/MRs unattended and never implements fixes. If `$ARGUMENTS` starts with `monitor`, skip the interactive phases and follow [`references/monitor-mode.md`](references/monitor-mode.md).
 
 Read [`references/change-context.md`](references/change-context.md). Resolve the target from `$ARGUMENTS` (a PR/MR URL, a branch, or "working tree"). Gather the diff and changed files, the base ref, the PR/MR description and tickets, CI status, and in-repo grounding. Drop the `REVIEW.md` skip paths. Summarize the change and its scale in two sentences, silently.
 
@@ -52,19 +52,17 @@ After the depth gate, run to completion without more questions: context reads, `
 
 First run `mkdir -p .workspace/local && touch .workspace/local/security-scan.active`. While the marker exists, the PreModelSwitch hook holds a model switch for confirmation. Remove it in the Completion Signal and on any early exit.
 
-Write the diff once to `.workspace/shared/diffs/<ref>.patch`, then dispatch the lenses in parallel, in one message. Fork or fresh follows [`lore/deep/review.md#fork-or-fresh`](../../lore/deep/review.md#fork-or-fresh): forks when the diff is in context and small, else fresh `magician:<lens>` agents. Lenses:
-- `magician:reviewer`: correctness, logic, edge cases
-- `magician:sentinel`: security and supply chain
-- `magician:simplifier`: over-engineering, premature abstraction
-- `magician:verifier`: test quality (Deep/Exhaustive), always fresh
+Lenses: `magician:reviewer` (correctness), `magician:sentinel` (security, supply chain), `magician:simplifier` (over-engineering), `magician:verifier` (tests, Deep and Exhaustive, always fresh). Pick the path by the measured diff size ([`lore/fold-first.md`](../../lore/fold-first.md)):
+- **Small** (3 files or fewer, 300 changed lines or fewer): run each lens but the verifier in the main loop, with `agents/<lens>.md` as its checklist. Quick depth here makes no `Agent` call. A High-tier change dispatches its lenses fresh at any size.
+- **Larger:** write the diff once to `.workspace/shared/diffs/<ref>.patch`, then dispatch the lenses in parallel, in one message. Fork or fresh follows [`lore/deep/review.md#fork-or-fresh`](../../lore/deep/review.md#fork-or-fresh).
 
-Each prompt is self-contained: goal, patch path, intent, grounding path, `REVIEW.md` text, the ledger path on a re-review, and the tagged return format. Full prompts in [`references/dispatch.md`](references/dispatch.md), contract in [`lore/subagent-context.md`](../../lore/subagent-context.md). On `NEEDS_CONTEXT`, add the input and re-dispatch.
+Each spawn prompt is self-contained (goal, patch path, intent, grounding, `REVIEW.md` text, ledger path, return format). Templates in [`references/dispatch.md`](references/dispatch.md), contract in [`lore/subagent-context.md`](../../lore/subagent-context.md). On `NEEDS_CONTEXT`, add the input and re-dispatch.
 
 Finders optimize for recall. Never tell a lens to be conservative or to skip nits. Phase 3 removes the noise, and it can only remove what the finders surfaced.
 
 ## Phase 3 — Adversarial verification
 
-Try to refute every Critical and High finding against the code and the intent, in a fresh context, never in a fork. At Exhaustive, use independent votes. Keep the survivors, list the rest as dropped. Details in [`references/depth-and-research.md`](references/depth-and-research.md#adversarial-verification).
+Try to refute every Critical and High finding against the code and the intent, in a fresh context, never in a fork. At Exhaustive, use independent votes. At Quick on a small diff, run this check in the main loop and state `Verification: in-loop` in the report. Keep the survivors, list the rest as dropped. Details in [`references/depth-and-research.md`](references/depth-and-research.md#adversarial-verification).
 
 ## Phase 4 — Report
 
@@ -83,10 +81,6 @@ Commands and inline-comment format: [`references/report-format.md`](references/r
 ## Phase 6 — Fixes on request
 
 Offer fixes through `AskUserQuestion`. The default is "just report". The round flow, the ledger, and the commit and push gate are in [`references/remediation.md`](references/remediation.md).
-
-## Monitor mode
-
-`/loop 1h /divine monitor <owner/repo>` reviews new PRs/MRs unattended. Depth and post policy are preset at loop start, a tick is idempotent by head SHA, and it never implements fixes. Flow and state file: [`references/monitor-mode.md`](references/monitor-mode.md).
 
 ## Obstacles
 

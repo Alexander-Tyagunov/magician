@@ -2,7 +2,7 @@
 name: sentinel
 description: Security scan — OWASP Top 10, secrets, injection, dependencies, git history, auth. Read-only, severity-ranked report. Use to audit a codebase for vulnerabilities.
 effort: high
-allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(mkdir -p .workspace/local), Bash(touch .workspace/local/security-scan.active), Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit)
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(mkdir -p .workspace/local/security), Bash(touch .workspace/local/security-scan.active), Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit), Edit(./.workspace/local/security/findings.jsonl)
 context: fork
 background: false
 argument-hint: "[path]"
@@ -12,8 +12,6 @@ argument-hint: "[path]"
 
 > **Bundled command:** if `magician-scan` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/magician-scan`. If that is missing too (Claude chat ships no plugin tools), skip the static-analysis step, say so in the report, and run the rest.
 
-Run a comprehensive security scan of the codebase. Available as CLI: `magician-scan` (plugin-provided; on PATH when the plugin is enabled).
-
 For very large repos, raise /effort so the analysis stays thorough across the codebase (`xhigh`; `max` only as an opt-in for a frontier problem). See [lore/models.md](../../lore/models.md).
 
 ## When to use
@@ -22,26 +20,29 @@ To audit a codebase for vulnerabilities: OWASP Top 10, credential and secret det
 
 ## The scan can change models under you
 
-Opus 5 and Fable 5 run cybersecurity classifiers, and Claude Code responds to a flag by **re-running the request on a fallback model and continuing the session there** (Fable 5 → Opus 4.8; Opus 5 → Opus 4.8). A long sweep can therefore finish on a different tier than it started on, with only a transcript notice to say so. Three things follow:
-
-- **Frame the work defensively and concretely.** "Audit this code for injection surfaces and report them" reads as the defensive review it is. Asking for working exploits, attack tooling, or evasion techniques is what trips the classifier — and it is outside this skill's scope anyway: sentinel is read-only and reports findings with remediation.
-- **Notice the switch.** If a fallback notice appears mid-scan, say so in the report rather than presenting mixed-tier findings as one uniform pass, and offer `/model` to return.
-- **When it fires on nothing.** A flag on the *first* request usually comes from workspace context — `CLAUDE.md`, skills, directory names, git status — not from what was asked. `claude --safe-mode` runs without customizations and isolates that. To be asked instead of switched, set `switchModelsOnFlag: false`.
-
-See [lore/models.md](../../lore/models.md#safety-classifiers-change-which-model-you-end-up-on).
+Cyber classifiers can move a flagged request to a fallback model, and the session continues there ([lore/models.md](../../lore/models.md#safety-classifiers-change-which-model-you-end-up-on)).
+- **Frame the work defensively.** Audit and report. Never ask for working exploits, attack tooling or evasion techniques: they trip the classifier and are out of scope.
+- **Print the active model at start and end.** If a fallback notice appears mid-scan, say so in the report and offer `/model` to return.
+- **A flag on the first request** usually comes from workspace context (`CLAUDE.md`, skills, directory names). `claude --safe-mode` isolates that. `switchModelsOnFlag: false` asks before a switch.
 
 ## Destructive-command hard gate (always on, not part of a scan)
 
 Independent of any scan, magician ships a `PreToolUse(Bash|PowerShell)` hook, `scripts/destructive-guard.sh` (self-contained plain bash — no other interpreter), that **unconditionally blocks catastrophic commands**: recursive deletes of system or home roots, raw writes to disk devices, fork bombs, piping a network download straight into a shell or interpreter, decoding base64 straight into a shell, evaluating a downloaded command substitution, and a Bash command that could expose the secrets saved in magician's plugin options (one that names any of those options or the session environment file, reads another process's environment through the proc filesystem, or prints the whole environment with `env`, `set` or one of the other listing commands the guard checks). It exits 2, so the block lands **before permission rules are evaluated** — it overrides `allow` rules and fires in every mode (default/acceptEdits/auto/bypass), with **no escape hatch**. Common command wrappers (`sudo`, `timeout`, `nohup`, `command`, ...), `( )`/`{ }` grouping and inline `sh -c` payloads (other shell options before the `-c` included) are unwrapped before the check. If a Bash or PowerShell call is refused with a `magician destructive-guard: refused` message, do **not** retry, rephrase, or obfuscate — the human must run it themselves outside the agent. Honest limit (CWE-78): a denylist can't catch every obfuscation, so this is a deterministic net layered under OS sandboxing + auto-mode's classifier + model judgment, not a complete sandbox.
 
+## Cadence and ledger
+
+Findings persist in `.workspace/local/security/findings.jsonl`, never committed: open rows map unfixed vulnerabilities. A dismiss reason keeps a closed item closed. The first run is the baseline. Scan weekly: Claude Security scheduled scans where available, else `/loop 1w /sentinel`. Fixes are bounded patches in a reviewed PR. A fixed finding class becomes a scan rule or an eval. Format and steps: [`references/cadence-ledger.md`](references/cadence-ledger.md). The ledger and the scan marker are the only files this skill writes.
+
 ## Process
 
 ### 0. Mark the scan active
 ```bash
-mkdir -p .workspace/local && touch .workspace/local/security-scan.active
+mkdir -p .workspace/local/security && touch .workspace/local/security-scan.active
 ```
 
 While this marker exists, magician's PreModelSwitch hook (`scripts/pre-model-switch.sh`) holds any model switch for confirmation, because a safety-classifier fallback would otherwise change the model tier in the middle of the scan. Remove it at the end (`rm -f .workspace/local/security-scan.active`), and also when the scan is abandoned or fails; `.workspace/local/` is never committed.
+
+Then read the ledger ([`references/cadence-ledger.md`](references/cadence-ledger.md#each-run), step 1).
 
 ### 1. Static Analysis (via magician-scan)
 ```bash
@@ -60,18 +61,7 @@ Run for detected stack:
 - Rust: `cargo audit`
 - Java: OWASP dependency-check (if configured)
 
-These audit tools reach the network: `npm audit` sends the dependency list to the npm registry; `pip-audit` sends package names and versions to PyPI (or OSV, if you choose it); `safety check` downloads Safety's vulnerability database and, when you use a Safety API key, sends the package list to Safety's servers; `govulncheck` asks the Go vulnerability database at vuln.go.dev about the modules you use, and the go command downloads any module missing from its cache from your module proxy (proxy.golang.org by default); and `cargo audit` downloads the RustSec advisory database from GitHub and, to spot yanked versions, fetches the crates.io index entry of each crate in Cargo.lock. Skip any the user doesn't want run.
-
-### 2.5 Dependency Supply-Chain Check
-Known-CVE audits miss supply-chain attacks — the vector behind recent registry compromises where installing a package was enough to steal SSH keys, cloud credentials, and other secrets. Check the install-time surface:
-- **Install-time scripts** — flag lifecycle hooks that run arbitrary code on install:
-  ```bash
-  grep -rEn '"(preinstall|install|postinstall)"\s*:' package.json 2>/dev/null
-  ```
-  (Python equivalent: custom `setup.py`/`pyproject.toml` build hooks.)
-- **Newly added / unfamiliar deps** — review new lockfile entries and dependencies that are typosquats of popular packages.
-- **Exfiltration shape** — a dependency that reads credentials (`~/.ssh`, `~/.aws`, env vars, wallets) *and* reaches the network is high-risk; escalate as Critical.
-- Prefer lockfile integrity in CI (`npm ci`, not `npm install`) and pinned versions.
+The audit tools reach the network, and step 2.5 checks the install-time supply chain. What each tool sends, and the supply-chain checks, are in [`references/dependencies.md`](references/dependencies.md). Skip any tool the user doesn't want run.
 
 ### 3. Secret Detection
 Check for secrets in git history:
@@ -107,6 +97,8 @@ DEPENDENCY AUDIT: N vulnerabilities found
 
 OVERALL POSTURE: Clean | Needs attention | Requires immediate action
 ```
+
+Update the ledger before the report, and put the delta (new, fixed, still open) first ([`references/cadence-ledger.md`](references/cadence-ledger.md#each-run), steps 2–3).
 
 ### 6. CI Integration Note
 For CI pipeline use: `magician-scan` exits 0 (clean), 1 (issues) or 2 (unknown option or missing path); `magician-scan --help` shows the usage.

@@ -151,7 +151,7 @@ TEXT_RULES = {   # applied to the whole file (comments included)
     "transcript field": r"transcript_path|last_assistant_message|agent_transcript_path",
 }
 # The one documented exception: subagent-stop.sh reads the last 4 KiB of the finished agent's own
-# transcript, named by the event, to find a STATUS: BLOCKED / DEGRADED line (README, PRIVACY.md).
+# transcript, named by the event, to find a STATUS: BLOCKED / DEGRADED / CLEAN line (README, PRIVACY.md).
 TRANSCRIPT_READER = "subagent-stop.sh"
 STRICT_TOKENS = (r"\bpython", r"\bnode\b", r"\bperl\b", r"\bruby\b", r"\bawk\b", r" -c ", r"\beval\b",
                  r"\bsource\s", r"(?m)^\s*\.\s", r"\bjq\b", r"/bin/", r"PLUGIN_ROOT", r"transcript_path",
