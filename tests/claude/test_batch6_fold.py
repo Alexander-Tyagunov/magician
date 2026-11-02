@@ -322,3 +322,12 @@ class CountLineFirstTests(unittest.TestCase):
         fmt = (root / "skills/divine/references/report-format.md").read_text(encoding="utf-8")
         self.assertIn("The Completion Signal at the end repeats it; it never replaces it.", fmt)
         self.assertIn("never a whole file or nothing", fmt)
+
+
+class TagFirstTests(unittest.TestCase):
+    def test_every_template_finding_line_starts_with_its_tag(self) -> None:
+        # 2026-11-02 rerun: findings 2-5 dropped the trailing "— Important" tag.
+        fmt = (Path(__file__).resolve().parents[2] / "skills/divine/references/report-format.md").read_text(encoding="utf-8")
+        for line in ("N. **[Important]** <title> — `file:line`", "- **[Nit]** `file:line`", "- **[Pre-existing]** `file:line`"):
+            self.assertIn(line, fmt)
+        self.assertIn("written first on its line", fmt)
