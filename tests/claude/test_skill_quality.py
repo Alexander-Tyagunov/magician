@@ -5,7 +5,8 @@ Claude Code needs to load it). This gate proves it is *well-authored* — it enc
 Anthropic's current skill/subagent authoring standard that a linter can check deterministically, so
 the qualities that make a skill route well and age well can't silently regress:
 
-  * progressive disclosure (SKILL.md stays lean; deep detail moves to references/),
+  * progressive disclosure (SKILL.md stays lean; deep detail moves to references/; the router
+    skills stay within an 8,192-byte file cap, proposal B4),
   * no time-sensitive prose that goes stale and is then followed confidently,
   * subagent tool grants that Claude Code will actually honor (some tools are always stripped from
     a subagent, so requesting one is a silent no-op that masks a design mistake),
@@ -32,6 +33,12 @@ AGENTS = ROOT / "agents"
 # Anthropic's SKILL.md guidance: keep the body lean because it is a recurring per-turn token cost;
 # push deep reference material into references/ loaded on demand. ~500 lines is the documented bar.
 MAX_SKILL_BODY_LINES = 500
+
+# Router skills: their SKILL.md is a router (phases, gates, completion signal) and the detail lives
+# in references/. Magician 5 proposal B4 caps each router file at 8,192 bytes (the whole file, with
+# frontmatter), so the per-turn cost of an active router stays bounded.
+ROUTER_SKILLS = ("conjure", "magic", "transmute", "divine", "blueprint")
+MAX_ROUTER_SKILL_BYTES = 8192
 
 # The documented hard cap on a skill description (description + when_to_use combined).
 MAX_DESCRIPTION_CHARS = 1536
@@ -101,6 +108,20 @@ class SkillQualityTests(unittest.TestCase):
                     n, MAX_SKILL_BODY_LINES,
                     f"{path.parent.name}: SKILL.md body is {n} lines (> {MAX_SKILL_BODY_LINES}); "
                     "move reference detail into references/ for progressive disclosure",
+                )
+
+    def test_router_skills_within_byte_cap(self) -> None:
+        """Proposal B4: each router SKILL.md (conjure, magic, transmute, divine, blueprint) is at
+        most 8,192 bytes; detail that does not fit moves to the skill's references/."""
+        for name in ROUTER_SKILLS:
+            path = SKILLS / name / "SKILL.md"
+            with self.subTest(skill=name):
+                self.assertTrue(path.is_file(), f"{name}: SKILL.md is missing")
+                size = path.stat().st_size
+                self.assertLessEqual(
+                    size, MAX_ROUTER_SKILL_BYTES,
+                    f"{name}: SKILL.md is {size} bytes (> {MAX_ROUTER_SKILL_BYTES}, proposal B4 router "
+                    "cap); move detail into references/",
                 )
 
     def test_skill_descriptions_within_hard_cap(self) -> None:

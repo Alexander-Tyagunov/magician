@@ -1,6 +1,6 @@
 # Visual Companion — Setup, Screen Types, and Capture
 
-Read this when the user chooses a **visual mode (A, B, or D)** at GATE 0. It covers starting/stopping the companion server, the interaction loop, all screen-type templates, and Playwright capture of approved designs. The placeholders `<design-dir>`, `<state-dir>` and `<url-base>` are defined under "Paths used below" in [../SKILL.md](../SKILL.md).
+Read this when the design is shown on the **local companion surface (B)** chosen at GATE 0 ([design-mode.md](design-mode.md)), with or without the Design-Only flag. It covers starting/stopping the companion server, the interaction loop and all screen-type templates. The screen templates are also what every other mode writes to disk (approaches, architecture, directions), so read the Screen Types section in text mode and on the `/design` artboard surface too. Playwright capture of approved designs is in [capture.md](capture.md). The placeholders `<design-dir>`, `<state-dir>` and `<url-base>` are defined in [design-mode.md](design-mode.md).
 
 ---
 
@@ -17,10 +17,10 @@ The visual companion is a local Node.js WebSocket server that serves interactive
 ### Starting the Companion
 
 Pick the design folder by mode, using today's date:
-- Modes A/B: `.workspace/shared/designs/YYYY-MM-DD-<feature>`
-- Mode D: `.workspace/shared/mockups/YYYY-MM-DD-<feature>`
+- `VISUAL_STRICT` / `VISUAL_REFERENCE`: `.workspace/shared/designs/YYYY-MM-DD-<feature>`
+- `DESIGN_ONLY`: `.workspace/shared/mockups/YYYY-MM-DD-<feature>`
 
-Run the start command from SKILL.md with that literal path — `vc-start.sh` creates the `screens/` and `screenshots/` folders and the local state folder itself, so no `mkdir` is needed. It prints the server info as JSON; read `url_base` (this is `<url-base>`) and `state_dir` (this is `<state-dir>`) from that output and use the literal values from then on.
+Run the start command from design-mode.md with that literal path — `vc-start.sh` creates the `screens/` and `screenshots/` folders and the local state folder itself, so no `mkdir` is needed. It prints the server info as JSON; read `url_base` (this is `<url-base>`) and `state_dir` (this is `<state-dir>`) from that output and use the literal values from then on.
 
 Then open the browser: `open <url-base>/v1/` on macOS, or `xdg-open <url-base>/v1/` on Linux.
 
@@ -42,7 +42,7 @@ The events file is append-only and is never cleared, so clicks and chat made bef
 
 ### Stopping the Companion
 
-Run the stop command from SKILL.md (`vc-stop.sh <design-dir>`). Call it at the end of conjure (after spec commit) or if user switches to TEXT_ONLY.
+Run the stop command from design-mode.md (`vc-stop.sh <design-dir>`). Call it at the end of conjure (after spec commit) or if user switches to TEXT_ONLY.
 
 ---
 
@@ -124,7 +124,7 @@ The server wraps it in the Magician frame template.
 
 ### 2. Architecture Diagram
 
-Write as a fragment to `<design-dir>/screens/v1/architecture.html`. Use real Mermaid syntax. The frame template loads Mermaid 10.9.3 from cdn.jsdelivr.net in the user's browser; without network access the diagram source shows as plain text.
+Write the Mermaid source to `<design-dir>/screens/v1/architecture.mmd` first ([architecture.md](architecture.md)), then this fragment to `<design-dir>/screens/v1/architecture.html`. When `architecture.svg` was rendered, paste it inline inside `.arch-container` above the `.mermaid` block; else add a hand-drawn inline `<svg>` box diagram there (architecture.md). The frame template loads Mermaid 10.9.3 from cdn.jsdelivr.net in the user's browser; without network access the `.mermaid` block shows as plain text, and the inline SVG is what the user sees.
 
 ```html
 <h1 class="page-title">[Feature] Architecture</h1>
@@ -140,9 +140,6 @@ graph TD
     D --> E[(PostgreSQL)]
     D --> F[(Redis Cache)]
     F -.->|cache miss| E
-    style D fill:#7c3aed,color:#fff
-    style E fill:#1a1a2e,color:#e2e8f0
-    style F fill:#1a1a2e,color:#e2e8f0
   </div>
 </div>
 
@@ -418,18 +415,4 @@ Tell user: "Prototype v2 ready at `<url-base>/v2/` — opening it now."
 
 ## Capturing Approved Designs (Playwright)
 
-When the user approves a design screen, capture it as a screenshot for spec embedding.
-
-1. Navigate Playwright to the current URL:
-   ```
-   mcp__playwright__browser_navigate({ url: "<url-base>/v{n}/" })
-   ```
-2. Wait for Mermaid/animations to complete:
-   ```
-   mcp__playwright__browser_wait_for({ time: 800 })
-   ```
-3. Take screenshot:
-   ```
-   mcp__playwright__browser_take_screenshot({ fullPage: false })
-   ```
-4. Note what was captured for the spec. The approved HTML file in `<design-dir>/screens/v{n}/` is the persistent design artifact — reference it in the spec.
+When the user approves a design screen, capture it as evidence per theme and per chosen viewport into `.workspace/local/screens/<feature>/v<n>/<theme>-<viewport>.png`, list the paths in the Completion Signal, and diff against the previous version with `scripts/screen-diff.cjs`. The full procedure, the viewport sizes and the diff options are in [capture.md](capture.md). The approved HTML file in `<design-dir>/screens/v{n}/` is the persistent design artifact — reference it in the spec.

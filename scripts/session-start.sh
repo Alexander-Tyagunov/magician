@@ -99,7 +99,7 @@ _any() { compgen -G "$1" >/dev/null; }                     # glob has at least o
 # Detection below reads every manifest with many cat/grep calls. Its result (archetype, stack
 # techs, detected log SDKs) is kept per project under the plugin data folder, keyed by the git HEAD
 # commit and the sizes of the manifest files, and is reused while no manifest is newer than the
-# cache. Outside a git commit, or with MAGICIAN_LORE=eager, detection always runs.
+# cache. Outside a git commit, or with MAGICIAN_LORE=eager (full cores at start), detection always runs.
 MANIFESTS="package.json pyproject.toml go.mod Cargo.toml pom.xml build.gradle build.gradle.kts Gemfile composer.json Dockerfile"
 STACK_CACHED=0; CACHE_FILE=""; CACHE_KEY=""
 OBS_MATCHES=""
@@ -344,14 +344,19 @@ fi
 
 detect_append "security"
 
-# ── Lore enable/disable flag (default ENABLED) ───────────────────────────────
+# ── Lore enable/disable flag (default ENABLED) and lazy/eager mode (default LAZY) ────────────
 # Bundled lore is a baseline BELOW the repo's own rules; a user can turn it off when it conflicts with
 # local/project knowledge or gives wrong judgment. Resolution (first match wins): env MAGICIAN_LORE=
 # 0/off/false → a per-project .magician/lore.off file → global cli-ui.json "lore":"disabled" → default ENABLED.
 # When disabled, NO lore is injected (the rest of the SessionStart context is unaffected).
+# Lazy (default): only the security core goes in here, with a one-line index of the other detected
+# cores; pattern-detect.sh (UserPromptSubmit) adds a core on the first prompt that names its stack or
+# starts a skill that uses it, once per session. MAGICIAN_LORE=eager injects every core here instead.
 LORE_ENABLED=1
+LORE_MODE=lazy
 case "$(printf '%s' "${MAGICIAN_LORE:-}" | tr '[:upper:]' '[:lower:]')" in
   0|off|false|no|disabled) LORE_ENABLED=0 ;;
+  eager) LORE_MODE=eager ;;
 esac
 [ -f ".magician/lore.off" ] && LORE_ENABLED=0
 if [ "$LORE_ENABLED" = 1 ] && [ -f "$UI_CFG" ] && grep -q '"lore"[[:space:]]*:[[:space:]]*"disabled"' "$UI_CFG" 2>/dev/null; then
@@ -531,11 +536,13 @@ if grep -qE '"(allow|automode)"[[:space:]]*:[[:space:]]*"on"' "$UI_CFG" 2>/dev/n
 fi
 
 # ── Lore loader (runs last so its budget is whatever the other notes leave) ──
-# Always-injected cap in bytes (LC_ALL=C). Raised 3000 → 6000 → 8000 → 8100 as the lore corpus grew
-# (language, database and observability layers; +100 in v4.15.0 for the deep-dive section pointers).
-# It is clamped to the room the other notes leave under BUDGET. That room is usually smaller, so cores
-# are tried in the selection order below; about 2k tokens once per session. Deep-dive files
-# stay on-demand. The plugin root is written once, in HEAD; every lore path after it is relative to it.
+# Cap in bytes (LC_ALL=C) for the cores injected here. Raised 3000 → 6000 → 8000 → 8100 as the lore
+# corpus grew (language, database and observability layers; +100 in v4.15.0 for the deep-dive section
+# pointers). It is clamped to the room the other notes leave under BUDGET. In eager mode that room is
+# usually smaller than the cores, so they are tried in the selection order below (about 2k tokens once
+# per session); in lazy mode (default) only security is injected here and the index line names the
+# rest. Deep-dive files stay on-demand. The plugin root is written once, in HEAD; every lore path
+# after it is relative to it.
 MAX_LORE=8100
 HEAD="magician session context (plugin root: ${PLUGIN_ROOT})."
 if [ -n "$STACK_TECHS" ]; then
@@ -586,6 +593,23 @@ _rank "databases logging $_late" security $LANG_TIER $FRAMEWORK_TIER $DB_TIER
 _rank "$_late" databases logging ${TECHS//,/ }
 _rank "" $_late ${TECHS//,/ }
 
+# Lazy mode: security is the only core injected here; the rest wait for pattern-detect.sh, which
+# reads the pending list written below (one file per session, next to the start stamp).
+LORE_PENDING=""
+if [ "$LORE_MODE" = lazy ]; then
+  for TECH in $RANKED; do
+    [ "$TECH" = security ] && continue
+    [ -f "${PLUGIN_ROOT}/lore/${TECH}.md" ] && LORE_PENDING="${LORE_PENDING:+$LORE_PENDING }$TECH"
+  done
+  RANKED="security"
+fi
+LORE_INDEX=""
+if [ "$LORE_ENABLED" = 1 ] && [ -n "$LORE_PENDING" ]; then
+  LORE_INDEX="
+Magician lore available for this stack: ${LORE_PENDING// /, } — say the name, or read lore/<name>.md under the plugin root."
+  MAX_LORE=$(( MAX_LORE - ${#LORE_INDEX} ))
+fi
+
 LORE_TEXT=""
 LORE_CHARS=0
 LORE_INJECTED=""
@@ -620,18 +644,36 @@ LORE_NOTE="$STACK_NOTE"
 if [ "$LORE_ENABLED" != 1 ]; then
   LORE_NOTE="${LORE_NOTE} Magician lore is disabled for this session (re-enable it with magician-ui lore on)."
 elif [ -n "$LORE_TEXT" ]; then
-  LORE_NOTE="${LORE_NOTE}${LORE_HDR}${LORE_TEXT}${DEEP_HINT}"
+  LORE_NOTE="${LORE_NOTE}${LORE_HDR}${LORE_TEXT}${DEEP_HINT}${LORE_INDEX}"
+else
+  LORE_NOTE="${LORE_NOTE}${LORE_INDEX}"
 fi
+
+# ── Pending-lore list for pattern-detect.sh (lazy mode; one file per session) ──
+# Written on a new session and after a compaction (the summary keeps only a digest of hook context),
+# kept on resume (a resumed session still holds what was injected), removed when nothing is pending.
+if [[ $SS_SID =~ $re_sid ]]; then
+  _pf="$PLUGIN_DATA/sessions/$SS_SID.lore"
+  if [ "$LORE_ENABLED" = 1 ] && [ -n "$LORE_PENDING" ]; then
+    if [ "$SS_SOURCE" != resume ] || [ ! -f "$_pf" ]; then
+      mkdir -p "$PLUGIN_DATA/sessions" 2>/dev/null && printf '%s\n' "$LORE_PENDING" > "$_pf" 2>/dev/null
+    fi
+  else
+    rm -f "$_pf" 2>/dev/null
+  fi
+fi
+find "$PLUGIN_DATA/sessions" -maxdepth 1 -type f -name '*.lore' -mtime +30 -exec rm -f {} + 2>/dev/null
 
 # ── Status-bar markers (only when the user enabled the status line) ──
 if grep -qE '"state"[[:space:]]*:[[:space:]]*"enabled"' "$UI_CFG" 2>/dev/null; then
   _st="$MAG_HOME/status"
   if mkdir -p "$_st" 2>/dev/null; then
     _cores=""; for _c in $LORE_INJECTED; do _cores="${_cores:+$_cores, }\"$_c\""; done
+    _pend=""; for _c in $LORE_PENDING; do _pend="${_pend:+$_pend, }\"$_c\""; done
     _cnt=$(printf '%s' "$LORE_INJECTED" | wc -w | tr -d ' ')
     _en=false; [ "$LORE_ENABLED" = 1 ] && _en=true
     _now=$(date +%s)
-    printf '{"enabled": %s, "count": %s, "cores": [%s], "ts": %s}\n' "$_en" "${_cnt:-0}" "$_cores" "$_now" > "$_st/${SID_SAFE}.lore.json" 2>/dev/null
+    printf '{"enabled": %s, "count": %s, "cores": [%s], "pending": [%s], "mode": "%s", "ts": %s}\n' "$_en" "${_cnt:-0}" "$_cores" "$_pend" "$LORE_MODE" "$_now" > "$_st/${SID_SAFE}.lore.json" 2>/dev/null
     _se=false; [ "$STE_ON" = 1 ] && _se=true
     printf '{"level": "%s", "ste": %s, "ts": %s}\n' "$VOICE_LEVEL" "$_se" "$_now" > "$_st/${SID_SAFE}.voice.json" 2>/dev/null
     find "$_st" -maxdepth 1 -type f \( -name '*.lore.json' -o -name '*.voice.json' -o -name '*.effort.json' -o -name '*.spark' \) -mtime +7 -exec rm -f {} + 2>/dev/null

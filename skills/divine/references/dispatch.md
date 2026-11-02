@@ -1,6 +1,8 @@
 # Dispatching the review lenses
 
-Dispatch all chosen lenses **in parallel** — one message, multiple `Task` calls — so they review independently and don't anchor on each other. Subagent types (registered by the plugin; never read their files by path):
+Dispatch all chosen lenses **in parallel** (one message, multiple `Task` calls), so they review independently and do not anchor on each other. Fork or fresh is decided once per review by [`lore/deep/review.md#fork-or-fresh`](../../../lore/deep/review.md#fork-or-fresh). With a small diff already in context, each lens is a fork (`subagent_type: "fork"`). The fork prompt names the lens and tells it to Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md` for its checklist and output format. Otherwise each lens is a fresh agent of the type below. The verifier and the Phase 3 verification pass are always fresh.
+
+Fresh subagent types (the plugin registers them, and a fresh dispatch never reads their files by path):
 
 | Lens | Subagent type | Looks for |
 |---|---|---|
@@ -11,15 +13,17 @@ Dispatch all chosen lenses **in parallel** — one message, multiple `Task` call
 
 ## Model & effort per lens
 
-Don't let lenses silently inherit the session model — set each `Task`'s tier and effort to fit the subtask (per [lore/subagent-context.md](../../../lore/subagent-context.md) item 6 and [lore/models.md](../../../lore/models.md)). Put the **correctness** and **security** lenses on the latest **coding-optimal** tier at the depth's effort (high for Deep, the model's deepest level for Exhaustive — `xhigh`, or `max` where `xhigh` isn't supported); a narrow lens on a small diff (e.g. simplification) can take a cheaper tier. Suggest a model upgrade rather than switching silently if the session is on an older one.
+Do not let lenses silently inherit the session model. Set each `Task`'s tier and effort to fit the subtask (per [`lore/subagent-context.md`](../../../lore/subagent-context.md) item 6 and [`lore/models.md`](../../../lore/models.md)). Put the **correctness** and **security** lenses on the latest **coding** tier at the depth's effort. That is high for Deep, and the model's deepest level for Exhaustive (`xhigh`, or `max` where `xhigh` is not supported). A narrow lens on a small diff (for example simplification) can take a cheaper tier. If the session is on an older model, suggest an upgrade rather than switch silently.
 
-**The security lens can change tier on its own.** Opus 5 and Fable 5 run cybersecurity classifiers, and a flagged request re-runs on a fallback model (both fall back to Opus 4.8) with the session continuing there. Keep the lens prompt defensive and concrete — "find and report vulnerabilities in this diff, with remediation" — rather than asking for exploit code, which is what trips it. If a fallback notice appears, note in the report that the security lens ran on a different tier. See [lore/models.md](../../../lore/models.md#safety-classifiers-change-which-model-you-end-up-on).
+**The security lens can change tier on its own.** Opus 5 and Fable 5 run cybersecurity classifiers, and a flagged request re-runs on a fallback model (both fall back to Opus 4.8) with the session continuing there. Keep the lens prompt defensive and concrete — "find and report vulnerabilities in this diff, with remediation" — rather than asking for exploit code, which is what trips it. If a fallback notice appears, note in the report that the security lens ran on a different tier. See [`lore/models.md`](../../../lore/models.md#safety-classifiers-change-which-model-you-end-up-on).
 
 ## The context contract (mandatory)
 
-Each agent sees **none** of this conversation. Every `Task` prompt must be self-contained (see [lore/subagent-context.md](../../../lore/subagent-context.md)).
+Each agent sees **none** of this conversation. Every `Task` prompt must be self-contained (see [`lore/subagent-context.md`](../../../lore/subagent-context.md)).
 
-**Prep once, pass by reference (don't re-dump):** before dispatching, write the diff a single time to a patch artifact, `.workspace/shared/diffs/<ref>.patch`, with a plain redirect — e.g. `gh pr diff <N> > .workspace/shared/diffs/pr-<N>.patch` or `git diff <base>...HEAD > .workspace/shared/diffs/<branch>.patch` (the skill's edit rule covers that folder). If `.workspace/shared/diffs/` does not exist yet, create it first with `mkdir -p .workspace/shared/diffs`, which shows a normal permission prompt. Then, if a kg index exists, compute the impact set with `kg blast`/`kg neighbors` on the changed files. Pass both **by path / as a compact list** to every lens. Pasting the full diff (or whole-file contents) into each prompt copies a large payload into the parent's context once per lens and bloats every agent prompt — pass the patch path instead; agents `Read` it.
+**Prep once, pass by reference (do not re-dump):** before the dispatch, write the diff a single time to a patch artifact, `.workspace/shared/diffs/<ref>.patch`, with a plain redirect. For example: `gh pr diff <N> > .workspace/shared/diffs/pr-<N>.patch`, or `git diff <base>...HEAD > .workspace/shared/diffs/<branch>.patch`. The skill's edit rule covers that folder. If `.workspace/shared/diffs/` does not exist yet, create it first with `mkdir -p .workspace/shared/diffs`, which shows a normal permission prompt. Then, if a kg index exists, compute the impact set with `kg blast`/`kg neighbors` on the changed files. Pass both **by path / as a compact list** to every lens.
+
+A full diff (or whole-file contents) pasted into each prompt copies a large payload into the parent's context once per lens and bloats every agent prompt. Pass the patch path instead, and the agents `Read` it.
 
 Build each prompt from this template:
 
@@ -38,12 +42,15 @@ SCOPE — review ONLY the changed files; read surrounding code as needed for con
 - IMPACT / blast radius: <compact file:line list from kg blast/neighbors of the changed files, or "no kg index" — so you grasp downstream effects without re-reading the whole codebase>
 
 CONVENTIONS: <house style / lint rules / patterns this repo follows>
-OUT OF SCOPE: <anything deliberately excluded per the ticket>
+REVIEW RULES: <the text of REVIEW.md, or "none: use the defaults in lore/review.md">
+ROUND LEDGER: <path to .workspace/shared/diffs/<ref>-rounds.md on a re-review, with the diff range since the last round; or "first round">
+OUT OF SCOPE: <anything deliberately excluded per the ticket, plus the REVIEW.md skip paths>
 
-Report every issue you find, at any severity, with your honest CONFIDENCE. Check each against the surrounding code so the FILE:line and IMPACT are accurate; a separate verification pass filters false positives afterwards.
+Report every issue you find, at any severity, with your honest CONFIDENCE. Check each against the surrounding code so the FILE:line and IMPACT are accurate; a separate verification pass filters false positives afterwards. On a re-review, read the ROUND LEDGER first and never repeat a finding it lists as fixed or closed.
 
 FINDING FORMAT (repeat per finding; if none, return "NO FINDINGS"):
 SEVERITY: Critical | High | Medium | Low
+TAG: Important | Nit | Pre-existing
 FILE: path:line
 ISSUE: <what is wrong>
 IMPACT: <what breaks / who is affected / which requirement it violates>
@@ -53,7 +60,13 @@ CONFIDENCE: High | Medium | Low
 If you lack context to review safely, return exactly: NEEDS_CONTEXT: <what you need>.
 ```
 
-Tailor the GOAL/looks-for line per lens. Reviewers have repo access — instruct each to read the surrounding (unchanged) code around every hunk (and the blast-radius files), not just the diff, so they don't flag issues already handled nearby.
+Tailor the GOAL/looks-for line per lens. Reviewers have repo access. Instruct each to read the surrounding (unchanged) code around every hunk, and the blast-radius files, not just the diff. Then they do not flag issues already handled nearby.
+
+## Tags (keep lenses consistent)
+
+- **`Important`**: a defect in this change: fix it or close it with a reason. Every Critical and High finding is Important.
+- **`Nit`**: style, naming, micro-cleanup. Never blocks. The consolidation step keeps at most the `REVIEW.md` nit cap (default 5).
+- **`Pre-existing`**: the tag for a real problem in code the change did not touch. It is reported once and never counted against the author. It is not fixed in this round unless the user asks.
 
 ## Severity rubric (keep lenses consistent)
 
@@ -64,6 +77,6 @@ Tailor the GOAL/looks-for line per lens. Reviewers have repo access — instruct
 
 ## Handling returns
 
-- `NEEDS_CONTEXT` → a gap in *your* prompt: add the missing input and re-dispatch that lens. Don't guess for it.
+- `NEEDS_CONTEXT` → a gap in *your* prompt: add the missing input and re-dispatch that lens. Do not guess for it.
 - Collect all findings, then go to Phase 3 (adversarial verification) before consolidating.
 - Carry each finding's `CONFIDENCE` into verification — Low-confidence High-severity claims get the hardest refutation.

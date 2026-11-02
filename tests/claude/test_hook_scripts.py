@@ -817,6 +817,89 @@ class PatternDetectTests(_SandboxCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("magician:divine", proc.stdout)
 
+    # ---- lazy lore: the pending list session-start.sh leaves in sessions/<id>.lore ----
+
+    def _pending(self, cores: str, sid: str = "s1") -> Path:
+        f = self.sb.data / "sessions" / f"{sid}.lore"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(cores + "\n", encoding="utf-8")
+        return f
+
+    def _lore(self, prompt: str, sid: str = "s1") -> tuple[str, list]:
+        """(additionalContext, injected core names); the hook-authored lines are held to the wording
+        rule, the lore cores themselves are bundled text and are not."""
+        proc = self._run(prompt, sid)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        if not proc.stdout:
+            return "", []
+        doc = json.loads(proc.stdout)
+        self.assertEqual(doc["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
+        ctx = doc["hookSpecificOutput"]["additionalContext"]
+        self.assertLessEqual(len(ctx), BUDGET)
+        own = [l for l in ctx.splitlines() if l.startswith(("Magician", "Deep-dive files"))]
+        self.assertIsNone(IMPERATIVE.search("\n".join(own)), own)
+        return ctx, re.findall(r"(?m)^\[([a-z0-9-]+)\] ", ctx)
+
+    def test_lore_core_is_injected_once_when_the_prompt_names_its_stack(self) -> None:
+        f = self._pending("python react postgres docker")
+        ctx, cores = self._lore("the React component re-renders on every keystroke")
+        self.assertEqual(cores, ["react"])
+        self.assertIn("Magician lore (baseline guidance; this repository's own conventions take precedence):", ctx)
+        self.assertIn((ROOT / "lore" / "react.md").read_text(encoding="utf-8").strip(), ctx)
+        self.assertIn("Deep-dive files: lore/deep/<stack>.md under the plugin root", ctx)
+        self.assertEqual(f.read_text(encoding="utf-8"), "python react postgres docker\n".replace("react ", ""))
+        # the same stack again: nothing, the core is already in the context
+        self.assertEqual(self._lore("more react work on the same component please"), ("", []))
+        # the title line counts (PostgreSQL), and so does a program on the Commands: line (docker build)
+        _, cores = self._lore("we store the sessions in PostgreSQL now")
+        self.assertEqual(cores, ["postgres"])
+        _, cores = self._lore("why does docker build fail on the second stage")
+        self.assertEqual(cores, ["docker"])
+        self.assertEqual(f.read_text(encoding="utf-8"), "python\n")
+        # the hint and the core share one output
+        ctx, cores = self._lore("there is a bug in the python parser, it crashes on empty input")
+        self.assertEqual(cores, ["python"])
+        self.assertIn("magician:unravel", ctx)
+        self.assertEqual(ctx.count("Magician:"), 1)
+        self.assertFalse(f.exists(), "an empty pending list is removed")
+
+    def test_unknown_words_and_short_prompts_inject_nothing_and_write_nothing(self) -> None:
+        f = self._pending("python react postgres")
+        before = f.read_text(encoding="utf-8"), self.sb.snapshot()
+        for prompt in ("rust traits are confusing", "hi", "rename the helper", "/divine the branch",
+                       "typescript generics"):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(self._lore(prompt), ("", []))
+        self.assertEqual((f.read_text(encoding="utf-8"), self.sb.snapshot()), before)
+        self.assertEqual(self._lore("python one", "other"), ("", []), "another session has no pending list")
+
+    def test_skill_invocation_injects_every_pending_core(self) -> None:
+        for lead in ("/ward", "/magician:unravel", "/certify", "/accelerate the hot path"):
+            with self.subTest(lead=lead):
+                f = self._pending("python react", sid="k1")
+                ctx, cores = self._lore(lead, "k1")
+                self.assertEqual(cores, ["python", "react"])
+                self.assertNotIn("Magician:", ctx)
+                self.assertFalse(f.exists())
+        f = self._pending("python react", sid="k2")
+        self.assertEqual(self._lore("/divine the latest commit", "k2"), ("", []))
+        self.assertTrue(f.exists())
+
+    def test_lore_cap_leaves_the_rest_pending(self) -> None:
+        big = [p.stem for p in sorted((ROOT / "lore").glob("*.md"))]
+        f = self._pending(" ".join(big), sid="c1")
+        ctx, cores = self._lore("/ward implement it", "c1")
+        self.assertLessEqual(len(ctx), BUDGET)
+        self.assertGreater(len(cores), 1)
+        rest = f.read_text(encoding="utf-8").split()
+        self.assertEqual(set(cores) | set(rest), set(big))
+        self.assertFalse(set(cores) & set(rest))
+        # a tampered list cannot name a file outside lore/
+        f.write_text("../README ../../PRIVACY python\n", encoding="utf-8")
+        ctx, cores = self._lore("/ward again", "c1")
+        self.assertEqual(cores, ["python"])
+        self.assertNotIn("# magician", ctx)
+
 
 class CiWatchTests(_SandboxCase):
     SCRIPT = "ci-watch.sh"
