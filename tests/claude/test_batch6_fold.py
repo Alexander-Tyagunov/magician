@@ -19,7 +19,9 @@ EVALS = ROOT / "evals"
 
 # Sizes of the non-router skills before batch 6. Fold-first must not grow them: detail goes to
 # lore/fold-first.md and the skills' references/.
-SIZE_BEFORE = {"scrutinize": 11434, "orchestrate": 14177, "weave": 12270}
+# Ceilings for the three skills that were already over the router cap before batch 6. Raised once,
+# on 2026-11-02, for the rules the paid eval run showed were missing (EvalRegressionRuleTests).
+SIZE_BEFORE = {"scrutinize": 11533, "orchestrate": 14329, "weave": 12270}
 ROUTER_CAP = 8192
 
 
@@ -144,8 +146,8 @@ class SkillWiringTests(unittest.TestCase):
         inline = json.loads(read("evals/small-diff-stays-inline/case.yaml"))
         g = next(x for x in inline["graders"] if x["type"] == "tool_used")
         self.assertEqual((g["tool"], g["max"]), ("Agent", 0))
-        self.assertIn("expected-fail", read("evals/small-diff-stays-inline/prompt.md"),
-                      "the tag stays until a paid run confirms the pass")
+        self.assertNotIn("expected-fail", read("evals/small-diff-stays-inline/prompt.md"),
+                         "the paid run of 2026-11-02 passed it 3/3, so it counts like any case")
         fan = json.loads(read("evals/large-plan-fans-out/case.yaml"))
         g = next(x for x in fan["graders"] if x["type"] == "tool_used")
         self.assertEqual((g["tool"], g["min"]), ("Agent", 2))
@@ -269,3 +271,31 @@ class ApprovalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvalRegressionRuleTests(unittest.TestCase):
+    """Rules added after the paid eval run of 2026-11-02 (see evals/README.md)."""
+
+    @staticmethod
+    def _read(rel: str) -> str:
+        return (Path(__file__).resolve().parents[2] / rel).read_text(encoding="utf-8")
+
+    def test_a_parallel_wave_always_fans_out(self) -> None:
+        # large-plan-fans-out: 2 of 3 runs kept a four-task parallel wave inline.
+        text = self._read("skills/orchestrate/SKILL.md")
+        self.assertIn("always fans out", text)
+        self.assertIn("that exception never applies to a parallel wave", text)
+        self.assertIn("a parallel wave above the threshold is not a single task", self._read("lore/fold-first.md"))
+
+    def test_session_state_is_written_for_every_engine(self) -> None:
+        # session-state-before-wave: the file was never written on the inline path.
+        self.assertIn("inline included, write `.workspace/local/session-state.md`", self._read("skills/orchestrate/SKILL.md"))
+
+    def test_a_fix_request_is_the_approval(self) -> None:
+        # scrutinize-fixes-seeded-bug: the run stopped at the approval question and fixed nothing.
+        self.assertIn("When the request itself already says to fix", self._read("skills/scrutinize/SKILL.md"))
+
+    def test_a_missing_input_is_needs_context(self) -> None:
+        # obstacles-on-missing-input: a missing spec was reported as BLOCKED.
+        self.assertIn("Use NEEDS_CONTEXT, not BLOCKED, for a missing input.", self._read("lore/obstacles.md"))
+        self.assertIn("NEEDS_CONTEXT when the spec or another named input is missing", self._read("skills/ward/SKILL.md"))

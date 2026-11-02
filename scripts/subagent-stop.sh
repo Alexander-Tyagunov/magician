@@ -42,7 +42,7 @@ TAIL=$(tail -c 4096 "$PATH_RAW" 2>/dev/null | tr -d '\000')
 # The last status marker in the tail, and the text that follows it on the same line (a transcript
 # line is JSON, so the text ends at the next quote or backslash).
 STATUS=""; OBSTACLE=""
-re_status='STATUS: (BLOCKED|DEGRADED|DONE)[] :-]*([^"\\]{0,400})'
+re_status='STATUS: (BLOCKED|DEGRADED|DONE)[] :-]*([^"\\]{0,255})'
 t=$TAIL
 while [[ $t =~ $re_status ]]; do
   m=${BASH_REMATCH[0]}

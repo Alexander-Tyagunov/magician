@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: CI/CD pipeline management — creates, updates, and monitors GitHub Actions, GitLab CI, and CircleCI pipelines. Use to set up or fix CI/CD.
+description: Creates, updates and monitors CI/CD pipelines (GitHub Actions, GitLab CI, CircleCI). Use to set up or fix CI/CD.
 allowed-tools: Read, Glob, AskUserQuestion, Edit(./.github/workflows/**), Edit(./.gitlab-ci.yml), Edit(./.circleci/**), Bash(gh run list *), Bash(gh run view *), Bash(gh run watch *), Bash(kg query *)
 disable-model-invocation: true
 paths:

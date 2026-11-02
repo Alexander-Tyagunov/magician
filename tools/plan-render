@@ -2288,8 +2288,17 @@ def cmd_all(args) -> int:
     os.makedirs(hist, exist_ok=True)
     write_atomic(snap, raw.decode("utf-8"))
     for p in (md_path, html_path, wf_path, snap):
-        print(os.path.relpath(p))
+        print(_shown_path(p))
     return 0
+
+
+def _shown_path(p: str) -> str:
+    """A written path relative to the working folder. Both sides are resolved first, so a
+    symlinked folder (macOS /var -> /private/var, a symlinked project) does not print ../../.."""
+    try:
+        return os.path.relpath(os.path.realpath(p), os.path.realpath(os.getcwd()))
+    except ValueError:                       # another drive on Windows
+        return os.path.abspath(p)
 
 
 def main(argv=None) -> int:

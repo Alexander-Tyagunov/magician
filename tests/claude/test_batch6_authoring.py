@@ -531,3 +531,21 @@ class AlmanacExtrasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PortableBashRegexTests(unittest.TestCase):
+    """macOS bash uses BSD regex, where a repeat count over RE_DUP_MAX (255) makes the whole
+    pattern invalid, so `[[ =~ ]]` never matches. Linux allows more, so CI alone cannot see it."""
+
+    def test_no_bash_regex_repeat_count_over_255(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        bound = re.compile(r"\{(\d*),?(\d+)\}")
+        hits = []
+        for path in sorted((root / "scripts").glob("*.sh")):
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "=~" not in line and not re.search(r"\bre_\w+=|\bre=", line):
+                    continue
+                for m in bound.finditer(line):
+                    if max(int(x) for x in m.groups() if x) > 255:
+                        hits.append(f"{path.name}:{n}")
+        self.assertEqual(hits, [], "bash regex repeat count over 255 (invalid on macOS): " + ", ".join(hits))

@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Use to review test quality for a diff or PR (coverage, edge cases, meaningful assertions), so correctness is proven, not assumed.
+description: Use to review test quality for a diff or PR (coverage, edge cases, meaningful assertions).
 tools: Read, Grep, Glob, Bash(kg check), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *)
 model: haiku
 effort: high

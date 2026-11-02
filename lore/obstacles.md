@@ -7,7 +7,7 @@ An agent (or skill running as a dispatched unit) sees none of the caller's conve
 Populate an Obstacles block when the task did **not** complete cleanly to spec — any of:
 - **BLOCKED** — could not achieve the goal at all.
 - **DEGRADED / WORKED-AROUND** — achieved the goal but skipped a step, dropped a requirement, or left something unverified (e.g. a check that could not run).
-- **NEEDS_CONTEXT** — the spawn prompt lacked an input you need. This is a context-completeness bug in the delegation, not a thing to guess past: emit `NEEDS_CONTEXT: <exact input missing>` and stop.
+- **NEEDS_CONTEXT** — the spawn prompt lacked an input you need, or it names an input (a spec, a plan, a file) that does not exist or cannot be read. Use NEEDS_CONTEXT, not BLOCKED, for a missing input. This is a context-completeness bug in the delegation, not a thing to guess past: emit `NEEDS_CONTEXT: <exact input missing>` and stop.
 - An **assumption** had to be made to proceed, or a tool/resource failed repeatedly after you tried to adapt.
 
 Stay silent — report a clean status and omit the block — when the task fully met spec with nothing skipped or assumed. Do not invent obstacles to look thorough. Conversely, do not adapt-and-hide: a recoverable transient failure you genuinely handled is not an obstacle, but a dropped requirement always is.

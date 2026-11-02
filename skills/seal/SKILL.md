@@ -1,6 +1,6 @@
 ---
 name: seal
-description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
+description: Ships a feature; simplify, certify, commit, PR, CI, review loop, merge. Use when a feature branch is verified and ready to ship.
 allowed-tools: Read, Task, AskUserQuestion, Edit(./CLAUDE.md), Edit(./README.md), Bash(git add -A), Bash(git commit -m *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh pr checks *), Bash(gh pr view *), Bash(gh pr merge --squash --delete-branch), Bash(gh run view *), Bash(gh run list *)
 argument-hint: "[pr-title]"
 ---

@@ -1,6 +1,6 @@
 ---
 name: knowledge-graph
-description: Local per-repo code knowledge graph (bundled `kg` CLI; no MCP, no network). Use for graph status, index/refresh/reset, blast radius, what depends on X, or finding the code for X as file:line.
+description: Offline per-repo code knowledge graph (`kg` CLI). Use for graph status, index/refresh/reset, blast radius, what depends on X, or finding the code for X.
 allowed-tools: Read, AskUserQuestion, mcp__visualize__show_widget, Bash(kg check), Bash(kg status *), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Bash(kg stale), Bash(kg refresh), Bash(kg cache stats)
 argument-hint: "[status · init · refresh · reset · query \"<text>\" · blast <file>]"
 ---

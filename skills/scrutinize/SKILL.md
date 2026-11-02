@@ -1,6 +1,6 @@
 ---
 name: scrutinize
-description: Multi-agent code review and remediation — correctness, security and simplification lenses, consolidated findings, then fixes for criticals and highs. Use to review a diff or PR before shipping.
+description: Multi-agent review and remediation; correctness, security and simplification lenses, then fixes criticals and highs. Use to review a diff or PR before shipping.
 effort: high
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Task, AskUserQuestion, Bash(kg query *), Bash(kg blast *), Edit(./.workspace/shared/diffs/**)
 argument-hint: "[base-ref, e.g. main] [--lens simplifier]"
@@ -80,7 +80,7 @@ The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate: end your 
    - **Fix Important findings now** (default): proceed to Phase 2.
    - **Discuss first**: talk through the findings before any fix.
 
-   **End your turn at the tool call. Wait for the choice before you remediate.** Treat a free-form "yes / approved / looks good" as **Fix Important findings now**.
+   **End your turn at the tool call. Wait for the choice before you remediate.** Treat a free-form "yes / approved / looks good" as **Fix Important findings now**. When the request itself already says to fix (for example "review it, then fix the Important findings"), that is the answer: show the report and go on to Phase 2 without asking.
 
 ## Phase 2 — Remediate, in rounds
 

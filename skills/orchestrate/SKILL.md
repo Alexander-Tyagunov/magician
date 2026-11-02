@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Drives multi-agent implementation from a blueprint — fans out parallel-safe tasks into waves, runs sequential tasks in order, resolves conflicts, then verifies. Use to execute an approved plan.
+description: Multi-agent implementation of a blueprint; parallel-safe tasks in waves, the rest in order, then verify. Use to execute an approved plan.
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Task, AskUserQuestion, Bash(kg query *), Bash(kg blast *), Edit(./.workspace/local/session-state.md)
 argument-hint: "[plan-file]"
 ---
@@ -19,13 +19,13 @@ Execute an entire blueprint with parallel + sequential agent dispatch.
 - **Native dynamic workflows** — for very large plans (hundreds of independent units), mention "workflow" so Claude builds a dynamic orchestration plan across many subagents. Works best in **auto mode**.
 - **Agent teams** — when workers must talk to each other and share a task list, prefer an agent team over one-way subagents.
 
-Choose by scale and whether workers must communicate; otherwise proceed with waves below. **Whichever engine you pick, the context contract (below) applies to every spawned agent** — no worker inherits this conversation.
+Choose by scale and whether workers must communicate; otherwise proceed with waves below. **Whichever engine you pick, inline included, write `.workspace/local/session-state.md` (step 3) before the first task runs.** **The context contract (below) applies to every spawned agent** — no worker inherits this conversation.
 
 ## Effort & model
 
 Effort: `medium` for implementation turns, `high` for certify/review/security turns (`xhigh` for very large plans; `max` only as an opt-in for frontier problems); on Bedrock/Vertex/gateways hold one level (an effort change drops the cache there). Dispatched implementers take the coding-optimal tier; suggest a session-model upgrade if it's older than the latest. See [lore/models.md](../../lore/models.md).
 
-**Cap the fan-out.** The blueprint's parallelism map is the ceiling, not a floor. A wave with two or more independent `Parallel: YES` tasks fans out: one agent per task, dispatched together. A one-task wave or a sequential task you finish in a handful of tool calls runs inline. Never spawn an agent purely to re-check work an agent just did — the per-task quality loop below is the check. See [lore/fold-first.md](../../lore/fold-first.md) and [lore/model-behavior.md](../../lore/model-behavior.md).
+**Cap the fan-out.** The blueprint's parallelism map is the ceiling, not a floor. Above the inline threshold, a wave with two or more independent `Parallel: YES` tasks always fans out: one agent per task, dispatched together in one message, even when each task looks small. A one-task wave, or a sequential task you finish in a handful of tool calls, runs inline; that exception never applies to a parallel wave. Never spawn an agent purely to re-check work an agent just did — the per-task quality loop below is the check. See [lore/fold-first.md](../../lore/fold-first.md) and [lore/model-behavior.md](../../lore/model-behavior.md).
 
 ## Process
 

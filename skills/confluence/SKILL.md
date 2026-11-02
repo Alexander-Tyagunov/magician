@@ -1,6 +1,6 @@
 ---
 name: confluence
-description: Confluence via the bundled `confluence` CLI — read, search (CQL), summarize, create/update pages, comment, label. Use for any Confluence page or space request, incl. a remembered space.
+description: Confluence via the bundled CLI; read, search (CQL), summarize, create/update, comment, label. Use for any Confluence page or space request, incl. a remembered space.
 allowed-tools: Read, AskUserQuestion, Bash(confluence whoami), Bash(confluence get *), Bash(confluence search *), Bash(confluence cql *), Bash(confluence children *), Bash(confluence comments *), Bash(confluence raw GET *), Edit(~/.claude/plugins/data/magician-*/confluence-memory.md)
 argument-hint: "[page URL/id · 'search …' · space · 'create …' · setup]"
 ---

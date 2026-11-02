@@ -29,6 +29,7 @@ import json
 import os
 import sqlite3
 import sys
+sys.dont_write_bytecode = True   # never write __pycache__ into the plugin folder (Python 3.14 caches the engine)
 import time
 
 sys.dont_write_bytecode = True   # loading tools/kg must not drop a __pycache__ into the plugin folder

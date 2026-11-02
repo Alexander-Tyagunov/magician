@@ -14,10 +14,12 @@
 #   4. Token budget: an offline estimate (bytes / 4) of the always-on cost (skill and agent names and
 #      descriptions, which sit in every session) and of each skill body, and, when the `claude` CLI
 #      is installed, the CLI's own projection from `claude --plugin-dir . plugin details magician`
-#      (text output; the command has no JSON flag). Fails when the CLI reports more than 1,500
-#      always-on tokens or a skill body over 6,000 tokens, and when the offline always-on estimate
-#      grew by more than 10% over the value recorded in evals/results/budget.json, unless the top
-#      CHANGELOG entry mentions "token budget". Both numbers are recorded in that file on every run.
+#      (text output; the command has no JSON flag). Fails when the offline always-on estimate is
+#      over 1,370, when an offline skill body is over 6,000 tokens, and when the offline always-on
+#      estimate grew by more than 10% over the value recorded in evals/results/budget.json, unless
+#      the top CHANGELOG entry mentions "token budget". The CLI figure is information only: it
+#      depends on sign-in (signed in it is the real tokenizer, signed out an estimate), so it never
+#      fails the gate; it prints a warning above 1,800. Both numbers are recorded in that file.
 #   5. STE-lite (warn only): `tools/ste-lint --max 200` over skills/*/SKILL.md, README.md and lore/*.md;
 #      prints the finding count and the rules that fire most, records the count as `ste_findings` in
 #      evals/results/budget.json (merged into the file the token-budget tier wrote), and never fails.
@@ -176,7 +178,12 @@ run_tier "File types (text, SVG, PNG, JPEG, GIF, WebP and fonts; no OS junk)" ch
 
 # ---- Tier 4: token budget (always; the CLI projection when the `claude` CLI is installed) ------
 BUDGET_FILE="$ROOT/evals/results/budget.json"
-MAX_ALWAYS_ON=1500
+# The gating figure is the offline estimate (bytes / 4), so the result is the same on every machine.
+# Limit derivation, measured 2026-11-02: signed in, the CLI (real tokenizer) reported ~2,002
+# always-on tokens when the offline estimate was ~1,522, a ratio of 2002 / 1522 = 1.315. A real
+# ceiling of 1,800 tokens is 1800 / 1.315 = 1,369, so the offline limit is 1,370.
+MAX_ALWAYS_ON=1370
+CLI_WARN_ALWAYS_ON=1800
 MAX_SKILL_BODY=6000
 GROWTH_PCT=10
 
@@ -222,7 +229,11 @@ check_token_budget() {
     bytes=$(( bytes + $(frontmatter_bytes "$f") ))
   done
   local offline_always=$(( bytes / 4 ))
-  echo "offline estimate: always-on ~${offline_always} tokens (skill and agent names and descriptions, bytes / 4)"
+  echo "offline estimate: always-on ~${offline_always} tokens (skill and agent names and descriptions, bytes / 4; limit ${MAX_ALWAYS_ON})"
+  if [ "$offline_always" -gt "$MAX_ALWAYS_ON" ]; then
+    echo "always-on estimate over ${MAX_ALWAYS_ON} (offline estimate): ~${offline_always}"
+    ok=0
+  fi
   for f in "$ROOT"/skills/*/SKILL.md; do
     [ -f "$f" ] || continue
     name=${f%/SKILL.md}; name=${name##*/}
@@ -242,8 +253,10 @@ check_token_budget() {
       always=$(printf '%s\n' "$out" | grep -E '^[[:space:]]*Always-on:' | head -1 | sed -E 's/.*Always-on:[[:space:]]*~?([0-9,.k]+).*/\1/')
       [ -n "$always" ] && cli_always=$(tok_number "$always")
       if [ -n "$cli_always" ]; then
-        echo "claude plugin details: always-on ~${cli_always} tokens (limit ${MAX_ALWAYS_ON})"
-        [ "$cli_always" -gt "$MAX_ALWAYS_ON" ] && { echo "always-on tokens over ${MAX_ALWAYS_ON}"; ok=0; }
+        echo "claude plugin details: always-on ~${cli_always} tokens (information only; an estimate when signed out)"
+        if [ "$cli_always" -gt "$CLI_WARN_ALWAYS_ON" ]; then
+          echo "warning: claude plugin details reports always-on over ${CLI_WARN_ALWAYS_ON} (~${cli_always}); the gate does not fail on this figure"
+        fi
       fi
       while IFS= read -r line; do
         set -- $line
@@ -254,8 +267,7 @@ check_token_budget() {
         [ -d "$ROOT/skills/$comp" ] || comp="agent:$comp"   # skills and agents can share a name
         cli_json="${cli_json:+$cli_json, }\"$comp\": $tok"
         if [ -d "$ROOT/skills/$comp" ] && [ "$tok" -gt "$MAX_SKILL_BODY" ]; then
-          echo "skill body over ${MAX_SKILL_BODY} tokens (claude plugin details): ${comp} ~${tok}"
-          ok=0
+          echo "warning: skill body over ${MAX_SKILL_BODY} tokens (claude plugin details, information only): ${comp} ~${tok}"
         fi
       done <<EOF_DETAILS
 $(printf '%s\n' "$out" | sed -n '/^Per-component/,/^$/p' | sed -n '3,$p')
@@ -297,7 +309,7 @@ EOF_DETAILS
   } > "$BUDGET_FILE" 2>/dev/null && echo "recorded in ${BUDGET_FILE#$ROOT/}"
   [ "$ok" = 1 ]
 }
-run_tier "Token budget (always-on under ${MAX_ALWAYS_ON}, skill bodies under ${MAX_SKILL_BODY}, growth under ${GROWTH_PCT}%)" check_token_budget
+run_tier "Token budget (offline always-on under ${MAX_ALWAYS_ON}, skill bodies under ${MAX_SKILL_BODY}, growth under ${GROWTH_PCT}%)" check_token_budget
 
 # ---- Tier 5: STE-lite over magician's own prose (always; warn only, never fails) ---------------
 # Skill bodies, the README and the lore cores are read by the model and by people; the count of

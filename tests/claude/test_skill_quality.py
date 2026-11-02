@@ -151,6 +151,25 @@ class SkillQualityTests(unittest.TestCase):
         self.assertLessEqual(total, MAX_TOTAL_DESCRIPTION_CHARS,
                              f"all skill descriptions total {total} chars (> {MAX_TOTAL_DESCRIPTION_CHARS})")
 
+    def test_always_on_offline_estimate_within_gate_limit(self) -> None:
+        """scripts/gate.sh gates on the offline always-on estimate (name, description and
+        when_to_use lines of every skill and agent, bytes / 4) against 1,370, which is about 1,800
+        real tokens at the real/offline ratio 1.315 measured on 2026-11-02. The CLI figure depends
+        on sign-in, so it only warns and never fails the gate."""
+        gate = (ROOT / "scripts" / "gate.sh").read_text(encoding="utf-8")
+        self.assertIn("MAX_ALWAYS_ON=1370", gate)
+        self.assertIn("CLI_WARN_ALWAYS_ON=1800", gate)
+        self.assertIn("2026-11-02", gate)
+        cli = gate[gate.index('if [ -n "$cli_always" ]'):gate.index("EOF_DETAILS")]
+        self.assertNotIn("ok=0", cli, "the claude plugin details figure must never fail the gate")
+        total = 0
+        for path in skill_files() + agent_files():
+            lines = path.read_text(encoding="utf-8").split("\n")
+            end = lines.index("---", 1)
+            total += sum(len(l.encode("utf-8")) + 1 for l in lines[1:end]
+                         if l.startswith(("name:", "description:", "when_to_use:")))
+        self.assertLessEqual(total // 4, 1370, f"offline always-on estimate ~{total // 4} (> 1,370)")
+
     def test_obstacles_block_is_only_in_lore(self) -> None:
         """The fenced 8-field Obstacles block lives in lore/obstacles.md alone. A skill or agent that
         pastes it (a fenced line starting `OBSTACLE:` / `BLOCKER:` ...) pays ~230 tokens per load and

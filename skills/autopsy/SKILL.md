@@ -1,6 +1,6 @@
 ---
 name: autopsy
-description: Blameless post-mortem / RCA — gathers facts, reconstructs a timeline, runs 5-Whys, defines action items, writes and commits the post-mortem. Use after an incident or outage.
+description: Blameless post-mortem / RCA; timeline, 5-Whys, action items, committed write-up. Use after an incident or outage.
 allowed-tools: Read, AskUserQuestion, Edit(./.workspace/shared/postmortems/**), Bash(gh run list *), Bash(kg query *), Bash(git commit -m *)
 disable-model-invocation: true
 argument-hint: "[incident name or description]"

@@ -1,6 +1,6 @@
 ---
 name: unravel
-description: Debugging with a hypothesis preflight — evidence before any change, one change at a time, then a regression test. Use when a bug, error, regression, failing test, or outage is reported; not for features.
+description: Hypothesis-first debugging; one change at a time, then a regression test. Use when a bug, error, regression, failing test, or outage is reported; not for features.
 effort: high
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *)
 argument-hint: "<bug or error description>"

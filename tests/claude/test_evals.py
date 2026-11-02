@@ -289,6 +289,12 @@ class EvalSuiteTests(unittest.TestCase):
                             re.compile(pat)
                         except re.error as exc:
                             self.fail(f"{label}: not a valid regex: {exc}")
+                        # The runner compiles patterns as JavaScript. Python accepts these and
+                        # JavaScript rejects them ("Invalid regular expression"), so the grader
+                        # throws at run time. Use the grader's `flags` key for case-insensitivity.
+                        js_only_bad = re.search(r"\(\?[aiLmsux-]+[:)]|\(\?P[<=>]|\(\?#|\\[AZz](?![\w])", pat)
+                        self.assertIsNone(js_only_bad, f"{label}: Python-only regex syntax "
+                                                       f"{js_only_bad.group(0) if js_only_bad else ''} (JavaScript rejects it)")
 
     def test_tool_graders_name_real_tools_that_the_case_grants(self) -> None:
         """Tools follow graders: a grader that needs a call of X only passes if the case grants X."""
@@ -532,11 +538,13 @@ class FlipParserTests(unittest.TestCase):
 
     def test_case_tags_read_prompt_and_case_yaml(self) -> None:
         tags = flip.case_tags(EVALS)
-        self.assertIn("expected-fail", tags["small-diff-stays-inline"])
+        self.assertIn("fold-first", tags["small-diff-stays-inline"])
+        self.assertNotIn("expected-fail", tags["small-diff-stays-inline"])   # passed 3/3 on 2026-11-02
         self.assertIn("fold-first", tags["large-plan-fans-out"])
         self.assertNotIn("expected-fail", tags["large-plan-fans-out"])
 
-    def _main(self, doc, baseline: dict | None, exit_code: int, *extra: str) -> tuple[int, str, Path]:
+    def _main(self, doc, baseline: dict | None, exit_code: int, *extra: str,
+              evals_dir: Path | None = None) -> tuple[int, str, Path]:
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         res, last = tmp / "results.json", tmp / "last.json"
@@ -546,7 +554,7 @@ class FlipParserTests(unittest.TestCase):
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = flip.main(["compare", "--results", str(res), "--baseline", str(last), "--evals-dir",
-                            str(EVALS), "--threshold", "0.8", "--exit-code", str(exit_code), *extra])
+                            str(evals_dir or EVALS), "--threshold", "0.8", "--exit-code", str(exit_code), *extra])
         return rc, buf.getvalue(), last
 
     def test_main_prints_flipped_and_fails(self) -> None:
@@ -556,9 +564,14 @@ class FlipParserTests(unittest.TestCase):
         self.assertIn("flipped: tdd-red-before-green", out)
 
     def test_main_accepts_exit_1_explained_by_expected_fail(self) -> None:
-        rc, out, _ = self._main(_shape_a({"small-diff-stays-inline": [0, 0, 0.5], "ste-spec-writing": [1, 1, 1]}), {}, 1)
+        evals = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, evals)
+        (evals / "pending-case").mkdir()
+        (evals / "pending-case" / "prompt.md").write_text("---\nname: pending-case\ntags: [routing, expected-fail]\n---\nx\n")
+        rc, out, _ = self._main(_shape_a({"pending-case": [0, 0, 0.5], "ste-spec-writing": [1, 1, 1]}), {}, 1,
+                                evals_dir=evals)
         self.assertEqual(rc, 0, out)
-        self.assertIn("expected-fail: small-diff-stays-inline", out)
+        self.assertIn("expected-fail: pending-case", out)
         self.assertIn("new: ste-spec-writing", out)
 
     def test_main_fails_an_unexplained_exit_1_and_partial_runs(self) -> None:

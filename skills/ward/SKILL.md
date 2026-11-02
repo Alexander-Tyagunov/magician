@@ -1,6 +1,6 @@
 ---
 name: ward
-description: TDD engine and enforcer — red/green/refactor, one behavior at a time. Use while implementing any feature or bugfix, or to execute a specific blueprint task with TDD.
+description: TDD enforcer; red/green/refactor, one behavior at a time. Use while implementing any feature or bugfix, or for a blueprint task.
 effort: medium
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *)
 argument-hint: "[behavior to implement | task <N>]"
@@ -55,7 +55,7 @@ One function doing one thing · one API endpoint with one response case · one U
 
 ## If you cannot write the test first
 
-The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [behavior] should do. Clarify the expected input and output?" **End your turn. Wait for clarification before writing code.** But if you are running as a dispatched subagent with no human present to answer, do not wait — return a BLOCKED or NEEDS_CONTEXT Obstacles block (see below) naming the exact spec gap, and stop.
+The spec is incomplete. Do not guess. Ask: "I can't write this test yet — the spec doesn't define what [behavior] should do. Clarify the expected input and output?" **End your turn. Wait for clarification before writing code.** But if you are running as a dispatched subagent with no human present to answer, do not wait — return an Obstacles block (see below) and stop: NEEDS_CONTEXT when the spec or another named input is missing or unreadable, BLOCKED for a gap in a spec that exists. Name the exact gap.
 
 ## Per task (task mode only)
 
