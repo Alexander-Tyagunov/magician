@@ -5,7 +5,7 @@ Findings:
 - Every finding names `file:line` and its impact. No location, no finding.
 - Report at most the nit cap (default 5). Say how many nits you withheld.
 - Risk tier comes from what the change touches, never from who wrote it. A High-tier change (auth, payments, migrations, CI files, secrets) gets the Deep depth and a fresh verification stage.
-- The count line is the first line of the report summary. The findings follow it: `3 Important, 5 Nit, 2 Pre-existing; 3 fixed, 0 closed with reason.`
+- The count line is the first line of the report summary, and its numbers match the findings listed under each tag. The findings follow it: `3 Important, 5 Nit, 2 Pre-existing; 3 fixed, 0 closed with reason.`
 
 Approval:
 - An agent's approval never counts as a human approval. A lens verdict, a gatekeeper GO or a `/divine` "Overall: approve" is evidence for the human, not a sign-off.

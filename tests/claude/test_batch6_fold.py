@@ -299,3 +299,14 @@ class EvalRegressionRuleTests(unittest.TestCase):
         # obstacles-on-missing-input: a missing spec was reported as BLOCKED.
         self.assertIn("Use NEEDS_CONTEXT, not BLOCKED, for a missing input.", self._read("lore/obstacles.md"))
         self.assertIn("NEEDS_CONTEXT when the spec or another named input is missing", self._read("skills/ward/SKILL.md"))
+
+
+class CountLineRuleTests(unittest.TestCase):
+    def test_the_count_line_matches_the_listed_findings(self) -> None:
+        # review-uses-tags-and-count-line: 0/3 runs, counts written before verification dropped findings.
+        root = Path(__file__).resolve().parents[2]
+        fmt = (root / "skills/divine/references/report-format.md").read_text(encoding="utf-8")
+        self.assertIn("Fill it in last", fmt)
+        self.assertIn("carries exactly one **tag**", fmt)
+        self.assertIn("its numbers match the findings listed under each tag",
+                      (root / "lore/review.md").read_text(encoding="utf-8"))
