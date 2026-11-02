@@ -1,6 +1,6 @@
 ---
 name: weave
-description: Run a large multi-item delivery (N tickets, an epic, a codebase-wide migration, a sweep) as ONE native Workflow with TDD, kg grounding, certify, and review built in. Not for one task (/ward).
+description: Runs a large multi-item delivery (N tickets, an epic, a codebase-wide migration, a sweep) as ONE native Workflow with TDD and review. Not for one task (/ward).
 allowed-tools: Workflow, Task, Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(kg check), Bash(kg refresh), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *), Edit(./.workspace/local/session-state.md)
 argument-hint: "[goal · \"implement these N tickets\" · \"migrate X across repo\" · blueprint path]"
 ---

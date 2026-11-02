@@ -1,6 +1,6 @@
 ---
 name: chronicle
-description: Memory and context steward — session history, references, context size, learnings. Use to review past sessions, remember or recall a reference, or capture learnings.
+description: Session history, references, context size, learnings. Use to review past sessions, remember or recall a reference, or capture learnings.
 allowed-tools: Read, Glob, AskUserQuestion, Bash(ctx pct *), Bash(ctx learn --add *), Bash(ctx consolidate), Bash(ctx consolidate *), Bash(ctx lessons), Bash(ctx lessons *), Edit(./.workspace/shared/decisions/**), Edit(~/.claude/plugins/data/magician-*/references.md)
 argument-hint: "[status | learn <fact> [--global] | consolidate | lessons [since DATE] | last N | remember <fact> | references | forget <text> | clear N]"
 ---

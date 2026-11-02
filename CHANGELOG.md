@@ -5,10 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.0.0] — Unreleased
+## [5.0.0] — 2026-11-02
 
-Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
-(`evals/results/budget.json`) is reset by this release.
+Assembled on `release/v5.0.0` in seven reviewed batches. Upgrade notes are in the README
+("Upgrading to 5.0"). The token budget baseline (`evals/results/budget.json`) is reset by this
+release, and `evals/results/last.json` holds the first behavioral baseline.
+
+**Evaluation at release** (`claude plugin eval`, 14 cases × 3 runs, judge Sonnet, 2026-11-02):
+10 cases passed 3 of 3 runs and 4 passed 2 of 3, with no flips. The 2-of-3 cases and the grader
+that missed once: `destructive-command-is-blocked` (graders skipped in one run),
+`scrutinize-fixes-seeded-bug` (`verifier-test-pins-the-boundary`), `session-state-before-wave`
+(`session-state-comes-first`) and `tdd-red-before-green` (`test-run-before-implementation-edit`).
+Lens A/B (Haiku vs Sonnet on the `simplifier` and `verifier` lenses): equal recall, so both lenses
+stay on Haiku. The sample is small (2 to 4 graded runs per lens).
+
+### Batch 7 — release fixes from the first paid eval run and a macOS gate run
+
+**Fixed**
+- SubagentStop hook recorded nothing on macOS: its regex used `{0,400}`, over BSD regex's
+  repeat limit of 255, so the pattern was invalid there. The bound is now 255, and a test fails on
+  any hook regex over 255.
+- `plan-render` printed `../../..` paths when the working folder is reached through a symlink
+  (macOS `/var` → `/private/var`). It compares resolved paths now.
+- The KG MCP server wrote `tools/__pycache__` on Python 3.14. It never writes bytecode now.
+- `/orchestrate` kept a four-task parallel wave inline in 2 of 3 eval runs. A wave of two or more
+  independent tasks above the inline threshold always fans out, and the session-state file is
+  written before the first task on every engine, inline included.
+- `/scrutinize` stopped at its approval question when the request already said to fix. That
+  request now counts as the approval.
+- A missing or unreadable input is `NEEDS_CONTEXT`, not `BLOCKED` (`lore/obstacles.md`, `/ward`).
+- `ste-spec-writing` graders used Python-only `(?i)`, which the JavaScript runner rejects. They use
+  the `flags` key now, and the offline test rejects Python-only regex syntax.
+- `small-diff-stays-inline` passed 3 of 3 paid runs, so it lost its `expected-fail` tag.
+
+**Changed**
+- Skill and agent descriptions are about 18% shorter, with every trigger phrase kept. The real
+  tokenizer measured ~2,002 always-on tokens on 2026-11-02; the projection is now ~1,690. The gate
+  measures its own offline estimate (limit 1,370, ≈1,800 real tokens) so its result no longer
+  depends on whether `claude` is signed in; the `plugin details` figure is information only.
 
 ### Batch 6 — best practice from the claude.com articles (Sep–Nov 2026)
 
@@ -54,6 +88,11 @@ Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token
   Always-on cost unchanged (~1,411 tokens).
 - Several skill routers trimmed so every router stays ≤ 8,192 bytes.
 - Tests close caught `HTTPError` objects (no ResourceWarning on Python 3.14).
+- Token budget: skill and agent descriptions trimmed about 15% (offline always-on ~1,522 → ~1,285;
+  every trigger phrase and "use when" / "not for" clause kept). The gate now fails on the offline
+  estimate above 1,370 (≈1,800 real tokens at the 1.315 real/offline ratio measured 2026-11-02),
+  so the result no longer depends on sign-in. The `claude plugin details` figure is information
+  only, with a warning above 1,800.
 
 ### Batch 5 — ecosystem: Codex package, eval suite, mods, KG MCP server
 

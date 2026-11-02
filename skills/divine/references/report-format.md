@@ -22,7 +22,7 @@ Scope: <N files, +adds/−dels, base ← head; skipped per REVIEW.md: <paths or 
 <failing required checks. For each: what fails, whether it's a real blocker or an infra flake, what unblocks it. Omit the section if CI is green.>
 
 ### 🔴 Critical
-N. **<title>** — `file:line` — Important
+N. **[Important]** <title> — `file:line`
    <what's wrong>. Impact: <consequence / requirement violated>.
    Fix: <concrete remediation>.
 
@@ -33,11 +33,11 @@ N. **<title>** — `file:line` — Important
 …
 
 ### 🟢 Low / nits
-- `file:line` — Nit — <one-liner>
+- **[Nit]** `file:line` — <one-liner>
 <at most the REVIEW.md nit cap; then "N more nits withheld">
 
 ### Pre-existing
-- `file:line` — <one-liner; code the change did not touch, reported once, not counted against the author>
+- **[Pre-existing]** `file:line` — <one-liner; code the change did not touch, reported once, not counted against the author>
 
 ### ✅ Dropped (false positives)
 <candidates considered and refuted in verification, one line each + why — e.g. "X looked unguarded but the caller validates at Y.">
@@ -52,8 +52,8 @@ N. **<title>** — `file:line` — Important
 ```
 
 Rules:
-- The **count line** is the first line of the report summary, directly under the heading. The verdict and the findings follow it. Before remediation the second half reads `0 fixed, 0 closed with reason`.
-- Every finding carries its **tag** (Important / Nit / Pre-existing) per [`lore/review.md`](../../../lore/review.md). A finding without `file:line` is dropped.
+- The **count line** is the first line of the report, directly under the heading and before the verdict. The Completion Signal at the end repeats it; it never replaces it. The verdict and the findings follow it. Before remediation the second half reads `0 fixed, 0 closed with reason`. Fill it in last: after deduplication and verification, count the findings you actually list under each tag, and make every number match that list. A candidate the verification stage dropped is not counted.
+- Every listed finding, each Nit and Low one-liner included, carries exactly one **tag** (Important / Nit / Pre-existing), written first on its line as `**[Important]**`, `**[Nit]**` or `**[Pre-existing]**` per [`lore/review.md`](../../../lore/review.md). A finding without `file:line` is dropped. A coverage gap cites the lines of the untested code (`client/fetch.py:17-24`), never a whole file or nothing. A concern about a whole file (an import path, a missing file-level setting) cites line 1 or the nearest relevant line. This holds for Nits and Pre-existing lines too.
 - **Number** Critical/High/Medium findings continuously so they are easy to reference in discussion and PR comments.
 - Every finding states **impact**, not just the defect — *why it matters* is what makes a review actionable.
 - Cite **`file:line`** precisely, and link to the requirement (PRD §, AC, DoD line, story key) when one exists.

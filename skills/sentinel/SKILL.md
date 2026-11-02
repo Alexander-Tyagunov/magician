@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Security scan — OWASP Top 10, secrets, injection, dependencies, git history, auth. Read-only, severity-ranked report. Use to audit a codebase for vulnerabilities.
+description: Read-only security scan; OWASP Top 10, secrets, injection, dependencies, git history, auth. Use to audit a codebase for vulnerabilities.
 effort: high
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(mkdir -p .workspace/local/security), Bash(touch .workspace/local/security-scan.active), Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit), Edit(./.workspace/local/security/findings.jsonl)
 context: fork

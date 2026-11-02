@@ -1,6 +1,6 @@
 ---
 name: jira
-description: Jira via the bundled `jira` CLI — read, search (JQL), boards/sprints, create, comment, transition, log time, find a ticket's PR. Use for any Jira issue request, incl. a remembered board or person.
+description: Jira via the bundled CLI; read, search (JQL), boards/sprints, create, comment, transition, log time, a ticket's PR. Use for any Jira issue request, incl. a remembered board or person.
 allowed-tools: Read, AskUserQuestion, Bash(jira myself), Bash(jira mine *), Bash(jira sprint *), Bash(jira get *), Bash(jira comments *), Bash(jira board *), Bash(jira search *), Bash(jira jql *), Bash(jira transitions *), Bash(jira url *), Bash(jira raw GET *), Bash(gh pr list *), Bash(gh pr view *), Edit(~/.claude/plugins/data/magician-*/jira-memory.md)
 argument-hint: "[ticket key · JQL · 'my board' · 'create …' · setup]"
 ---

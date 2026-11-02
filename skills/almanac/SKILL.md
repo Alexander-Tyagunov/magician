@@ -1,6 +1,6 @@
 ---
 name: almanac
-description: One-time workspace setup — .workspace/, .gitignore, a lean CLAUDE.md, optional AGENTS.md and REVIEW.md; writes no settings. Run once per project.
+description: One-time workspace setup; .workspace/, .gitignore, CLAUDE.md, optional AGENTS.md and REVIEW.md. Run once per project.
 allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(./AGENTS.md), Edit(./REVIEW.md), Edit(./.claude/skills/verify/SKILL.md), Edit(./.claude/skills/simplify/SKILL.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git add AGENTS.md), Bash(git add REVIEW.md), Bash(git add .claude/skills/verify/SKILL.md), Bash(git add .claude/skills/simplify/SKILL.md), Bash(git commit -m *)
 disable-model-invocation: true
 ---

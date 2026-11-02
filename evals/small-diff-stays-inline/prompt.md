@@ -1,7 +1,7 @@
 ---
 name: small-diff-stays-inline
-description: Fold-first routing. A quick review of a five-line diff stays in the main loop with the lens files as checklists and spawns no subagent, and still finds the planted bug. Written for the desired fold-first behavior of batch 6, so it is tagged expected-fail until that lands. The paired positive is large-plan-fans-out. Self-contained.
-tags: [routing, fold-first, expected-fail, review]
+description: Fold-first routing. A quick review of a five-line diff stays in the main loop with the lens files as checklists and spawns no subagent, and still finds the planted bug. The paired positive is large-plan-fans-out. Self-contained.
+tags: [routing, fold-first, review]
 runs: 3
 max_turns: 15
 timeout_seconds: 600

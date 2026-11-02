@@ -685,6 +685,18 @@ class WorkflowTests(unittest.TestCase):
 
 
 class AllTests(unittest.TestCase):
+
+    def test_all_prints_short_paths_through_a_symlinked_folder(self) -> None:
+        # macOS: the working folder resolves to /private/var while the argument says /var.
+        with tempfile.TemporaryDirectory() as tmp:
+            real = Path(tmp) / "real" / "2026-11-01-feature"
+            real.mkdir(parents=True)
+            link = Path(tmp) / "link"
+            link.symlink_to(Path(tmp) / "real", target_is_directory=True)
+            shutil.copy(VALID, real / "plan.json")
+            p = run("all", str(link / "2026-11-01-feature" / "plan.json"), cwd=real)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertEqual(p.stdout.splitlines()[0], "plan.md")
     def test_all_writes_three_files_and_a_history_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp) / "2026-11-01-feature"

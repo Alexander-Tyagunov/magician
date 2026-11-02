@@ -1,6 +1,6 @@
 ---
 name: transmute
-description: Comprehend an existing feature, then port it to another app or swap the vendor behind it in place, same UX. Use to port, clone, re-implement, or vendor-swap a feature; not for a new one (/conjure).
+description: Understands an existing feature, then ports it or swaps its vendor, same UX. Use to port, clone, re-implement, or vendor-swap a feature; not for a new one (/conjure).
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Task, Workflow, AskUserQuestion, Edit(./.workspace/shared/research/**), Edit(./.workspace/local/session-state.md), Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), mcp__context7__resolve-library-id, mcp__context7__query-docs
 argument-hint: "<feature/URL to comprehend> · [port | integrate | audit] · [target app/path]"
 disable-model-invocation: true

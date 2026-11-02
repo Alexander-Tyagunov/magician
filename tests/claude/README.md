@@ -18,7 +18,13 @@ bash scripts/gate.sh --evals    # also run the behavioral suite, claude plugin e
 3. the directory limits: at most 512 tracked files, no non-image file of 256 KiB or more, only text,
    SVG, PNG, JPEG, GIF, WebP and font files, and no OS junk (`.DS_Store`, `Thumbs.db`, `desktop.ini`,
    `__MACOSX`);
-4. the token budget, recorded in `evals/results/budget.json`;
+4. the token budget, recorded in `evals/results/budget.json`. The gate fails on the offline estimate
+   (name and description bytes / 4) above 1,370 always-on tokens, on an offline skill body above
+   6,000 tokens, and on more than 10% growth over the recorded estimate. The limit comes from a
+   measurement on 2026-11-02: signed in, `claude plugin details` (the real tokenizer) reported
+   ~2,002 always-on tokens against an offline ~1,522, a ratio of 1.315, so 1,370 offline is about
+   1,800 real. The CLI figure is printed for information only, because signed out it is an estimate.
+   It never fails the gate and prints a warning above 1,800;
 5. STE-lite over magician's own prose, warn only: `tools/ste-lint --max 200` on the skill bodies, the
    README and the lore cores, with the finding count printed and recorded as `ste_findings` in the same
    budget file (merged, the other keys kept); it never fails the gate;

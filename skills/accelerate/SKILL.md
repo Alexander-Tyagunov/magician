@@ -1,6 +1,6 @@
 ---
 name: accelerate
-description: Performance profiling and optimization with a mandatory baseline-first gate — measure before changing, re-measure after. Use when something is slow or must hit a latency/throughput target.
+description: Performance profiling and optimization, baseline first. Use when something is slow or must hit a latency/throughput target.
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *)
 argument-hint: "[what is slow] [target, e.g. p99<500ms]"
 ---

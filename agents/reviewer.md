@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Use to review a diff or PR for correctness (bugs, logic errors, edge cases), or as the correctness lens in a parallel review.
+description: Use to review a diff or PR for correctness (bugs, logic, edge cases), or as the correctness lens in a parallel review.
 tools: Read, Grep, Glob, Bash(kg check), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *)
 model: opus
 effort: high

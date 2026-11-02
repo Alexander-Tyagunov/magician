@@ -26,15 +26,19 @@ The offline gate (`tests/claude/test_evals.py`) checks the shape of every case o
 | `obstacles-on-missing-input` | A dispatched implementer with a missing spec returns `STATUS: NEEDS_CONTEXT` and builds nothing. | `regex` ×2, `file_exists` (absent), `llm` | — |
 | `session-state-before-wave` | `/orchestrate` writes `.workspace/local/session-state.md` before its first wave. | `file_exists`, `llm` (trace) | — |
 | `review-uses-tags-and-count-line` | A deep `/divine` review opens with the count line, tags and locates every finding, and each lens finds its planted defect. | `regex`, `llm` ×4 | — |
-| `small-diff-stays-inline` | A quick review of a five-line diff spawns no subagent and still finds the bug. **Expected to fail** until batch 6 (below). | `tool_used` Agent (max 0), `llm` | `large-plan-fans-out` |
+| `small-diff-stays-inline` | A quick review of a five-line diff spawns no subagent and still finds the bug. | `tool_used` Agent (max 0), `llm` | `large-plan-fans-out` |
 | `large-plan-fans-out` | `/orchestrate` on a plan with four independent tasks fans the first wave out to subagents dispatched together. | `tool_used` Agent (min 2), `llm` (trace) | `small-diff-stays-inline` |
 | `plain-question-loads-no-skill` | A plain question gets a plain answer and loads no workflow skill. | `tool_used` Skill (max 0), `llm` | the two routing cases |
 
 ### Fold-first routing and the expected failure
 
-`small-diff-stays-inline` and `large-plan-fans-out` (tags `routing`, `fold-first`) grade the fold-first rule in [`lore/fold-first.md`](../lore/fold-first.md), which batch 6 wired into `/divine`, `/scrutinize`, `/orchestrate` and `/weave`. A diff of 3 files or fewer and 300 changed lines or fewer stays in the main loop, with each lens file read as a checklist. A Quick review of such a diff makes no `Agent` call, and its verification runs in the main loop. Two or more independent `Parallel: YES` tasks in a wave still fan out. `small-diff-stays-inline` keeps its `expected-fail` tag until a paid eval run confirms that it passes, so the flip check leaves it out until then. Remove the tag after that run.
+`small-diff-stays-inline` and `large-plan-fans-out` (tags `routing`, `fold-first`) grade the fold-first rule in [`lore/fold-first.md`](../lore/fold-first.md), which batch 6 wired into `/divine`, `/scrutinize`, `/orchestrate` and `/weave`. A diff of 3 files or fewer and 300 changed lines or fewer stays in the main loop, with each lens file read as a checklist. A Quick review of such a diff makes no `Agent` call, and its verification runs in the main loop. Two or more independent `Parallel: YES` tasks in a wave still fan out. The paid run of 2026-11-02 passed `small-diff-stays-inline` in 3 of 3 runs, so it no longer carries the `expected-fail` tag.
 
 `session-state-before-wave` grades the order with an `llm` rubric over the trace, not with `tool_order`. A `tool_order` grader can only name one `after` tool. Before batch 6 the first wave goes to an `Agent` call, after it a two-task wave may run inline with `Write` and `Edit`, and one grader cannot cover both paths.
+
+### Why did a judge fail?
+
+An `llm` grader reports only its votes, and the trace folder is gone after the run. `evals/explain-judge.py <result.json> <case> <grader> [--run N]` re-runs that grader's rubric over the evidence kept in the `--json` report and prints PASS or FAIL per rule with the deciding line. It costs one short `claude -p` call (`--print-prompt` prints the prompt and spends nothing). Fix the skill when the output really breaks a rule; change the rubric only when the rule itself is wrong.
 
 ### Sign-in for eval runs
 

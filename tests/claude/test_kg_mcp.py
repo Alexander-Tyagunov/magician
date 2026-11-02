@@ -343,6 +343,8 @@ class KgMcpTests(unittest.TestCase):
 
     # ── read-only
     def test_server_writes_nothing(self) -> None:
+        cache = ROOT / "tools" / "__pycache__"
+        cached_before = sorted(p.name for p in cache.iterdir()) if cache.is_dir() else []
         before = self.snapshot()
         self.session([INIT, call(1, "kg_query", {"query": "helper"}), call(2, "kg_blast", {"target": "util.py"}),
                       call(3, "kg_neighbors", {"target": "helper"}), call(4, "kg_status"),
@@ -350,7 +352,9 @@ class KgMcpTests(unittest.TestCase):
                       req(6, "server/discover", {"_meta": META})])
         self.assertEqual(self.snapshot(), before)
         self.assertFalse((self.db.parent / "cache").exists())
-        self.assertFalse((ROOT / "tools" / "__pycache__").exists())   # no bytecode in the plugin folder
+        # The server adds no bytecode to the plugin folder. A cache left by older runs is not its doing.
+        cached_after = sorted(p.name for p in cache.iterdir()) if cache.is_dir() else []
+        self.assertEqual(cached_after, cached_before)
 
     def test_database_connection_refuses_writes(self) -> None:
         saved = sys.dont_write_bytecode

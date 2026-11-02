@@ -1,6 +1,6 @@
 ---
 name: manifest
-description: Full autonomous SDLC — design, plan, implement, review, and ship with 4 human approval gates
+description: Full autonomous SDLC; design, plan, implement, review and ship with 4 human approval gates
 disable-model-invocation: true
 argument-hint: "[one-sentence feature description]"
 ---

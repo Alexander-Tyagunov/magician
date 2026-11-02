@@ -1,6 +1,6 @@
 ---
 name: magic
-description: Structured multi-source research (consulting, library docs, web) with guided output delivery. Use when asked to research, investigate, analyze, explore, examine, audit, or evaluate something.
+description: Multi-source research (consulting, library docs, web). Use when asked to research, investigate, analyze, explore, examine, audit, or evaluate something.
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *), Edit(./.workspace/shared/research/**), Bash(git commit -m *)
 argument-hint: "[topic or research question]"
 ---

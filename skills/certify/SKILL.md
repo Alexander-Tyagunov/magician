@@ -1,6 +1,6 @@
 ---
 name: certify
-description: Full verification loop — tests, types, lint, build, and a Playwright browser check for UI projects; collects evidence before any success claim. Use to verify a change is green.
+description: Verification loop; tests, types, lint, build, Playwright for UI; evidence before success claims. Use to verify a change is green.
 effort: high
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Grep, Bash(npm test *), Bash(npm run lint), Bash(npm run build), Bash(pytest *), Bash(mypy *), Bash(ruff check .), Bash(go test ./...), Bash(go vet ./...), Bash(golangci-lint run), Bash(cargo test *), Bash(cargo check), Bash(cargo clippy), Bash(mvn test), Bash(gradle test)
 ---

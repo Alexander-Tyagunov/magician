@@ -10,7 +10,7 @@ Use a subagent for one of these four reasons only:
 3. **Fresh-eyes review.** A large diff or a High-tier change, where a lens must not inherit the author's framing.
 4. **Measured context bloat.** The context is past 80% (the status line or `/chronicle status`), and the next step reads much more than it keeps. Measure first. Never spawn on a guess.
 
-Everything else runs in the main loop. A task you finish in a handful of tool calls never gets its own agent. Never spawn an agent to re-check work the main loop just did.
+Everything else runs in the main loop. A single task you finish in a handful of tool calls never gets its own agent; a parallel wave above the threshold is not a single task, so it still fans out. Never spawn an agent to re-check work the main loop just did.
 
 ## The size threshold
 

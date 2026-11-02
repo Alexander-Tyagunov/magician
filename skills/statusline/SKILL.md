@@ -1,6 +1,6 @@
 ---
 name: statusline
-description: Enable, configure or disable the Magician status line, set the output voice, or turn STE-lite on or off. Use only when the user asks; not for terminal themes.
+description: Enable, configure or disable the Magician status line, set the output voice, or turn STE-lite on or off. Use only when asked; not for terminal themes.
 allowed-tools: AskUserQuestion, Bash(magician-ui status), Bash(magician-ui voice status)
 argument-hint: "[enable · disable · status · set <components> · cleanup]"
 ---

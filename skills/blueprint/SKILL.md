@@ -1,6 +1,6 @@
 ---
 name: blueprint
-description: Turns an approved spec into a TDD task plan with a parallelism map and a plan.md + plan.html walkthrough. Use after a spec is approved, before coding.
+description: Turns an approved spec into a TDD task plan, parallelism map and plan.md + plan.html. Use after spec approval, before coding.
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(plan-render *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/plan-render *), Bash(kg blast *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-start.sh *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-stop.sh *), Edit(./.workspace/shared/plans/**), Edit(./.workspace/local/plans/**)
 argument-hint: "[spec-file-path] | review <plan-dir> | --static | --artifact"
 ---

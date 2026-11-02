@@ -1,6 +1,6 @@
 ---
 name: fixer
-description: Use to apply one minimal, proven fix for a confirmed finding or failing gate; never widens scope or edits the tests that judge it.
+description: Use to apply one minimal fix for a confirmed finding or failing gate; never widens scope or edits the tests that judge it.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 effort: medium

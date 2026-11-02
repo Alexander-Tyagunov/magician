@@ -439,6 +439,27 @@ Ask Claude to run `magician-ui status` to list what 4.14 and earlier added, then
 
 The hooks need bash 3.2 or later. On Windows, run Claude Code with Git Bash installed or inside WSL. Run `/hooks` to confirm magician's entries are listed, check that no settings file sets `disableAllHooks`, and start Claude Code with `--debug` to see each hook's output.
 
+## Upgrading to 5.0
+
+- **Fold-first.** Small work stays in the main loop. A review of 3 files or fewer and 300 changed lines or fewer runs its lenses inline, and a Quick review of such a diff starts no subagent. Larger diffs, High-risk changes and parallel plan waves still use agents. Standard depth and deeper keep a fresh verification stage.
+- **Reviews and merges.** Every finding starts with its tag and cites `file:line`, and the count line opens the report. `/seal` merges only when the human approvals that the risk tier needs are on the latest commit. An agent's approval never counts.
+- **Shorter replies, optional STE-lite.** The voice setting still sets length. STE-lite is a separate switch, off by default (`magician-ui ste on`).
+- **New hooks.** PreCompact, SubagentStop (it records CLEAN, BLOCKED and DEGRADED runs in `.workspace/local/obstacles.jsonl`), Pre/PostModelSwitch, Setup and StopFailure. Start a new session after the update so they load.
+- **Security ledger.** `/sentinel` keeps its findings ledger in `.workspace/local/security/`, which is never committed, because open findings are a map of unfixed issues.
+- **Codex package.** It is rebuilt from this tree for each release and published to the codex-plugin branch. Run `codex plugin marketplace upgrade magician`, then `codex plugin add magician@magician`.
+- **Mods** (experimental) stay off unless `MAGICIAN_MODS=1`.
+
+### Check the cheaper review lenses on your account
+
+The `simplifier` and `verifier` lenses run on Haiku. If your account has Haiku and Sonnet, you can confirm that Haiku finds as much as Sonnet on your setup. From a clone of this repository, signed in to `claude` in the same shell:
+
+```bash
+claude -p "reply ok" --model haiku          # must print ok; fix sign-in first if it does not
+bash evals/lens-ab/run.sh --models "haiku sonnet" --judge-model sonnet --runs 2 --max-cost 10
+```
+
+It takes about 30–60 minutes and costs about $5. The last lines print the recall per lens for each model. If Haiku is more than 15 points lower on a lens, open an issue with that output. To run the whole behavioral suite instead (2–3 hours, about $25–35): `MAGICIAN_EVAL_MAX_COST=35 bash scripts/gate.sh --evals --judge-model sonnet`.
+
 ## Upgrading from 4.14
 
 - magician no longer adds permission rules or sets auto mode. Ask Claude to run `magician-ui cleanup` once to remove what earlier versions added.

@@ -1,6 +1,6 @@
 ---
 name: gatekeeper
-description: Use before merge or release, after the review lenses, to run the repo's gates and return a GO / NO-GO verdict on the end state.
+description: Use before merge or release, after the review lenses, to run the repo's gates and return GO / NO-GO.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
