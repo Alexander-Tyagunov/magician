@@ -1,6 +1,6 @@
 ---
 name: divine
-description: Research-grounded multi-lens code review (correctness, security, simplification, tests) of a change, PR, or MR, severity-ranked with fixes, optional PR comments. Use to review or audit a changeset.
+description: Research-grounded multi-lens code review of a change, PR, or MR, severity-ranked with fixes. Use to review or audit a changeset; not for remediation (/scrutinize).
 effort: high
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(mkdir -p .workspace/local), Bash(touch .workspace/local/security-scan.active), Task, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(gh pr view *), Bash(gh pr diff *), Bash(gh pr checks *), Bash(gh pr list *), Bash(glab mr view *), Bash(glab mr diff *), Bash(glab mr list *), Bash(glab ci status *), Bash(git merge-base *), Bash(kg check), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *), Edit(./.workspace/shared/diffs/**), Edit(~/.claude/plugins/data/magician-*/divine-monitor.json)
 argument-hint: "[PR/MR URL · branch · \"working tree\" · monitor <repo>]"

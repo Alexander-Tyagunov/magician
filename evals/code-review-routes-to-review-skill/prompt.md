@@ -4,6 +4,7 @@ description: When a user asks for the plugin's code review by name, the divine r
 tags: [smoke, skill-routing, review]
 runs: 3
 max_turns: 6
+expected_outcome: The divine skill is invoked and the review raises at least two real defects of the transfer function (amount validation, overdraft, atomicity, the always-True return).
 allowed_tools: [Read, Grep, Glob, Skill]
 ---
 

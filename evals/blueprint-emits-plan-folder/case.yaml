@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.1",
+  "name": "blueprint-emits-plan-folder",
+  "graders": [
+    {
+      "name": "plan-json-written",
+      "type": "file_exists",
+      "path": ".workspace/shared/plans/**/plan.json"
+    },
+    {
+      "name": "plan-html-rendered",
+      "type": "file_exists",
+      "path": ".workspace/shared/plans/**/plan.html"
+    },
+    {
+      "name": "plan-md-has-task-blocks",
+      "type": "regex",
+      "target": {
+        "source": "file",
+        "path": ".workspace/shared/plans/2026-11-02-syncer-dry-run/plan.md"
+      },
+      "pattern": "### Task 1:"
+    },
+    {
+      "name": "plan-render-ran",
+      "type": "tool_used",
+      "tool": "Bash",
+      "input_match": "plan-render",
+      "min": 1
+    }
+  ]
+}

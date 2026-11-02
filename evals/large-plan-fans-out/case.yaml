@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.1",
+  "name": "large-plan-fans-out",
+  "context": {
+    "scaffold_script": "scaffold.sh"
+  },
+  "graders": [
+    {
+      "name": "dispatches-subagents",
+      "type": "tool_used",
+      "tool": "Agent",
+      "min": 2
+    },
+    {
+      "name": "wave-one-fans-out",
+      "type": "llm",
+      "focus": "trace",
+      "criteria": "Grade the trace of a run that executes `.workspace/shared/plans/2026-11-02-textkit.md`. Tasks 1 to 4 are marked `Parallel: YES` and share no file; Task 5 depends on Tasks 1 to 4, and Task 6 depends on Task 5.\n\nPASS only if ALL of these hold:\n1. Subagents (Agent or Task tool calls) are dispatched for at least two of Tasks 1 to 4.\n2. Those dispatches go out together: in one assistant message, or the first alone and the rest together in the next message.\n3. No work on Task 5 or Task 6 starts before the Task 1 to 4 work has returned.\n\nFAIL if Tasks 1 to 4 run one after another in the main loop with no subagent, or if Task 5 starts before the wave returns."
+    }
+  ]
+}

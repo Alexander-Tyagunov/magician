@@ -3,7 +3,7 @@
 `/blueprint` writes plan.json once; `plan-render` validates it and renders the two documents every
 consumer reads. These tests pin the contract:
   * `check` accepts the valid fixtures (and the skill's worked example) and refuses each invalid
-    fixture with exit 2 and one line naming the rule it broke;
+    case in fixtures/plans/invalid-cases.json with exit 2 and one line naming the rule it broke;
   * `md` and `html` are byte-identical to the snapshots in fixtures/plans/ (same JSON ⇒ same bytes,
     no timestamps), the Task blocks keep the legacy shape /orchestrate parses, and the trailer
     carries the version and the sha256 of the canonical JSON;
@@ -23,6 +23,7 @@ consumer reads. These tests pin the contract:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -42,41 +43,43 @@ VALID = FIX / "valid.json"
 ONE_WAVE = FIX / "one-wave.json"
 EXAMPLE = ROOT / "skills" / "blueprint" / "references" / "plan-example.json"
 
-# fixture name → substring every violation line for it must contain
-INVALID = {
-    "invalid-duplicate-id": "duplicate id 'T1'",
-    "invalid-unresolved-dep": "depends_on 'T99' does not resolve",
-    "invalid-parallel-file-conflict": "parallel steps T1 and T2 both modify 'src/shared.py'",
-    "invalid-missing-red-run": "red.run must be a non-empty command",
-    "invalid-empty-verify": "verify must be a non-empty list",
-    "invalid-unknown-touch": "touches 'ghost' which is not in context.components",
-    "invalid-bad-version": "version: must be a positive integer",
-    "invalid-bad-status": "status: 'shipped' is not one of draft|in_review|approved|rejected",
-    "invalid-bad-review-status": "review.status 'maybe' is not one of pending|approved|deferred|edited|changed",
-    "invalid-secret-aws": "secret: possible AWS access key",
-    "invalid-secret-credential": "secret: possible hardcoded credential",
-    "invalid-secret-key-named": "secret: key 'token' holds a credential-sized value",
-    "invalid-secret-token-value": "secret: possible GitHub token",
-    "invalid-home-path": "absolute home path '/home/alex/project/x.py'",
-    "invalid-bad-path": "path '../outside/x.py' must be relative to the project root",
-    "invalid-wrong-schema": "schema: expected 'magician.plan/1'",
-    "invalid-destructive-verify": "verify holds a destructive command form 'rm -rf'",
-    "invalid-step-wave-mismatch": "step T1: not listed in wave W2",
-    "invalid-dependency-cycle": "depends_on: dependency cycle T1 -> T3 -> T1",
-    "invalid-forward-dependency": "step T1: depends on T7, which runs in a later wave (W3)",
-    "invalid-parallel-on-sequential": "step T3: a parallel step cannot depend on sequential step T4 of the same wave",
-    "invalid-heading-forgery": "text: $.steps[0].intent has a line starting with '###', which would forge plan.md structure",
-    "invalid-newline-in-title": "text: $.steps[0].title must be a single line",
-    "invalid-control-char": "text: $.title holds a control character",
-    "invalid-fence-in-diff": "text: $.steps[0].diff_sketch has a line starting with '```'",
-    "invalid-bad-step-id": "steps[0]: needs an id of the form T<n>",
-    "invalid-float-minutes": "step T1: effort.minutes must be a non-negative integer",
-    "invalid-bad-history": "step T1: history[0] must be {v: int, changed: [field, …], summary?, diff?}",
-    "invalid-bad-types": "step T1: depends_on entries must be step ids (strings)",
-}
+# One file holds every invalid case: {"<name>": {"expect": "<substring every violation line for it must
+# contain>", and exactly one of "patch": [{"path": [key|index, …], "set": value} | {"path": …, "delete":
+# true}, …] (applied to valid.json, in order), "plan": {...} (the whole plan) or "raw": "<text>" (for
+# input that is not JSON a dict can hold — NaN, duplicate keys, broken syntax)}}. Each case is written
+# to a temp plan.json and checked as is. Patches keep the file small (29 whole plans would be ~790 KB,
+# over the gate's 256 KiB per-file limit) and make each case's single mutation readable.
+INVALID_CASES = FIX / "invalid-cases.json"
+CASES = json.loads(INVALID_CASES.read_text(encoding="utf-8"))
+INVALID = {name: case["expect"] for name, case in CASES.items()}
+CASE_FORMS = ("patch", "plan", "raw")
 BAD_TYPES_LINES = ("research: must be a list of strings", "context.stack: must be a list of strings",
                    "context.blast[6]: must be {path: string, files: int, hits: int}",
                    "context.edges[13]: must be {from: id, to: id}", "step T2: field 'touches' must be a list")
+
+
+@contextlib.contextmanager
+def case_file(name: str):
+    """Write invalid case `name` to a temp plan.json and yield its path."""
+    case = CASES[name]
+    if "raw" in case:
+        text = case["raw"]
+    else:
+        plan = case["plan"] if "plan" in case else load(VALID)
+        for op in case.get("patch", ()):
+            *head, last = op["path"]
+            node = plan
+            for key in head:
+                node = node[key]
+            if op.get("delete"):
+                del node[last]
+            else:
+                node[last] = op["set"]
+        text = json.dumps(plan, ensure_ascii=False)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "plan.json"
+        path.write_text(text, encoding="utf-8")
+        yield path
 
 
 def check_json(plan: dict, *args: str) -> subprocess.CompletedProcess:
@@ -116,15 +119,25 @@ class CheckTests(unittest.TestCase):
 
     def test_every_invalid_fixture_fails_with_the_rule_it_broke(self) -> None:
         self.assertGreaterEqual(len(INVALID), 25)
-        self.assertEqual(sorted(p.stem for p in FIX.glob("invalid-*.json")), sorted(INVALID))
+        self.assertEqual(sorted(p.name for p in FIX.glob("invalid-*.json")), ["invalid-cases.json"])
+        for name, case in CASES.items():
+            forms = [k for k in CASE_FORMS if k in case]
+            self.assertEqual(len(forms), 1, f"{name}: needs exactly one of {CASE_FORMS}")
+            self.assertEqual(sorted(case), sorted({forms[0], "expect"}), name)
+            if forms[0] == "patch":
+                self.assertTrue(case["patch"], f"{name}: an empty patch is the valid plan")
+                for op in case["patch"]:
+                    self.assertTrue(op.get("path") and ("set" in op) != bool(op.get("delete")), f"{name}: {op}")
         for name, needle in INVALID.items():
             with self.subTest(fixture=name):
-                p = run("check", str(FIX / f"{name}.json"))
+                with case_file(name) as path:
+                    p = run("check", str(path))
                 self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
                 self.assertIn(needle, p.stdout)
                 self.assertIn("violation(s)", p.stderr)
                 self.assertTrue(all(line.strip() for line in p.stdout.splitlines()), "one line per violation")
-        p = run("check", str(FIX / "invalid-bad-types.json"))
+        with case_file("bad-types") as path:
+            p = run("check", str(path))
         for line in BAD_TYPES_LINES:
             self.assertIn(line, p.stdout)
 
@@ -224,7 +237,8 @@ class CheckTests(unittest.TestCase):
     def test_md_and_html_refuse_an_invalid_plan(self) -> None:
         for cmd in ("md", "html"):
             with self.subTest(cmd=cmd):
-                p = run(cmd, str(FIX / "invalid-unresolved-dep.json"))
+                with case_file("unresolved-dep") as path:
+                    p = run(cmd, str(path))
                 self.assertEqual(p.returncode, 2)
                 self.assertEqual(p.stdout, "step T3: depends_on 'T99' does not resolve to a step id\n")
                 self.assertIn("nothing rendered", p.stderr)
@@ -660,7 +674,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(re.findall(r'^await task\("(T\d+)"', p.stdout.split('phase("W2 Renderers")')[1].split("\nphase(")[0], re.M), ["T4", "T6"])
 
     def test_workflow_refuses_an_invalid_plan_and_writes_with_dash_o(self) -> None:
-        p = run("workflow", str(FIX / "invalid-unresolved-dep.json"))
+        with case_file("unresolved-dep") as path:
+            p = run("workflow", str(path))
         self.assertEqual(p.returncode, 2)
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "plan.workflow.js"
@@ -717,7 +732,8 @@ class AllTests(unittest.TestCase):
     def test_all_refuses_an_invalid_plan_and_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
-            shutil.copy(FIX / "invalid-unresolved-dep.json", folder / "plan.json")
+            with case_file("unresolved-dep") as path:
+                shutil.copy(path, folder / "plan.json")
             p = run("all", str(folder / "plan.json"), cwd=folder)
             self.assertEqual(p.returncode, 2)
             self.assertIn("nothing rendered", p.stderr)

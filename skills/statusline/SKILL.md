@@ -1,6 +1,6 @@
 ---
 name: statusline
-description: Enable, configure, or disable the Magician CLI status line (context %, model, git, cost, skill, effort, voice), set the output voice, turn STE-lite (simplified technical English) on or off, or clean up old permission rules. Only when the user asks.
+description: Enable, configure or disable the Magician status line, set the output voice, or turn STE-lite on or off. Use only when the user asks; not for terminal themes.
 allowed-tools: AskUserQuestion, Bash(magician-ui status), Bash(magician-ui voice status)
 argument-hint: "[enable · disable · status · set <components> · cleanup]"
 ---
@@ -15,7 +15,7 @@ The status line is **off until the user asks for it**: magician never enables it
 
 ## When to use
 
-Trigger phrases: "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "turn off / disable the status line", "make output shorter/leaner / set the voice", "make output STE-lite / simplified technical English", "clean up magician's old permission rules". Not for general terminal or theme questions, and never enabled on the skill's own initiative.
+Use to enable, configure or disable the status line (context %, model, git, cost, skill, effort, voice), set the output voice, turn STE-lite (simplified technical English) on or off, or clean up the permission rules older versions left. Trigger phrases: "enable/turn on the magician UI / status line / status bar", "show my context/tokens/effort in the console", "configure/change what the bar shows", "turn off / disable the status line", "make output shorter/leaner / set the voice", "make output STE-lite / simplified technical English", "clean up magician's old permission rules". Not for general terminal or theme questions, and never enabled on the skill's own initiative.
 
 ## Components (user-configurable)
 

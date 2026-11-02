@@ -15,6 +15,8 @@ from pathlib import Path
 import re
 import unittest
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_skills
 from _frontmatter import read_frontmatter
 import _strict_frontmatter as S
 
@@ -141,7 +143,8 @@ class SkillDefinitionTests(unittest.TestCase):
                         "mkdir -p .workspace/local", "git add .workspace/shared/ CLAUDE.md .gitignore",
                         "git add REVIEW.md", "git add .claude/skills/verify/SKILL.md",
                         "git add .claude/skills/simplify/SKILL.md",
-                        'git commit -m "chore: initialize magician workspace"'],
+                        'git commit -m "chore: initialize magician workspace"',
+                        "git add AGENTS.md"],
             "autopsy": ["gh run list --limit 5", 'git commit -m "docs: add post-mortem for outage"'],
             "blueprint": [*SEARCH, "kg blast src/reports/",
                           "plan-render check .workspace/shared/plans/2026-11-01-csv-export/plan.json",
@@ -208,7 +211,8 @@ class SkillDefinitionTests(unittest.TestCase):
             "magic": ["git add .workspace/shared/research/", "git add .workspace/shared/research/x -f .env"],
             "inscribe": ["git add .claude/skills/x -f .env"],
             "almanac": ["mkdir -p .workspace/../../outside", "git add .workspace/shared/ CLAUDE.md .gitignore -f .env",
-                        "git add REVIEW.md -f .env", "git add .claude/skills/", "git add .claude/skills/verify/SKILL.md .env"],
+                        "git add REVIEW.md -f .env", "git add .claude/skills/", "git add .claude/skills/verify/SKILL.md .env",
+                        "git add AGENTS.md -f .env", "git add AGENTS.md .env"],
             "portal": ["mkdir -p .features/../../outside"],
             # The Monitor runs `tail` itself; the skill never pre-approves it, nor the browser opener.
             "blueprint": ["tail -n0 -F .workspace/local/plans/x/state/events.jsonl",

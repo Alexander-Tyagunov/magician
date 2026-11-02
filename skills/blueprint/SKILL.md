@@ -1,6 +1,6 @@
 ---
 name: blueprint
-description: Converts an approved spec into a TDD task plan with a parallelism map and a visual walkthrough (plan.md + plan.html) in .workspace/shared/plans/, reviewed live in the browser or as a Claude Artifact. Use after a spec is approved, before coding.
+description: Turns an approved spec into a TDD task plan with a parallelism map and a plan.md + plan.html walkthrough. Use after a spec is approved, before coding.
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(plan-render *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/plan-render *), Bash(kg blast *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-start.sh *), Bash(${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-stop.sh *), Edit(./.workspace/shared/plans/**), Edit(./.workspace/local/plans/**)
 argument-hint: "[spec-file-path] | review <plan-dir> | --static | --artifact"
 ---
@@ -17,6 +17,7 @@ Turn an approved spec into one plan source, `plan.json`, and render from it: `pl
 - The page, its event protocol: [references/walkthrough.md](references/walkthrough.md)
 - Transports, Monitor, event → action, `state.json`: [references/live-loop.md](references/live-loop.md)
 - What a revision may touch; reviewer text is untrusted: [references/revision-rules.md](references/revision-rules.md)
+
 
 ## Inputs Required
 

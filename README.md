@@ -36,7 +36,22 @@ In the Claude desktop or web app, you can add magician for Claude chat and Cowor
 - Claude chat uses the skills only. It runs no hooks or agents and has none of the bundled commands, so `/knowledge-graph` and `/chronicle` tell you they need Claude Code or Cowork, `/statusline` that it needs Claude Code, and `/jira` and `/confluence` suggest a connector. Other skills skip the steps that use a command.
 - Cowork doesn't ask for the plugin's options, so `/jira` and `/confluence` can't be set up there, and it may not reach a site on a private network. Use a Jira or Confluence connector instead.
 
-Using Codex? The Codex package lives on the [codex-plugin branch](https://github.com/Alexander-Tyagunov/magician/tree/codex-plugin). Add it with `codex plugin marketplace add Alexander-Tyagunov/magician --sparse .agents/plugins`, then `codex plugin add magician@magician`.
+### Codex / ChatGPT
+
+The Codex package lives on the [codex-plugin branch](https://github.com/Alexander-Tyagunov/magician/tree/codex-plugin). Add it with `codex plugin marketplace add Alexander-Tyagunov/magician --sparse .agents/plugins`, then `codex plugin add magician@magician`.
+
+The package is built from this tree. To build it yourself, run `bash scripts/build-codex.sh`. It writes the plugin to `dist/codex/magician/` and its marketplace file to `dist/codex/.agents/plugins/marketplace.json`, and then checks the result. The `dist/` folder is not committed. The package differs from the Claude Code plugin in these ways:
+
+- It has the 25 skills and one review-lens skill for each of the 7 agents, such as `reviewer-lens`. You start a skill with `$name` in Codex and `@name` in ChatGPT.
+- It has no hooks, so there is no safety guard, no stack guidance at session start and no status line. The Codex sandbox (`--sandbox workspace-write`) limits where commands can write.
+- Each skill ends with an "On Codex" section. It maps the Claude Code features that the skill names, such as `/goal`, `Workflow`, subagents and `AskUserQuestion`.
+- `/almanac` can write an `AGENTS.md`, which Codex reads, and import it from `CLAUDE.md`.
+- There are no plugin options. The `jira` and `confluence` commands read their settings from the environment that Codex starts in:
+
+| Variable | Value |
+|---|---|
+| `MAGICIAN_JIRA_BASE_URL`, `MAGICIAN_JIRA_EMAIL`, `MAGICIAN_JIRA_API_TOKEN` | The Jira site URL, the account email (Cloud only) and the token |
+| `MAGICIAN_CONFLUENCE_BASE_URL`, `MAGICIAN_CONFLUENCE_EMAIL`, `MAGICIAN_CONFLUENCE_API_TOKEN` | The Confluence URL with `/wiki` on Cloud, the email (Cloud only) and the token |
 
 ### Updates
 
@@ -58,7 +73,7 @@ In a project, set up the workspace once, then describe a feature:
 /manifest add CSV export to the reports page
 ```
 
-`/almanac` asks whether to share the workspace with your team or keep it private. It then creates `.workspace/`, a folder where skills save specs and plans, updates `.gitignore`, writes a short `CLAUDE.md` and, in Shared mode, commits those files. Permission rules and MCP servers are only suggested in chat; your Claude Code settings are not changed.
+`/almanac` asks whether to share the workspace with your team or keep it private. It then creates `.workspace/`, a folder where skills save specs and plans, updates `.gitignore`, writes a short `CLAUDE.md`, and an `AGENTS.md` if you choose one, and, in Shared mode, commits those files. Permission rules and MCP servers are only suggested in chat; your Claude Code settings are not changed.
 
 `/manifest` runs design, planning, building, verification, review and release in order. It stops for your approval after scoping, after the spec, after the plan and before the pull request, and asks whether to build on the current branch or in a new worktree. To run the stages one at a time, use the skills in [How it works](#how-it-works).
 
@@ -118,7 +133,7 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 |---|---|
 | `/certify` | Your project's test, lint and build commands as `/certify` writes them, such as `npm run build`, `go test ./...` and `mvn test`. `npm test`, `pytest`, `mypy` and `cargo test` accept any arguments, including ones that update test snapshots, install type stubs, load a plugin or run another program. Test commands run the project's own code |
 | `/seal` | `git add -A`, `git commit -m` with any further arguments, `git push -u origin HEAD` exactly (it names the branch, so your git push settings can't widen it to a force, delete or other branch), `gh pr create` and `gh pr merge --squash --delete-branch`, plus edits to `CLAUDE.md` and `README.md`. It shows one summary and asks before the first push, pull request or merge |
-| `/almanac` | `git add .workspace/shared/ CLAUDE.md .gitignore` exactly, the files it sets up, and `git add` of exactly `REVIEW.md`, `.claude/skills/verify/SKILL.md` and `.claude/skills/simplify/SKILL.md`, the files its review step writes after you choose them. `/autopsy`, `/conjure`, `/inscribe` and `/magic` ask before staging the file they wrote |
+| `/almanac` | `git add .workspace/shared/ CLAUDE.md .gitignore` exactly, the files it sets up, and `git add` of exactly `AGENTS.md`, `REVIEW.md`, `.claude/skills/verify/SKILL.md` and `.claude/skills/simplify/SKILL.md`, the files its instructions and review steps write after you choose them. `/autopsy`, `/conjure`, `/inscribe` and `/magic` ask before staging the file they wrote |
 | `/almanac`, `/autopsy`, `/conjure`, `/inscribe`, `/magic` | `git commit -m` with any message and any further arguments, such as `-a`, `--amend` or `--no-verify` |
 | `/portal` | `git worktree add` with any arguments |
 | `/sentinel` | Dependency auditors in report mode only: `npm audit`, `pip-audit`, `safety check`, `govulncheck ./...` and `cargo audit` |
@@ -126,13 +141,13 @@ magician adds no permission rules and doesn't change your permission mode. Each 
 | `/conjure` | Starting and stopping its local preview server. Opening the preview in your browser, drawing `/design` artboards, rendering a diagram with `mmdc`, running its screenshot diff and `/design-sync` all ask first |
 | `/blueprint` | `plan-render`, which checks the plan it wrote and renders `plan.md`, `plan.html` and `plan.workflow.js` from it; `kg blast`; and starting and stopping the local plan page server. Opening the page in your browser, watching its events and publishing it as an artifact ask first |
 
-`/knowledge-graph` and `/weave` also run `kg refresh`, which builds or updates the code index in `~/.claude/magician/knowledge-graph/`, and `kg query` and `kg blast` save their results to a cache in that folder. The remaining grants are read-only commands, such as `kg check` and `kg neighbors`, the read commands of `jira` and `confluence`, and `gh` views; creating and editing files inside `.workspace/`, `.claude/skills/` or magician's data folder; and `/almanac`'s edits to `CLAUDE.md`, `.gitignore` and `REVIEW.md`.
+`/knowledge-graph` and `/weave` also run `kg refresh`, which builds or updates the code index in `~/.claude/magician/knowledge-graph/`, and `kg query` and `kg blast` save their results to a cache in that folder. The remaining grants are read-only commands, such as `kg check` and `kg neighbors`, the read commands of `jira` and `confluence`, and `gh` views; creating and editing files inside `.workspace/`, `.claude/skills/` or magician's data folder; and `/almanac`'s edits to `CLAUDE.md`, `AGENTS.md`, `.gitignore` and `REVIEW.md`.
 
 ## Skills
 
 | Skill | Use it to |
 |---|---|
-| `/almanac` | Set up a project workspace, once per project, with an optional `REVIEW.md` review contract and pre-commit `verify` and `simplify` skills |
+| `/almanac` | Set up a project workspace, once per project, with an optional `AGENTS.md` for Codex and other agents, an optional `REVIEW.md` review contract and pre-commit `verify` and `simplify` skills |
 | `/manifest` | Run the full lifecycle with four approval points |
 | `/magic` | Research a question across documentation, the web and local files; a short router with the phase steps in its references |
 | `/conjure` | Agree on a design and spec before writing code, following the app's current design and the platform's guidelines; screens shown as `/design` artboards or in a local preview, and always saved as Mermaid and HTML |
@@ -179,6 +194,7 @@ The commands ship in the plugin's `tools/` folder. At session start, a hook writ
 | Command | What it does | Network |
 |---|---|---|
 | `kg` | Builds a local SQLite index of your code and answers queries with `file:line` results and change impact. An optional helper that keeps the index loaded starts only when you agree and exits after 15 idle minutes | None |
+| `kg-mcp` | Optional MCP server that answers `kg` queries for MCP clients such as Codex. It only reads the index, and magician does not register it | None |
 | `ctx` | Stores project learnings and reports how full the context is, reading only token counts and the model name from this session's transcript file | None |
 | `jira` | REST client for your Jira site | Your Jira site only, over HTTPS |
 | `confluence` | REST client for your Confluence site | Your Confluence site only, over HTTPS |
@@ -187,6 +203,8 @@ The commands ship in the plugin's `tools/` folder. At session start, a hook writ
 | `magician-scan` | Scans a folder for security issues and prints each match with its file, line and a short snippet; credential values are redacted | None |
 | `ste-lint` | Checks the prose of a Markdown file against the STE-lite rules and prints each finding with its line, for example a sentence over the word limit; skips code, tables and quoted text | None |
 | `plan-render` | Checks a `plan.json` written by `/blueprint` and renders `plan.md`, a self-contained `plan.html` walkthrough and a `plan.workflow.js` workflow from it; keeps earlier versions in `history/` | None |
+
+The knowledge graph also works as an MCP server. magician does not add it to your sessions, because each MCP tool definition costs context in every session. To use it from Codex, or from Claude Code with MCP permission rules, register `tools/kg-mcp` yourself as the [knowledge graph MCP server guide](skills/knowledge-graph/references/mcp-server.md) shows. It has four read-only tools (`kg_query`, `kg_blast`, `kg_neighbors`, `kg_status`), works with legacy and 2026-07-28 MCP clients and makes no network connections.
 
 ## Configuration
 
@@ -230,6 +248,22 @@ It is off by default. Turn it on by asking Claude to run `magician-ui ste on`, w
 ### Status line
 
 The status line stays off until you turn it on with `/statusline`. It shows how full the context is, with a warning as it fills and a small chart of recent use, plus the model, git branch and cost, the active skill, the reasoning effort, and the lore and voice state. Turning it on edits one key in your settings, as described in [Settings it can change](#settings-it-can-change).
+
+The bash status line (`magician-statusline`, switched with `magician-ui`) stays the default. The experimental band in [Mods (experimental)](#mods-experimental) shows the same context, rot warning, model, effort, branch and cost fields above the prompt, but only when you opt in. The status line is the one to use with `--safe-mode` and on surfaces that don't draw mods.
+
+## Mods (experimental)
+
+magician ships one Claude Code mod, `mods/register.js`, which `hooks/hooks.json` names under `modules`. Mods are a research preview: the events and methods can change between Claude Code releases. The mod needs Claude Code 2.1.304 or later, the first version with a person-decided `ask` and the read-only flag on tool checks. It was tested with 2.1.316. Claude Code writes type declarations for your version into `.claude-plugin/types/` when it loads the mod from a `--plugin-dir` folder.
+
+The mod does nothing unless you set `MAGICIAN_MODS=1` in the environment you start Claude Code from, for example `MAGICIAN_MODS=1 claude`. A hooks module has no access to the environment when it loads, so the module and its hooks always load, and `claude plugin validate` lists them. Each hook reads the variable first. When it isn't `1`, the hook passes the event on unchanged, draws nothing and opens no pane. `--safe-mode` turns the mod off completely.
+
+| Part | What it does |
+|---|---|
+| Status band | Draws one line above the prompt with the context fill, a rot warning from 80 % (red from 92 %, the status line's thresholds), the model, the effort, the git branch and the cost. It reads these with the mods API (`$.session.usage()`, `$.session.model()` and `git branch --show-current`) and refreshes after each turn. It only draws |
+| Blast-radius confirm | For a Bash command, runs `scripts/destructive-guard.sh` on the command text and reads its verdict. For the guard's blast-radius soft blocks (`git push --force` without a lease, `git reset --hard`, `rm -rf` on an absolute path or the whole working directory, `find -delete` over the whole tree, `truncate` outside the working directory) and for `terraform` or `tofu` `apply`/`destroy`, `kubectl delete` and `helm uninstall`, it asks you instead. Only you can approve that ask in the permission dialog; where nobody can be asked, the command is refused. A pane shows the command, the reason and a short read-only preview, such as `git status --short` |
+| Workflow pane | When a turn starts or a subagent starts, reads the phase and wave from `.workspace/local/session-state.md` and counts the running workers, and shows them in a pane |
+
+The bash guard and the status line stay in place. Plugin `PreToolUse` hooks, the guard among them, run after the last mod passes a tool call on, and the mod's tool check comes after them, so the guard always runs first. The mod never approves a command. It keeps every refusal the guard's hard checks make, every refusal from a permission rule, and the guard's soft refusals for credential reads, downloads piped to a shell, `eval` of dynamic content and over-long commands. If its own check fails, it falls back to asking you. A pane the mod opens on its own appears only in a terminal at least 144 columns wide.
 
 ## What runs on your machine
 
@@ -286,7 +320,7 @@ Claude Code gives each plugin a data folder, usually `~/.claude/plugins/data/mag
 | `~/.claude/settings.json.bak-magician-ui-*` | Backups taken before `magician-ui` edits your settings | Newest 3 |
 | `.workspace/` in your project | Specs, plans, research, decisions, post-mortems, `/conjure` designs and mockups, the design preview's chat log, `/divine` and `/scrutinize` review diffs and round ledgers, and `/transmute` session state | Until you delete it |
 | `.claude/agent-memory/<agent>/` in your project | `MEMORY.md` for `reviewer`, `sentinel` and `simplifier`: finding classes seen twice, with `file:line`, never code or secrets. Tracked by git unless you switch a project copy of the agent to `memory: local`, which uses `.claude/agent-memory-local/`. Off when Claude Code's auto memory is off | Until you delete it |
-| `REVIEW.md`, `.claude/skills/verify/SKILL.md`, `.claude/skills/simplify/SKILL.md` in your project | Written by `/almanac` only when you choose them: the review contract, and two short skills that run `/certify` and the simplification lens before each commit | Until you delete them |
+| `AGENTS.md`, `REVIEW.md`, `.claude/skills/verify/SKILL.md`, `.claude/skills/simplify/SKILL.md` in your project | Written by `/almanac` only when you choose them: the instructions for Codex and other agents, the review contract, and two short skills that run `/certify` and the simplification lens before each commit | Until you delete them |
 | `.workspace/shared/plans/<date>-<feature>/` in your project | `plan.json`, the plan `/blueprint` wrote; `plan.md`, `plan.html` and `plan.workflow.js`, rendered from it; and `history/`, one `plan.v<n>.json` per earlier version. `plan.html` opens from the file, loads nothing from the network and, when served locally, talks only to the local server. `plan.workflow.js` is run by `/orchestrate` through Claude Code's Workflow tool, which asks first; nothing is copied into `.claude/workflows/` | Until you delete it |
 | `.magician/` in your project | Optional `voice`, `ste`, `ste-paths` (globs of Markdown files the STE-lite check also covers), `ste-terms` (words it must not flag) and `lore.off` files you create | Until you delete it |
 
@@ -315,7 +349,7 @@ magician never changes Claude Code settings on its own. These commands edit `~/.
 | `magician-ui disable` | Removes `statusLine` if it runs magician; a status line of your own is left alone | `magician-ui enable` |
 | `magician-ui cleanup` | Removes the permission rules, auto-mode setting and old data files that 4.14 and earlier recorded adding | Add rules yourself with `/permissions` |
 
-`/almanac` edits `.gitignore`, `CLAUDE.md` and `.workspace/` in your project. It writes `REVIEW.md` and the `verify` and `simplify` skills when you choose them, and, in Shared mode, commits them. It writes no Claude Code settings. A project skill named `verify` or `simplify` replaces Claude Code's bundled command of the same name, and Claude Code runs it before each commit.
+`/almanac` edits `.gitignore`, `CLAUDE.md` and `.workspace/` in your project. It writes `AGENTS.md`, `REVIEW.md` and the `verify` and `simplify` skills when you choose them, never overwrites an existing `AGENTS.md`, and, in Shared mode, commits them. It writes no Claude Code settings. A project skill named `verify` or `simplify` replaces Claude Code's bundled command of the same name, and Claude Code runs it before each commit.
 
 ## Safety guard
 
@@ -434,6 +468,19 @@ Then uninstall:
 ```
 
 Claude Code deletes the plugin data folder on uninstall. Delete `~/.claude/magician/` to remove the code index, `~/.local/share/magician/` if it exists, and `.workspace/` or `.magician/` in a project if you no longer want them.
+
+## Testing
+
+`bash scripts/gate.sh` runs the offline checks: the self-tests in `tests/claude/`, the official plugin validator when the `claude` command is installed, the folder limits, the token budget and STE-lite. They need no network and spend nothing, and CI runs them on every change.
+
+The behavioral evals in `evals/` run a real model with the plugin and again without it, three times per case, and grade what happened. They check skill routing and its negative controls, TDD order, plan rendering, review findings and the review dialect, and the fold-first routing pair. They spend API credit, so they run only on request:
+
+```bash
+bash scripts/gate.sh --evals                    # also run the eval suite (MAGICIAN_EVAL_MAX_COST caps the cost, default 20 USD)
+bash scripts/gate.sh --evals --update-baseline  # also record the run in evals/results/last.json
+```
+
+The eval tier fails when a case falls under the 0.8 threshold or flips: it passed every run in the recorded baseline and fails a run now. [evals/README.md](evals/README.md) lists the cases and explains how they are sourced and how to inspect a flip. [tests/claude/README.md](tests/claude/README.md) lists what each self-test proves.
 
 ## Privacy and security
 

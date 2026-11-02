@@ -4,6 +4,7 @@ description: When a user asks for the plugin's security scan by name, the sentin
 tags: [smoke, skill-routing, security]
 runs: 3
 max_turns: 6
+expected_outcome: The sentinel skill is invoked and the scan reports both the SQL injection in login and the XSS in render.
 allowed_tools: [Read, Grep, Glob, Skill]
 ---
 

@@ -26,6 +26,30 @@ Exact `AskUserQuestion` tool configurations for the run-once setup flow. Do not 
 }
 ```
 
+## Instructions file (step 5)
+
+```json
+{
+  "questions": [
+    {
+      "question": "Write the project instructions for Claude Code only, or also an AGENTS.md that Codex and other agents read?",
+      "header": "Instructions",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "CLAUDE.md only (Recommended)",
+          "description": "A lean CLAUDE.md for project rules, if none exists. No AGENTS.md."
+        },
+        {
+          "label": "AGENTS.md + CLAUDE.md import",
+          "description": "A short AGENTS.md (commands, package manager, the verify command, the REVIEW.md pointer, where specs and plans live), imported by an @AGENTS.md line in CLAUDE.md so there is one source. An existing AGENTS.md is never overwritten."
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Review setup (step 6)
 
 ```json

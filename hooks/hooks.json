@@ -1,4 +1,7 @@
 {
+  "modules": [
+    "../mods/register.js"
+  ],
   "hooks": {
     "SessionStart": [
       {

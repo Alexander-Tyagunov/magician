@@ -15,6 +15,8 @@ import subprocess
 import unittest
 from pathlib import Path
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_frontmatter_strict
 import _strict_frontmatter as S
 
 ROOT = Path(__file__).resolve().parents[2]

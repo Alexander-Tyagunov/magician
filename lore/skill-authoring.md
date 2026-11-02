@@ -29,4 +29,23 @@ Skills should read correctly under any agent: say **"the agent"**, not "Claude",
 - Obstacles: the two-line pointer to [obstacles.md](obstacles.md), never the pasted block.
 - Evaluate with 10–20 prompts per skill including negative controls (`claude plugin eval`, or `codex exec --json --output-schema` headless), and track token usage per skill version.
 
-Sources: code.claude.com/docs/en/skills (frontmatter reference; spec-only consumers) · anthropic.com/news/donating-agent-skills-to-the-agentic-ai-foundation · learn.chatgpt.com/docs (Codex skills, plugin conversion guide) · developers.openai.com/blog (skill evaluation).
+## On Codex
+
+`scripts/build-codex.sh` makes the Codex and ChatGPT package from this tree (default `dist/codex/magician/`, gitignored). Each generated skill ends with an "On Codex" section. That section lists only the rows below that the skill uses.
+
+| Claude Code | Codex / ChatGPT |
+|---|---|
+| `/goal` | `/goal`, the same name. The goal text holds the outcome, the constraints and how to verify. One goal per chat, and a goal never widens the sandbox. |
+| `Workflow` fan-out | One `codex exec --worktree` per independent unit, or `/worktree` for parallel chats. |
+| Subagents (`Task`, `Agent`, `agents/*.md`) | `.codex/agents/*.toml` with `name`, `description`, `developer_instructions`. They are not part of the public plugin format, so the build turns each agent into a `<agent>-lens` skill. |
+| Hooks | None in the package: the public directory does not accept hooks. Local Codex hooks live in `hooks.json` under `~/.codex/` or `<repo>/.codex/`, use the same event names, block with exit 2, and need trust through `/hooks`. |
+| `Monitor` | None. Poll the file or the command. |
+| `AskUserQuestion` | No question tool. Ask in prose with the same options and wait. `/plan` mode also asks clarifying questions. |
+| `codex exec --full-auto` | Removed. Use `--sandbox workspace-write`. |
+| `CLAUDE.md` | `AGENTS.md`, read from the repository root down to the current folder. `/almanac` can write one and import it from `CLAUDE.md`. |
+| `/skill` | `$skill` in Codex, `@skill` in ChatGPT. |
+| `userConfig` | None. The `jira` and `confluence` helpers read `MAGICIAN_JIRA_*` and `MAGICIAN_CONFLUENCE_*` environment variables. |
+
+The build keeps only the Agent Skills keys in the frontmatter. It moves every other key into `metadata` as a `claude-code.<key>` string, because `metadata` is a flat string map. It rewrites the `CLAUDE_PLUGIN_ROOT` and `CLAUDE_SKILL_DIR` variables to paths relative to the file, and the `CLAUDE_PLUGIN_DATA` folder to `$MAGICIAN_DATA` (default `~/.local/share/magician`). It drops `hooks/`, `monitors/`, `output-styles/`, `mods/`, `evals/` and `scripts/`.
+
+Sources: code.claude.com/docs/en/skills (frontmatter reference; spec-only consumers) · anthropic.com/news/donating-agent-skills-to-the-agentic-ai-foundation · learn.chatgpt.com/docs (Codex skills, plugin conversion guide) · learn.chatgpt.com/docs (long-running-work, developer-commands, agent-configuration/subagents, hooks, non-interactive-mode, agent-configuration/agents-md) · developers.openai.com/plugins (build/plugins, guides/submit-claude-plugin) · developers.openai.com/blog (skill evaluation).

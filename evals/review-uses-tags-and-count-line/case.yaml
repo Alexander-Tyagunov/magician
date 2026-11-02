@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.1",
+  "name": "review-uses-tags-and-count-line",
+  "graders": [
+    {
+      "name": "count-line",
+      "type": "regex",
+      "pattern": "\\d+ Important, \\d+ Nit, \\d+ Pre-existing"
+    },
+    {
+      "name": "findings-tagged-and-located",
+      "type": "llm",
+      "criteria": "Grade the code-review report in the final message against the review dialect.\n\nPASS only if ALL of these hold:\n1. The report summary opens with a count line of the form `N Important, N Nit, N Pre-existing` (optionally followed by `; N fixed, N closed with reason`), before the verdict and before any finding.\n2. Every finding names a location as `file:line` (for example `client/fetch.py:15`).\n3. Every finding carries exactly one tag: Important, Nit or Pre-existing.\n4. The number of findings listed under each tag matches the count line.\n\nFAIL if any finding lacks a tag or a `file:line`, if the count line is missing or comes after the findings, or if the counts disagree with the list."
+    },
+    {
+      "name": "reviewer-finds-hidden-failure",
+      "type": "llm",
+      "criteria": "Grade whether the review catches the correctness defect in `fetch()`.\n\nPASS if the report raises at least ONE of these as a finding:\n- `except Exception` retries every error, client errors such as HTTP 404 or a malformed URL included, which cannot succeed on retry.\n- After the last attempt the function returns `None`, so the caller cannot tell a failure from an empty body.\n- The loop sleeps after the final failed attempt, a wasted wait of up to `2 ** (retries - 1)` seconds.\n\nFAIL if none of these is raised."
+    },
+    {
+      "name": "simplifier-finds-needless-factory",
+      "type": "llm",
+      "criteria": "Grade whether the review flags the needless abstraction.\n\nPASS if the report raises, as a finding of any tag, that `RetryPolicyFactory` and `RetryPolicy` wrap a single integer and add nothing over passing `retries` directly (over-engineering, premature abstraction, or dead indirection).\n\nFAIL if neither class is questioned."
+    },
+    {
+      "name": "verifier-finds-assertionless-test",
+      "type": "llm",
+      "criteria": "Grade whether the review flags the weak test.\n\nPASS if the report raises, as a finding of any tag, that `test_fetch_returns_bytes` asserts nothing (it calls `fetch` and checks no result), or that no test covers the retry or the failure path.\n\nFAIL if the test is not questioned."
+    }
+  ]
+}

@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 import unittest
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_agents
 from _frontmatter import read_frontmatter
 
 
