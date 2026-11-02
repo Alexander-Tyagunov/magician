@@ -23,6 +23,8 @@ Do NOT write any code, scaffold any project, or take any implementation action u
 
 ## Completion Signal
 
+Before the Completion Signal, grade the spec against [references/rubric.md](references/rubric.md); list unmet items.
+
 "Conjure complete. Spec for <feature> approved and committed to .workspace/shared/specs/ (or, in Design-Only mode, mockups saved to .workspace/shared/mockups/). Screens: <design-dir>/screens/v<n>/; screenshots: <PNG paths per capture.md, or 'none'>. Run /magician:blueprint to create the implementation plan."
 
 ## References (read on demand)
@@ -40,7 +42,7 @@ Do NOT write any code, scaffold any project, or take any implementation action u
 
 ## Steps 1–2 — Explore, Clarify
 
-Read the code, git log, prior specs and research silently; then ask one clarifying question per turn until purpose, constraints, success criteria and edge cases are clear (details in gates.md).
+Read the code, git log, prior specs and research silently, plus `.workspace/shared/north-star.md` when it exists; then ask one clarifying question per turn until purpose, constraints, success criteria and edge cases are clear (details in gates.md).
 
 ## GATE 0 — Design Mode
 
@@ -48,7 +50,7 @@ Call `AskUserQuestion` with exactly the four options in [references/design-mode.
 
 ## GATE 1 — Approach Selection
 
-Present 2–3 approaches: write `<design-dir>/screens/v1/approaches.html` in every mode, then show it on the chosen surface or describe it and ask with `AskUserQuestion`. End your turn. **Do not present architecture until the user confirms an approach** ([references/gates.md](references/gates.md)).
+Present 2–3 approaches: write `<design-dir>/screens/v1/approaches.html` in every mode, then show it on the chosen surface or describe it and ask with `AskUserQuestion`. End your turn. **Do not present architecture until the user confirms an approach** ([references/gates.md](references/gates.md)). On the choice, record it in `.workspace/shared/decisions/` (format in gates.md).
 
 ## GATE 2 — Architecture Review
 
@@ -56,7 +58,7 @@ For the chosen approach only: write `architecture.mmd` (C4-style component diagr
 
 ## GATE 3 — UI Design (skip if no UI involved)
 
-A design system, not a one-off mockup — read [references/design-tokens.md](references/design-tokens.md), then follow [references/ui-design.md](references/ui-design.md) step by step. **Step 0 is mandatory: ground in the current design and the platform guidelines** — inventory `brand.md`, `design-tokens.css`, the app's own styles and components and follow them (the current design is the constraint, not a suggestion, unless the user asked for a rework or the app is greenfield), then pick the guideline set by platform (Material 3 / Apple HIG / Fluent 2 / the app's own system) and read its section of [lore/deep/design-principles.md](../../lore/deep/design-principles.md). Step 1 gives **three directions that vary inside the current design's constraints**; the seed/variation rule applies in full only to a greenfield app or an explicit rework. Steps 2–4: viewports; emit `design-tokens.css` + `brand.md`; present ONE mockup (light+dark, responsive) after the [review checklist](../../lore/deep/design-principles.md#review-checklist); capture it per theme and viewport when approved ([references/capture.md](references/capture.md)). Step 5: after approval, offer the bundled `/design-sync` once to push the tokens + `brand.md` into the project's design system when one exists; it edits project files through the normal permission prompt — never auto-run it.
+A design system, not a one-off mockup: read [references/design-tokens.md](references/design-tokens.md), then follow [references/ui-design.md](references/ui-design.md) step by step. **Step 0 is mandatory:** ground in the current design (`brand.md`, `design-tokens.css`, the app's styles and components; it is the constraint unless the user asked for a rework or the app is greenfield) and in the platform guidelines ([lore/deep/design-principles.md](../../lore/deep/design-principles.md)). Step 1: three directions inside those constraints. Steps 2–4: viewports; emit `design-tokens.css` + `brand.md`; ONE mockup (light+dark, responsive) after the [review checklist](../../lore/deep/design-principles.md#review-checklist), captured when approved ([references/capture.md](references/capture.md)). Step 5: offer `/design-sync` once; never auto-run it.
 
 ## GATE 3.5 — Design-Only Close (`DESIGN_ONLY` only)
 

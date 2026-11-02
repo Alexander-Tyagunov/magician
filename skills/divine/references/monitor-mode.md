@@ -29,6 +29,14 @@ Parse from the loop prompt and remember for every tick:
 
 ## Hard rules in monitor mode
 
+Monitor mode follows the six unattended rules in [lore/unattended.md](../../../lore/unattended.md). In this mode they mean:
+- The SHA state file is the bookmark.
+- A repo that `gh` or `glab` could not list gets a `could not read <owner/repo>: <error>` line. A failed list never counts as "no new PRs".
+- Before a post, read the PR again. Skip the post when the PR closed or its head SHA moved since the review.
+- Record the head SHA only after the post command returned success, or after the report was collected.
+- Re-read `.workspace/local/prefs.md` at the start of each tick.
+- Use a read-only token unless the post policy is on. State the spend cap when the loop starts.
+
 - **Never implement or push fixes** (Phase 6 is interactive only). Monitor mode reviews — and at most posts review comments — nothing else.
 - **Idempotent:** the SHA map prevents duplicate reviews/comments on an unchanged PR. Re-review only on new commits.
 - **Correct account** per repo org for any read or post.

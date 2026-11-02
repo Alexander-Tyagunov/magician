@@ -10,7 +10,7 @@ argument-hint: "[base-ref, e.g. main] [--lens simplifier]"
 
 > **Bundled command:** if `kg` is not found, run it as `${CLAUDE_PLUGIN_ROOT}/tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
 
-Review a code change with three specialist agents in parallel, consolidate the findings, then remediate in at most three rounds. Review and fix are one loop. (This skill absorbed the former `/absorb`.)
+Review a code change with three specialist lenses (inline when small, parallel agents above), consolidate the findings, then remediate in at most three rounds. Review and fix are one loop.
 
 ## Completion Signal
 
@@ -24,11 +24,11 @@ If `REVIEW.md` exists at the repository root, Read it first. Its values (what fa
 
 ## Effort
 
-Scale review depth to the change size. A tiny diff needs little. A large or security-sensitive change warrants `/effort high` (`xhigh` for a sprawling diff, and `max` only as an opt-in for a frontier problem). See [`lore/models.md`](../../lore/models.md).
+Scale effort to the change size. A large or security-sensitive change warrants `/effort high` (`xhigh` for a sprawling diff, `max` only as an opt-in). See [`lore/models.md`](../../lore/models.md).
 
 ## Autonomy — approve the plan, then run
 
-Phase 1 runs autonomously: batch the diff write and the lens dispatches in one message. Do not stop to ask before reads, searches, `kg query`/`blast`, or read-only `git diff`/`status`. Claude Code's built-in read-only commands do not prompt. This skill pre-approves `kg query`/`blast` and the writes under `.workspace/shared/diffs/`. The fix edits in Phase 2 go through the normal permission prompt unless the user runs in auto mode.
+Phase 1 runs autonomously. Do not ask before reads, searches, `kg query`/`blast`, or read-only `git diff`/`status`. This skill pre-approves `kg query`/`blast` and the writes under `.workspace/shared/diffs/`. The Phase 2 fix edits go through the normal permission prompt unless the user runs in auto mode.
 
 The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate: end your turn there and wait. Once approved, Phase 2 runs the fix rounds without gating on intermediate reads. Re-gate **only** on real side effects: the fix `Edit`s and a decision to close an `Important` finding without a fix. See [`lore/autonomy.md`](../../lore/autonomy.md).
 
@@ -36,11 +36,14 @@ The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate: end your 
 
 1. **Collect the scope and write the diff once.** `<base>` is the first word of `$ARGUMENTS` when given, otherwise `main`. Run each as its own plain command so it matches the pre-approval:
    ```bash
+   git diff <base>...HEAD --shortstat
    git diff <base>...HEAD --name-only
    git diff <base>...HEAD > .workspace/shared/diffs/review.patch
    ```
-   If `.workspace/` exists but `.workspace/shared/diffs/` does not, create that directory first (the `mkdir` prompts). If the repository has no `.workspace/` at all, do not create one for this. Run `git rev-parse --git-dir` and write the patch to `<git-dir>/magician-review.patch` instead, outside the tracked tree (that write also prompts). Note the patch path for step 2. Drop the `REVIEW.md` skip paths from the file list.
-2. **Dispatch the lenses in one message.** Fork or fresh follows [`lore/deep/review.md#fork-or-fresh`](../../lore/deep/review.md#fork-or-fresh). When the diff is already in context and small (about 40k tokens or less), each lens is a fork (`subagent_type: "fork"`). The fork prompt names the lens and tells it to Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md`. Otherwise use these fresh subagent types. The plugin registers them, and a fresh dispatch never reads their files by path:
+   If `.workspace/` exists but `.workspace/shared/diffs/` does not, create that directory first (the `mkdir` prompts). With no `.workspace/` at all, do not create one. Run `git rev-parse --git-dir` and write the patch to `<git-dir>/magician-review.patch` instead, outside the tracked tree (that write also prompts). Note the patch path. Drop the `REVIEW.md` skip paths from the file list. A small diff (3 files or fewer, 300 changed lines or fewer, by `--shortstat`) needs no patch file.
+2. **Small diff: run the lenses inline.** A High-tier change dispatches its lenses fresh at any size. Below the threshold, run each lens in the main loop with `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md` as its checklist, one lens at a time, and make no lens `Agent` call ([`lore/fold-first.md`](../../lore/fold-first.md)). Its re-review rounds run inline too. The gatekeeper stays fresh.
+
+   **Larger diff: dispatch the lenses in one message.** Fork or fresh follows [`lore/deep/review.md#fork-or-fresh`](../../lore/deep/review.md#fork-or-fresh). When the diff is already in context (about 40k tokens or less), each lens is a fork (`subagent_type: "fork"`). The fork prompt names the lens and tells it to Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md`. Otherwise use these fresh subagent types, which the plugin registers:
    - `magician:reviewer`: correctness and edge cases
    - `magician:sentinel`: security (OWASP, secrets, injection into app code)
    - `magician:simplifier`: over-engineering
@@ -48,7 +51,7 @@ The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate: end your 
 
    With `--lens <name>` in `$ARGUMENTS`, dispatch only that lens (the project `simplify` skill calls `/scrutinize --lens simplifier`).
 
-   **Context contract (no context loss, no re-dump):** each `Task` prompt is self-contained, because the agents see none of this conversation. Pass the patch **path** from step 1, which each agent reads, and the changed-file list. Add the goal ("review this change for <lens>"), the conventions and lore in play, and the `REVIEW.md` text. Add the ledger path on a re-review, and the output format below. Do **not** paste the full diff into each prompt (see [`lore/subagent-context.md`](../../lore/subagent-context.md)). If an agent returns `NEEDS_CONTEXT`, add the missing input and re-dispatch.
+   **Context contract:** each `Task` prompt is self-contained, because the agents see none of this conversation. Pass the patch **path** from step 1 and the changed-file list, never the pasted diff. Add the goal ("review this change for <lens>"), the conventions and lore in play, the `REVIEW.md` text, the ledger path on a re-review, and the output format below ([`lore/subagent-context.md`](../../lore/subagent-context.md)). On `NEEDS_CONTEXT`, add the missing input and re-dispatch.
 
    Each agent returns findings as:
    ```
@@ -58,10 +61,10 @@ The **SCRUTINY REPORT** (Phase 1, step 7) is the single approval gate: end your 
    ISSUE / VULNERABILITY: <what>
    FIX: <remediation>
    ```
-   **Finders optimize for recall. Consolidation optimizes for precision.** Never tell a lens agent to be conservative, to skip nits, or to report only high-severity issues. Current models follow that literally and withhold real bugs. Ask for full coverage with confidence and severity attached, then filter in steps 4 and 5.
+   **Finders optimize for recall. Consolidation optimizes for precision.** Never tell a lens to be conservative, to skip nits, or to report only high severity. Models follow that literally and withhold bugs. Ask for full coverage with confidence and severity attached, then filter in steps 4 and 5.
 
 3. **Collect all findings.**
-4. **Deduplicate.** Collapse the same issue flagged by several agents into one (note all sources). Drop findings the code refutes and findings without `file:line`.
+4. **Deduplicate.** Merge the same issue from several lenses into one (note all sources). Drop findings the code refutes and findings without `file:line`.
 5. **Prioritize.** Critical, then High, Medium, Low. Keep at most the nit cap (default 5) and note how many nits you withheld.
 6. **Present the consolidated report:**
    ```
@@ -120,7 +123,7 @@ Closed:   N (list with rationale)
 
 ## Circulate the report (optional)
 
-For a review the team will circulate, you can publish the SCRUTINY REPORT as a Claude Code **Artifact** (a live page on claude.ai, co-editable on Team and Enterprise plans). Offer it, do not create it unprompted. A **public** link (anyone with the URL can view it) is an outward sharing action. **Confirm it, and keep the page account-private by default. Never expose proprietary code, secrets, or unremediated findings to a public link.**
+You can offer to publish the SCRUTINY REPORT as a Claude Code **Artifact** (a live page on claude.ai). Never create it unprompted. A **public** link is an outward sharing action: **confirm it, keep the page account-private by default, and never expose proprietary code, secrets, or unremediated findings.**
 
 ## Obstacles
 

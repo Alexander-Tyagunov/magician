@@ -6,7 +6,7 @@ Present these as the options. Phrase the question to reflect the change you foun
 
 | Depth | Lenses | `/effort` | Grounding (`/magic`) | Adversarial verify | Best for |
 |---|---|---|---|---|---|
-| **Quick** | correctness only | low–med | none | criticals only | tiny diffs, a quick sanity pass |
+| **Quick** | correctness only | low–med | none | criticals only (in the main loop on a small diff) | tiny diffs, a quick sanity pass |
 | **Standard** *(default)* | correctness, security, simplification | medium | light (PR desc + in-repo specs) | each Critical/High once | everyday PRs |
 | **Deep** | + tests/verifier | high | yes — external docs/domain when unfamiliar | refute every Critical/High | important PRs, security-sensitive, epic MRs |
 | **Exhaustive** | all 4, loop-until-dry | deepest (`xhigh`, else `max`) | yes — full PRD/spec/story traceability | multi-vote (≥2 independent) per High+ | epics, migrations, contract changes, releases |
@@ -16,6 +16,11 @@ The risk tier in `REVIEW.md` sets the floor: a High-tier change (auth, payments,
 Map the choice onto reasoning effort with `/effort`, and prefer the latest coding model. If the session is on an older model than the depth warrants, **suggest** the upgrade rather than switch silently. See [`lore/models.md`](../../../lore/models.md).
 
 Scale agent count to depth and diff size, not a fixed number. A 3-file PR at Deep does not need 4 agents, and a 60-file epic at Exhaustive may warrant per-area finders.
+
+**Small diffs stay inline.** Measure the diff first (`git diff --shortstat`, or the PR's `changedFiles`, `additions` and `deletions`). At 3 files or fewer and 300 changed lines or fewer, the reviewer, sentinel and simplifier lenses run in the main loop ([`lore/fold-first.md`](../../../lore/fold-first.md)). Each one uses `agents/<lens>.md` as a checklist. Verification on that path:
+- **Quick:** no agent runs. The adversarial check below runs in the main loop. The report says `Verification: in-loop (Quick, small diff)` and offers a Standard re-run for a fresh check.
+- **Standard or deeper:** the adversarial check runs in one fresh agent when there is a Critical or High finding to refute. The verifier lens (Deep and Exhaustive) is a fresh agent.
+- **A High-tier change** per `REVIEW.md` gets Deep, so its verification is always fresh. A High-tier change dispatches its lenses fresh at any size.
 
 ## Grounding via /magic
 
@@ -44,7 +49,7 @@ A finding is a claim. Treat it like one. Before it reaches the report, **try to 
 - Check it is not already handled elsewhere (guard upstream, validation in a caller, a test that covers it).
 - Check it against intent — a "missing case" may be deliberately out of scope per the ticket.
 
-Default to **refuted when uncertain**. At Exhaustive depth, get ≥2 independent verdicts per High+ finding (a second `magician:reviewer`/`magician:sentinel` pass, or distinct lenses). Keep only those that survive a majority. List dropped candidates in the report's **✅ Dropped (false positives)** section. A visible list of dropped work builds trust, exactly as a strong human reviewer notes "candidates considered and rejected".
+In the main loop (Quick on a small diff), do the same three checks against the code, not against your memory of the finding. Default to **refuted when uncertain**. At Exhaustive depth, get ≥2 independent verdicts per High+ finding (a second `magician:reviewer`/`magician:sentinel` pass, or distinct lenses). Keep only those that survive a majority. List dropped candidates in the report's **✅ Dropped (false positives)** section. A visible list of dropped work builds trust, exactly as a strong human reviewer notes "candidates considered and rejected".
 
 ## Very large PRs
 

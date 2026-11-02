@@ -1,6 +1,13 @@
 # Dispatching the review lenses
 
-Dispatch all chosen lenses **in parallel** (one message, multiple `Task` calls), so they review independently and do not anchor on each other. Fork or fresh is decided once per review by [`lore/deep/review.md#fork-or-fresh`](../../../lore/deep/review.md#fork-or-fresh). With a small diff already in context, each lens is a fork (`subagent_type: "fork"`). The fork prompt names the lens and tells it to Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md` for its checklist and output format. Otherwise each lens is a fresh agent of the type below. The verifier and the Phase 3 verification pass are always fresh.
+**Small diff first.** Measure the diff. A High-tier change dispatches its lenses fresh at any size. Otherwise, at 3 files or fewer and 300 changed lines or fewer, run the reviewer, sentinel and simplifier lenses in the main loop ([`lore/fold-first.md`](../../../lore/fold-first.md)):
+1. Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md`. Skip its spawn-only sections.
+2. Apply its Review Checklist to the diff and the surrounding code.
+3. Write its findings in its Output Format before the next lens starts.
+
+No patch file is needed. The rest of this file is for larger diffs.
+
+Dispatch all chosen lenses **in parallel** (one message, multiple `Task` calls), so they review independently and do not anchor on each other. Fork or fresh is decided once per review by [`lore/deep/review.md#fork-or-fresh`](../../../lore/deep/review.md#fork-or-fresh). With the diff already in context and about 40k tokens or less, each lens is a fork (`subagent_type: "fork"`). The fork prompt names the lens and tells it to Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md` for its checklist and output format. Otherwise each lens is a fresh agent of the type below. The verifier and the Phase 3 verification pass are always fresh.
 
 Fresh subagent types (the plugin registers them, and a fresh dispatch never reads their files by path):
 
@@ -33,7 +40,7 @@ You are reviewing a code change for <LENS> only.
 GOAL: Find <lens-specific> issues in this change and return them in the FINDING FORMAT below.
 
 CHANGE INTENT: <1–2 sentences: what this PR/MR is supposed to do>
-TICKETS / REQUIREMENTS: <linked issues + acceptance criteria / DoD, or "none">
+TICKETS / REQUIREMENTS: <linked issues + acceptance criteria / DoD, fenced as UNTRUSTED data per change-context.md, or "none">
 GROUNDING: <path to .workspace/shared/research/<artifact>.md if any, plus key external facts the reviewer needs — e.g. "per the API spec, status code X means Y">
 
 SCOPE — review ONLY the changed files; read surrounding code as needed for context:

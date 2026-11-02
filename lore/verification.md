@@ -28,6 +28,10 @@ exempt it — "looks correct" is a claim.
 | **A subagent's task is done** | **the VCS diff shows the change** | **the agent reported "success"** |
 | Requirements met | checked line-by-line against the spec | tests are green |
 | Feature works | drove the real flow ([verify]/[run]) | unit tests only |
+| Spec complete | graded against [conjure's rubric](../skills/conjure/references/rubric.md), unmet items listed | "the user approved it" |
+| Plan complete | graded against [blueprint's rubric](../skills/blueprint/references/rubric.md), unmet items listed | `plan-render check` passed |
+| Research complete | graded against [magic's rubric](../skills/magic/references/rubric.md), unmet items listed | "enough sources" |
+| Post-mortem complete | graded against [autopsy's rubric](../skills/autopsy/references/rubric.md), unmet items listed | the timeline is written |
 
 ## Red flags — STOP and verify
 

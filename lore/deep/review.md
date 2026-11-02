@@ -64,9 +64,10 @@ Rules:
 
 A fork subagent (`subagent_type: "fork"` on the Agent call) inherits the whole conversation, the parent's tools, model and prompt cache. A fresh subagent (`magician:reviewer` and the other lens types) starts from its definition file with only the spawn prompt. Pick by this rule, once, for the whole review:
 
+- **Below the fold-first threshold, dispatch no lens at all.** A diff of 3 files or fewer and 300 changed lines or fewer runs each lens in the main loop, with `agents/<lens>.md` read as a checklist ([`lore/fold-first.md`](../fold-first.md)). The fork and fresh rules below apply above that threshold.
 - **Fork the lenses when the diff is already in context** and is small (about 40k tokens or less). Three forks over the same diff do not re-read the repository, and their first request reuses the parent's cache. A fork does not load the agent definition. So the fork prompt must name the lens and tell it to Read `${CLAUDE_PLUGIN_ROOT}/agents/<lens>.md` for its checklist and output format. A fork runs on the main session's model, and it has no `memory:` of its own.
 - **Dispatch fresh agents otherwise:** the diff is large, the diff is not in context (the patch artifact is), or the lens must not inherit the author's framing. Fresh lenses carry their own model, effort and memory.
-- **The verification stage is always fresh.** Adversarial verification and the verifier lens refute the findings against the code. A fork carries the author's bias into that stage, so it never runs as a fork. `lore/verification.md` demands fresh evidence for the same reason.
+- **The verification stage is always fresh.** Adversarial verification and the verifier lens refute the findings against the code. A fork carries the author's bias into that stage, so it never runs as a fork. `lore/verification.md` demands fresh evidence for the same reason. The one exception is a Quick review of a small diff: it verifies in the main loop and states `Verification: in-loop` in the report.
 - If `Agent(fork)` is denied in the permission settings, or fork mode is off (`CLAUDE_CODE_FORK_SUBAGENT=0`), dispatch fresh agents and say so in the report.
 
 ## REVIEW.md <a id="review-md"></a>

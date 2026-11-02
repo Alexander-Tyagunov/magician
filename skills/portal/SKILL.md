@@ -24,6 +24,17 @@ Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git op
 4. **Confirm** the new worktree path to the user
 5. Say: "Worktree created at `../<path>`. Work there for isolation. Run /seal when ready to merge."
 
+## Alternatives at agent scale
+
+Pick the lightest isolation that fits. Feature-detect each one. Do not ask the user to check a version.
+
+- **`claude --worktree <name>`.** Use it when `claude --help` lists `--worktree`. It starts a new session in its own worktree and copies the files listed in `.worktreeinclude`. Tell the user the command. Do not run it from this session.
+- **Agent `isolation: worktree`.** Use it for a dispatched subagent that edits files in parallel with others. Set it in the agent's frontmatter or in the `Agent` call when the tool accepts it. Claude Code removes the worktree when the agent made no change.
+- **`git sparse-checkout` in a monorepo.** Use it when the repository has more than about 10,000 tracked files and the feature touches one or two packages. After step 2, run `git -C ../<repo-name>-<name> sparse-checkout set --cone <package-dirs>`. That command is not pre-approved, so it prompts. Add the shared config folders the build needs.
+- **Plain `git worktree add`.** Use it in every other case (the process above).
+
+Keep each change small and state its intent in the branch name and the first commit ([lore/git.md](../../lore/git.md)).
+
 ## Process (disableGit mode)
 
 1. Create a feature directory: `mkdir -p .features/<name>`

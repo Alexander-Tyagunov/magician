@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# SubagentStop hook (matcher "^magician:"): when one of magician's own agents finishes, records a
-# BLOCKED or DEGRADED status line in .workspace/local/obstacles.jsonl, which the /chronicle and
-# /manifest roll-ups read. This is the one hook that reads a transcript, and only the agent's own:
-# the last 4 KiB of the file named by the event's transcript path (the agent transcript path when
-# the event carries one), only to look for "STATUS: BLOCKED" or "STATUS: DEGRADED"; nothing else
-# from it is kept. It writes only when the project has a .workspace folder (set up by /almanac,
-# whose .gitignore entry keeps .workspace/local/ out of commits). Plain bash 3.2; always exits 0.
+# SubagentStop hook (matcher "^magician:"): when one of magician's own agents finishes, records its
+# final status in .workspace/local/obstacles.jsonl: BLOCKED or DEGRADED with the obstacle text, or
+# CLEAN (empty obstacle) for STATUS: DONE. The /chronicle and /manifest roll-ups read it; /chronicle
+# consolidate counts the CLEAN rows. This is the one hook that reads a transcript, and only the
+# agent's own: the last 4 KiB of the file named by the event's transcript path (the agent transcript
+# path when the event carries one), only to look for "STATUS: BLOCKED", "STATUS: DEGRADED" or
+# "STATUS: DONE"; nothing else from it is kept. It writes only when the project has a .workspace
+# folder (set up by /almanac, whose .gitignore entry keeps .workspace/local/ out of commits).
+# Plain bash 3.2; always exits 0.
 export LC_ALL=C
 
 INPUT=""; [ ! -t 0 ] && INPUT=$(head -c65536 2>/dev/null | tr -d '\n\r')
@@ -40,14 +42,19 @@ TAIL=$(tail -c 4096 "$PATH_RAW" 2>/dev/null | tr -d '\000')
 # The last status marker in the tail, and the text that follows it on the same line (a transcript
 # line is JSON, so the text ends at the next quote or backslash).
 STATUS=""; OBSTACLE=""
-re_status='STATUS: (BLOCKED|DEGRADED)[] :-]*([^"\\]{0,400})'
+re_status='STATUS: (BLOCKED|DEGRADED|DONE)[] :-]*([^"\\]{0,400})'
 t=$TAIL
 while [[ $t =~ $re_status ]]; do
+  m=${BASH_REMATCH[0]}
+  t=${t#*"$m"}
+  if [ "${BASH_REMATCH[1]}" = DONE ]; then   # DONE_WITH_... is not a clean DONE
+    case "${m#STATUS: DONE}" in [A-Za-z0-9_]*) continue ;; esac
+  fi
   STATUS=${BASH_REMATCH[1]}
   OBSTACLE=${BASH_REMATCH[2]}
-  t=${t#*"${BASH_REMATCH[0]}"}
 done
 [ -n "$STATUS" ] || exit 0
+[ "$STATUS" = DONE ] && { STATUS=CLEAN; OBSTACLE=""; }
 OBSTACLE=$(printf '%s' "$OBSTACLE" | tr -s '[:space:]' ' ')
 OBSTACLE=${OBSTACLE# }; OBSTACLE=${OBSTACLE% }
 

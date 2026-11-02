@@ -17,6 +17,8 @@ Put every consultation, clarification, and decision to the user through AskUserQ
 
 ## Completion Signal
 
+Before the Completion Signal, grade the findings against [`references/rubric.md`](references/rubric.md); list unmet items.
+
 "Magic complete. Researched <topic> across <N> sources. Findings <saved to .workspace/shared/research/… | delivered above>. Suggested next: <skill>."
 
 ## Obstacles

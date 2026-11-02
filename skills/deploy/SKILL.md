@@ -122,7 +122,9 @@ gh run watch <run-id> --exit-status   # Bash background option; non-zero exit = 
 ```
 For an unattended "until green" wait, pair with **`/goal`**, or schedule with **`/loop`** (self-paces when the interval is omitted).
 
-**Background CI watcher.** Running `/deploy` also starts magician's `ci-watch` monitor for the session. Every 90 s it asks `gh` for the newest failed GitHub Actions run on the current branch; the first check only records a baseline, and each later new failure is reported as a single line with the run ID only (the number in the run's Actions URL). It prints nothing without `gh`, a git repository, an `origin` remote or a branch, and stops after about 3 hours or when the session ends.
+**Background CI watcher.** Running `/deploy` also starts magician's `ci-watch` monitor for the session. Every 90 s it asks `gh` for the newest failed GitHub Actions run on the current branch; the first check only records a baseline, and each later new failure is reported as a single line with the run ID only (the number in the run's Actions URL). It prints nothing without `gh`, a git repository, an `origin` remote or a branch, and stops after about 3 hours or when the session ends. The watcher keeps its own baseline as its bookmark. A `/loop` or `/goal` you start on top of it follows [lore/unattended.md](../../lore/unattended.md): a bookmark of the last run ID, a "could not read" line for a failed `gh` call, and a live re-check before any push.
+
+**Scheduled maintenance.** For a `/loop` that watches a pipeline or service metric, use the 1σ/2σ/3σ bands in [references/control-bands.md](references/control-bands.md): 1σ logs only, 2σ investigates read-only, 3σ opens a PR or a runbook. No band acts in production.
 
 ### Fixing a Failed Pipeline (loop until green)
 
@@ -136,6 +138,20 @@ For an unattended "until green" wait, pair with **`/goal`**, or schedule with **
 After the requirements answers (the three questions — provider, stages, environments — plus the one-shot create plan), execute the remaining phases **autonomously**: detecting existing pipelines, generating the template, and monitoring (`gh run list`/`view`/`watch`, `--log-failed`), plus `kg query` and read-only git need no confirmation question.
 Re-gate **only** on this skill's real side effects: edits to the workflow file, `git add`/`commit`/`push`, and PR create. Do not weaken the write gate above. Commands outside the pre-approved list above (git writes, `gh pr create`) still show Claude Code's normal permission prompt.
 Doctrine: [lore/autonomy.md](../../lore/autonomy.md).
+
+### Tiered autonomy by environment
+
+Act up to the production gate. Never act past it.
+
+| Environment | What this skill does | Gate |
+|---|---|---|
+| dev | Write, run and re-run pipelines freely. | none beyond the write gate above |
+| staging | Trigger deploys, run smoke checks, and rehearse the rollback. | the write gate above |
+| production | Prepare only: the workflow change, the release notes, the rollback command. A human runs the deploy. | never trigger a production deploy, promote or approval step |
+
+- Rehearse the rollback in staging before you prepare a production change. Record the rollback command and its result in the plan.
+- A workflow job that targets production must keep a required human approval (`environment:` with protection rules on GitHub Actions, `when: manual` on GitLab CI). Never remove one.
+- When you cannot tell which environment a job targets, treat it as production.
 
 ## Obstacles
 

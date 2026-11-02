@@ -1,7 +1,7 @@
 ---
 name: seal
 description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
-allowed-tools: Read, Task, AskUserQuestion, Edit(./CLAUDE.md), Edit(./README.md), Bash(git add -A), Bash(git commit -m *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh pr checks *), Bash(gh pr view *), Bash(gh pr merge --squash --delete-branch), Bash(gh run view *)
+allowed-tools: Read, Task, AskUserQuestion, Edit(./CLAUDE.md), Edit(./README.md), Bash(git add -A), Bash(git commit -m *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh pr checks *), Bash(gh pr view *), Bash(gh pr merge --squash --delete-branch), Bash(gh run view *), Bash(gh run list *)
 argument-hint: "[pr-title]"
 ---
 
@@ -69,7 +69,7 @@ When the project has a `verify` or `simplify` skill, Claude Code runs it as part
 Steps 1 to 4 ran autonomously. Before the first outward command (`git push`), present **one** consolidated ship summary. Then gate the outward push, PR and merge through **AskUserQuestion**: end your turn at the call and act on the choice. The summary covers:
 - **Changed files**: the diff going out (from step 4's `git add -A`).
 - **Commit message**: what step 4 committed.
-- **PR title and body**: the title plus the Summary and Test plan from step 6.
+- **PR title and body**: the title plus the Summary, Intent, Risk tier, How to revert and Testing from step 6.
 - **Merge strategy**: for example `--squash --delete-branch` (step 9).
 
 Ask **"Ship this branch?"** with these options:
@@ -86,42 +86,30 @@ git push -u origin HEAD
 
 ### 6. Create PR
 
-Use the PR title and body approved at the ship-summary gate. Do not prompt for a title again:
-```bash
-gh pr create --title "<title>" --body "$(cat <<'EOF'
-## Summary
-- <what was built>
-- <key decisions>
-
-## Test plan
-- [ ] All tests pass
-- [ ] Types clean
-- [ ] Lint clean
-- [ ] Manually verified: <golden path>
-
-Built with magician + Claude Code
-EOF
-)"
-```
-The `$(…)` body can keep this command from matching the `gh pr create` pre-approval. If Claude Code asks to confirm it, that is its own permission check, separate from the ship-summary gate.
+Use the PR title and body approved at the ship-summary gate. Do not prompt for a title again. Run `gh pr create` with the body from [references/pr-body.md](references/pr-body.md). The body carries these lines:
+- **Intent** and **Links** (intent, spec and plan paths under `.workspace/shared/`).
+- **Risk tier** (Low / Medium / High, from the project's `REVIEW.md` tiers when present, else `lore/review.md`) and the human approvals it needs.
+- **How to revert** (the exact revert command, flag or down-migration).
+- **Testing.**
 
 ### 7. Watch CI (evaluator-optimizer loop)
 
-Run the checks watcher with the Bash tool's background option, so the turn is not held open. You are notified when it exits. Then read its output:
-```bash
-gh pr checks <pr> --watch
-```
-
-Then loop. On a failing check: run `gh run view <id> --log-failed`, fix, commit, `git push -u origin HEAD`, start the watcher again, and repeat until every check is green. For a long or unattended wait, pair with **`/goal`** ("PR checks green, then merged") so Claude keeps driving across turns. On a schedule, `/loop check CI on my PR` self-paces when you omit the interval.
+Run `gh pr checks <pr> --watch` with the Bash tool's background option. On a failing check, read `gh run view <id> --log-failed`, fix, commit, push, and watch again until every check is green. Steps, `/goal` and `/loop` pairing, and the unattended rules ([lore/unattended.md](../../lore/unattended.md)): [references/ci-loop.md](references/ci-loop.md).
 
 ### 8. Review comments
 
 If reviewers add comments: use `/scrutinize` to process and remediate them, then `/certify`, then `git push -u origin HEAD`. The `/scrutinize` round ledger keeps a finding closed in an earlier round from a repeat. The platform's own review (`/code-review`, the `@claude review` GitHub flow) is an alternative, described in [`lore/deep/review.md#platform-surfaces`](../../lore/deep/review.md#platform-surfaces).
 
 ### 9. Merge (if auto-merge is not enabled)
+
+First run the approval check in [references/pr-body.md](references/pr-body.md#approval-check-before-the-merge-step-9). Merge only when the head commit has the human approvals the Risk tier needs. Otherwise stop and say what is missing.
 ```bash
 gh pr merge --squash --delete-branch
 ```
+
+### 10. Fix forward (offer)
+
+After the merge, offer a `/loop` on post-merge CI with `AskUserQuestion`. On a red run, open a small fix-forward PR through the ship-summary gate. Do not revert unless the fix is unclear. Ship a risky change behind a feature flag. Rules: [references/ci-loop.md](references/ci-loop.md#post-merge-fix-forward-after-step-9).
 
 ## disableGit mode
 

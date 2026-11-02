@@ -82,7 +82,7 @@ Exact `AskUserQuestion` tool configurations for the run-once setup flow. Do not 
 }
 ```
 
-A file that exists is never overwritten. In Shared mode, step 10 commits the written files.
+A file that exists is never overwritten. In Shared mode, step 11 commits the written files.
 
 ## Permission suggestions (step 7)
 
@@ -108,4 +108,42 @@ A file that exists is never overwritten. In Shared mode, step 10 commits the wri
 }
 ```
 
+If **Show suggestions**: print a short list in chat, built from the detected stack, and write nothing:
+- **Allow** — the project's own test, lint and build commands, each named with its subcommand (for example `Bash(npm test *)`, `Bash(npm run lint *)`, `Bash(pytest *)`, `Bash(go test *)`). Never suggest a whole CLI (`Bash(git *)`, `Bash(npm *)`), an interpreter, or a package launcher.
+- **Deny** — files that should stay off-limits to Claude (for example `Read(./.env)`, `Read(./.env.*)`, `Read(./secrets/**)`, plus any credential files you noticed while inspecting the project).
+
+Then tell the user they can add any of these with `/permissions` (or by editing their own settings). Trust is per task type: suggest an allow rule that lets a magician skill run without prompts only for a skill that `/chronicle consolidate` shows with 5 or more clean runs and no blocked run.
+
+Add one more line to the same list: STE-lite, magician's simplified technical English for prose, is off by default. To turn it on, the user runs `magician-ui ste on` or creates a `.magician/ste` file with the content `on`. Write no file for it.
+
 If **Skip**: continue. Do not ask again this session.
+
+## Optional extras (step 9)
+
+```json
+{
+  "questions": [
+    {
+      "question": "Add any optional extras? Each one is small, and almanac installs nothing.",
+      "header": "Extras",
+      "multiSelect": true,
+      "options": [
+        {
+          "label": "North star",
+          "description": "A one-paragraph .workspace/shared/north-star.md: what the project is for and the outcome that shows it works. /manifest and /conjure read it."
+        },
+        {
+          "label": "Production-gate hook template",
+          "description": "A hook template at .workspace/shared/hooks/production-gate.sh that blocks a production deploy unless RELEASE_APPROVAL is set, plus a settings snippet you can paste. Not installed."
+        },
+        {
+          "label": "Cost attribution hints",
+          "description": "How to tag OpenTelemetry cost metrics per team and project, and how to read magician's own token cost. Printed in chat only."
+        }
+      ]
+    }
+  ]
+}
+```
+
+No selection: continue.

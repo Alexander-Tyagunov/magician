@@ -25,11 +25,22 @@ Everything else is a suggestion, not a failure.
 
 The tier comes from what the change touches, never from who wrote it.
 
-| Tier | Paths or changes | Review depth |
-|---|---|---|
-| Low | docs, comments, tests only, `<leaf paths>` | Quick |
-| Medium | application logic, public interfaces, dependency bumps | Standard |
-| High | `<auth paths>`, `<payment paths>`, migrations, `.github/workflows/`, secrets handling | Deep, fresh verification, a human approves |
+| Tier | Paths or changes | Review depth | Human approvals |
+|---|---|---|---|
+| Low | docs, comments, tests only, `<leaf paths>` | Quick | 0 |
+| Medium | application logic, a shared or public interface, shared data, dependency bumps | Standard | 1 |
+| High | `<auth paths>`, `<payment paths>`, migrations, `.github/workflows/`, secrets handling, no easy rollback | Deep, fresh verification | 2 |
+
+Tier examples:
+
+- Low: a README typo, a new unit test, a comment fix in `<leaf path>`.
+- Medium: a new API field, a changed validation rule, a minor dependency bump.
+- High: a change to `<auth middleware path>`, a schema migration, a new CI workflow step, a secret rotation.
+
+Approval rules:
+
+- An agent's approval never counts as a human approval.
+- An approval binds to the commit it was given on. A new commit needs a new approval.
 
 ## Skip paths
 
@@ -70,6 +81,14 @@ The first line of every review summary is the count line. The findings follow it
 - Round 2 and later review only the diff since the previous round.
 - A finding an earlier round fixed or closed is never repeated. The ledger is `.workspace/shared/diffs/<ref>-rounds.md`.
 - Every `Important` finding ends as fixed or as closed with a reason.
+
+## Pull request fields
+
+Every pull request description fills these fields. Review reads them as the change's intent.
+
+- **Testing:** <the tests or commands that prove the change, and their result>
+- **Risk tier:** <Low, Medium or High per the tiers above, and why>
+- **How to revert:** <the revert command or steps, and any data or migration step that a revert does not undo>
 
 ## House conventions the reviewers must know
 

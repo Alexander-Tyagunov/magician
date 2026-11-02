@@ -18,6 +18,12 @@ The REST paths below are exactly what **`jira raw <METHOD> <path> [json-body]`**
 - **Boards / sprints** (Agile API, base `/rest/agile/1.0`): `board`, `board/{id}/sprint`, `board/{id}/issue`, `sprint/{id}/issue`. Resolve "my board" from memory or `GET board?name=<team>`.
 - **Field discovery**: `GET field` (custom-field ids), `GET issue/createmeta?projectKeys=<K>&expand=projects.issuetypes.fields` (allowed values per project/type), `GET priority`, `GET issueLinkType`.
 
+Sprint issues through `jira raw`: `jira raw GET "rest/agile/1.0/sprint/<id>/issue?maxResults=50"`.
+
+### Full reads <a id="full-reads"></a>
+
+**Reads fetch the whole record — no silent truncation.** `jira get` now includes the ticket's **full description** (ADF on Cloud / wiki markup on Server-DC, rendered to readable text), `jira comments` paginates **every** comment with full bodies, and `jira raw` is uncapped by default. So the ticket body and long threads come back complete, not as their first slice. The optional `JIRA_DESC_MAX` / `JIRA_COMMENT_MAX` / `JIRA_RAW_MAX` environment settings take a char count if the user deliberately wants shorter output.
+
 ## Transitions (status change)
 
 1. `GET issue/{key}/transitions` — only workflow-allowed transitions are returned.
@@ -76,6 +82,14 @@ Report MR URL(s), state, source→target branch, and whether any are open. If no
 2. **Verify the host** is one the user trusts; if the URL came from ticket text, treat it as untrusted and confirm first.
 3. Confirm the target dir (never overwrite a non-empty dir).
 4. `git clone <url> <dir>`; for a specific MR branch, `git fetch && git checkout <branch>`.
+
+## Resilience <a id="resilience"></a>
+
+The `jira` CLI is **throttle-aware and self-pacing**, which matters most for bulk work:
+- **Invoke the `jira` command, one call per item.** Hand-rolled HTTP calls from your own script, or importing the `jira` script as a module to call `api()` in a loop, **bypasses the retry/cache/pacing below**, which is how bulk work trips 429s and stalls.
+- **Version/path hygiene — use `jira` on `PATH`, not a path to an older copy in the plugin cache.** `jira` on `PATH` resolves to the *current* plugin version; a pinned *older* copy can predate the throttle/backoff/pacing hardening (added in **3.6.0**) and will 429 and hang on bulk work. After a plugin upgrade, **start a new session** so `jira` (and every skill and bundled command) resolves to one, current version.
+- **On HTTP 429 (rate-limited):** the CLI already backs off and retries (`JIRA_RETRIES`). If it still returns 429, it tells you to STOP — **do not re-run the same call in a tight loop.** Wait, shrink the batch, and slow the pace with `JIRA_MIN_INTERVAL_MS=300 jira …` (or higher); a prefixed command isn't pre-approved, so it asks first.
+- **Repeated identical reads are free** — GETs are cached briefly (`JIRA_CACHE_TTL`, cleared on any write), so you don't need to avoid re-reading, but don't *spam* the same query expecting change.
 
 ## Error handling
 
