@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1",
+  "name": "small-diff-stays-inline",
+  "graders": [
+    {
+      "name": "no-subagents",
+      "type": "tool_used",
+      "tool": "Agent",
+      "min": 0,
+      "max": 0,
+      "arm": "both"
+    },
+    {
+      "name": "finds-the-truncate-bug",
+      "type": "llm",
+      "criteria": "Grade the review of the `truncate` diff.\n\nPASS if the report raises at least ONE of these:\n- The result can be longer than `limit`: the text is cut at `limit` and then `...` is appended, so it returns `limit + 3` characters.\n- A text of exactly `limit` characters is cut and gets an ellipsis, because the check is `<` instead of `<=`.\n\nFAIL if neither is raised, or if the review calls the change correct."
+    }
+  ]
+}

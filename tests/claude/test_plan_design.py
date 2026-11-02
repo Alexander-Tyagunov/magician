@@ -5,7 +5,11 @@ contrast for every text token on the canvas and the surface in both themes (and 
 boundary line), 44 px hit areas on every button, a prefers-reduced-motion block, a visible
 `:focus-visible` style, and a `<title>`, `<desc>` and a screen-reader data table for every chart.
 Tokens are parsed out of the template in the tool source, so a palette change that breaks contrast
-fails here before it ships.
+fails here before it ships. The live-loop additions are held to the same contract: the revising ring
+is a `role="status"` live region inside an `aria-busy` card, notices from the session land in a
+visually-hidden live region that is announced even while the helper panel is closed, and every
+control that must not fire during a revision (or in a read-only artifact view) is `disabled`, not
+merely greyed.
 """
 from __future__ import annotations
 
@@ -153,6 +157,44 @@ class ChartAccessibilityTests(unittest.TestCase):
         for key in ("'ArrowRight'", "'ArrowLeft'", "k==='r'", "k==='s'", "k==='a'", "k==='c'", "k==='e'",
                     "k==='d'", "k==='h'", "k==='?'"):
             self.assertIn(key, self.html)
+
+
+class LiveLoopA11yTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.html = rendered()
+
+    def test_revising_ring_is_a_live_region_inside_an_aria_busy_card(self) -> None:
+        self.assertIn("card.setAttribute('aria-busy',busy?'true':'false')", SRC)
+        self.assertIn('<div class="revising" role="status" aria-live="polite">', SRC)
+        self.assertIn('<svg class="ring" viewBox="0 0 40 40" aria-hidden="true">', SRC, "the ring is decorative; the text carries the meaning")
+        self.assertIn("<b>Claude is revising '+esc(s.id)+'</b>", SRC)
+        self.assertIn('<span class="mono" id="elapsed">', SRC)
+        self.assertRegex(SRC, r"\.ring circle\.arc\{[^}]*animation:spin 1\.2s linear infinite")
+        self.assertIn(".ring circle.arc{stroke-dasharray:160 0}", SRC, "reduced motion: a static full ring, no spinner")
+        self.assertIn('<div class="banner" role="status" aria-live="polite">Waiting for Claude — check the session', SRC)
+        self.assertEqual(SRC.count("const WAIT_MS=600000"), 1)
+
+    def test_notices_have_a_live_region_outside_the_helper_panel(self) -> None:
+        self.assertIn('<div class="sr" id="livenote" role="status" aria-live="polite"></div>', self.html)
+        self.assertIn('<div class="helper-log" id="helperlog" aria-live="polite">', self.html)
+        self.assertIn("const ln=$('#livenote'); if(ln) ln.textContent=", SRC, "helperSay mirrors Claude/system lines into the hidden live region")
+        self.assertIn('<div class="toast" id="toast" role="status" aria-live="polite"></div>', self.html)
+
+    def test_controls_are_disabled_while_revising_or_read_only(self) -> None:
+        self.assertIn("const off=busy||link.readOnly;", SRC)
+        for act in ("approve", "change", "edit", "defer"):
+            self.assertRegex(SRC, r'data-act="%s"[^>]*\'\+\(off\?\' disabled\':\'\'\)' % act, f"{act} button is disabled, not just styled")
+        self.assertIn("$('#approveplan').disabled=!(PLAN.status==='in_review'||PLAN.status==='draft')||link.readOnly;", SRC)
+        self.assertIn("$('#reject').disabled=link.readOnly||PLAN.status==='approved'||PLAN.status==='rejected';", SRC)
+        self.assertIn("$('#helpersend').disabled=link.readOnly;", SRC)
+        self.assertIn("if(s.review.status==='revising'||link.readOnly) return;", SRC, "keyboard shortcuts respect the same gate")
+        self.assertIn(".btn:disabled{opacity:.38;cursor:default;pointer-events:none}", SRC)
+
+    def test_what_changed_table_is_a_real_table_with_headers(self) -> None:
+        self.assertIn('<table class="changes"><thead><tr><th>Field</th><th>v', SRC)
+        self.assertIn('<th scope="row" class="mono">', SRC)
+        self.assertIn('<span class="chip accent" data-badge="version">v', SRC)
 
 
 if __name__ == "__main__":

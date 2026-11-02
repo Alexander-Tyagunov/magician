@@ -1,7 +1,7 @@
 ---
 name: accelerate
-description: Systematic performance profiling and optimization with a mandatory baseline-first gate — measure before changing, re-measure after. Use when something is slow or you need to hit a latency/throughput target.
-allowed-tools: Read, Grep, Glob, Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *)
+description: Performance profiling and optimization, baseline first. Use when something is slow or must hit a latency/throughput target.
+allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *)
 argument-hint: "[what is slow] [target, e.g. p99<500ms]"
 ---
 
@@ -89,22 +89,15 @@ This is a **bounded evaluator-optimizer loop**: if the target isn't met, return 
 
 For a result worth circulating, you can publish the baseline→optimized report as a Claude Code **Artifact** (a live page on claude.ai, team-co-editable on Team/Enterprise) — offer it, don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward sharing action: **confirm it, keep it account-private by default, and never expose proprietary/internal system detail or secrets to a public link.**
 
+**Dashboard offer.** Offer a Dashboard artifact (a page that re-runs its queries) only when both conditions hold:
+- the session has the Artifact tool;
+- the metrics come from a warehouse or a query source (BigQuery, Snowflake, Redshift, ClickHouse, a metrics database), not from a one-off local benchmark.
+
+Ask once, in one sentence, after the Phase 5 report. Do not build it without a yes. Keep it account-private, and never put credentials in the page.
+
 ## Obstacles
 
-If this skill runs as a dispatched unit (under /orchestrate, /weave, /manifest, /transmute, or another skill) and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return an Obstacles block to the caller, alongside whatever you did complete:
-
-```
-STATUS: BLOCKED | DEGRADED | NEEDS_CONTEXT
-OBSTACLE: <one-line label of what blocked or degraded the task — the claim alone>
-BLOCKER: <the specific, actionable cause — distilled, never a raw traceback or dumped log>
-SEVERITY: Critical | High | Medium | Low
-WORKAROUND: <what you did to proceed and what it leaves unverified; empty if still fully blocked>
-RECURRENCE: First-seen | Recurring | Systemic
-SCOPE: <this task only | likely hits sibling/downstream work too>
-NEXT: <the action or decision the caller must make to clear it — retry with X, supply input Y, accept degraded, or escalate>
-```
-
-When invoked interactively by a human, surface the same obstacle in prose instead. Omit the block entirely on a clean run. See [lore/obstacles.md](../../lore/obstacles.md).
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
 
 ## Completion Signal
 

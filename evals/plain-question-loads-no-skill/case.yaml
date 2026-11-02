@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.1",
+  "name": "plain-question-loads-no-skill",
+  "graders": [
+    {
+      "name": "no-workflow-skill",
+      "type": "tool_used",
+      "tool": "Skill",
+      "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?(?:magic|conjure|manifest|blueprint|ward|unravel|divine|scrutinize|sentinel|accelerate)\"",
+      "min": 0,
+      "max": 0,
+      "arm": "both"
+    },
+    {
+      "name": "answers-the-question",
+      "type": "llm",
+      "criteria": "The user asked, in plain words, how a Python list differs from a tuple, in at most three sentences.\n\nPASS only if ALL of these hold:\n1. The answer says a list is mutable and a tuple is immutable (or the same in other words).\n2. The answer is at most three sentences of prose, with no plan, spec, checklist or review report.\n\nFAIL if the answer gets mutability wrong, or if it turns the question into a workflow (a plan, a TDD cycle, research notes)."
+    }
+  ]
+}

@@ -15,6 +15,8 @@ from pathlib import Path
 import re
 import unittest
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_skills
 from _frontmatter import read_frontmatter
 import _strict_frontmatter as S
 
@@ -34,6 +36,9 @@ VALID_TOOLS = {
 }
 NEVER_GRANTED = {"Write", "NotebookEdit", "Monitor", "WebSearch"}
 MUST_BE_SCOPED = {"Bash", "Edit", "WebFetch"}
+# Skills that grant Grep/Glob for a narrow file set (CI files, the workspace, the plugin's own
+# data) rather than code search; they are not held to the Bash search-grant set.
+SEARCH_GRANT_EXEMPT = {"chronicle", "conjure", "deploy", "inscribe"}
 
 
 def skill_files() -> list[Path]:
@@ -129,18 +134,25 @@ class SkillDefinitionTests(unittest.TestCase):
         """A grant that never matches the command the skill tells Claude to run still prompts, so
         each command below must match one of its skill's Bash rules. Every skill with a Bash grant
         is listed, so a grant narrowed past its own command fails here."""
+        SEARCH = ['ugrep -r "TODO" src', 'bfs src -name "*.ts"', 'rg -n "def main" .',
+                  'grep -rn "import" src', 'find . -name "*.py"']
         runs = {
-            "accelerate": ['kg query "hot path"', "kg blast src/app.ts", "kg neighbors src/app.ts"],
+            "accelerate": [*SEARCH, 'kg query "hot path"', "kg blast src/app.ts", "kg neighbors src/app.ts"],
             "almanac": ["mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans"
                         " .workspace/shared/research .workspace/shared/postmortems",
                         "mkdir -p .workspace/local", "git add .workspace/shared/ CLAUDE.md .gitignore",
-                        'git commit -m "chore: initialize magician workspace"'],
+                        "git add REVIEW.md", "git add .claude/skills/verify/SKILL.md",
+                        "git add .claude/skills/simplify/SKILL.md",
+                        'git commit -m "chore: initialize magician workspace"',
+                        "git add AGENTS.md"],
             "autopsy": ["gh run list --limit 5", 'git commit -m "docs: add post-mortem for outage"'],
-            "blueprint": ["kg blast src/reports/",
+            "blueprint": [*SEARCH, "kg blast src/reports/",
                           "plan-render check .workspace/shared/plans/2026-11-01-csv-export/plan.json",
                           "plan-render all .workspace/shared/plans/2026-11-01-csv-export/plan.json",
-                          "${CLAUDE_PLUGIN_ROOT}/tools/plan-render all .workspace/shared/plans/x/plan.json"],
-            "certify": ["npm test", "npm test -- login.spec.ts", "npm run lint", "npm run build", "pytest",
+                          "${CLAUDE_PLUGIN_ROOT}/tools/plan-render all .workspace/shared/plans/x/plan.json",
+                          "${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-start.sh .workspace/shared/plans/x app --plan",
+                          "${CLAUDE_PLUGIN_ROOT}/tools/companion/vc-stop.sh .workspace/shared/plans/x"],
+            "certify": [*SEARCH, "npm test", "npm test -- login.spec.ts", "npm run lint", "npm run build", "pytest",
                         "pytest -q tests/test_auth.py", "mypy .", "ruff check .", "go test ./...", "go vet ./...",
                         "golangci-lint run", "cargo test", "cargo check", "cargo clippy", "mvn test", "gradle test"],
             "chronicle": ["ctx pct 40", 'ctx learn --add "prefer small PRs"', "ctx consolidate"],
@@ -149,23 +161,26 @@ class SkillDefinitionTests(unittest.TestCase):
                         'git commit -m "docs: add spec for login"',
                         'kg query "login form"'],
             "deploy": ["gh run list --branch main --limit 5", "gh run watch 123"],
-            "divine": ["gh pr view 42", "gh pr diff 42", "glab mr view 7", "git merge-base main HEAD", "kg check"],
+            "divine": [*SEARCH, "gh pr view 42", "gh pr diff 42", "glab mr view 7", "git merge-base main HEAD", "kg check",
+                       "mkdir -p .workspace/local", "touch .workspace/local/security-scan.active"],
             "inscribe": ['git commit -m "feat: add /review-sql skill"'],
             "jira": ["jira myself", "jira get PROJ-1", 'jira search "login bug"', "gh pr list --search PROJ-1"],
             "knowledge-graph": ["kg check", 'kg query "auth flow"', "kg stale", "kg refresh", "kg cache stats"],
-            "magic": ["kg check", 'git commit -m "docs: add research findings"'],
-            "orchestrate": ['kg query "billing"', "kg blast src/billing.ts"],
+            "magic": [*SEARCH, "kg check", 'git commit -m "docs: add research findings"'],
+            "orchestrate": [*SEARCH, 'kg query "billing"', "kg blast src/billing.ts"],
             "portal": ["git worktree add ../app-login -b feature/login"],
-            "scrutinize": ['kg query "auth"', "kg blast src/auth.ts"],
+            "scrutinize": [*SEARCH, 'kg query "auth"', "kg blast src/auth.ts"],
             "seal": ["git add -A", 'git commit -m "feat: login"', "git push -u origin HEAD",
                      'gh pr create --title "Login" --body "Adds login"', "gh pr checks 42 --watch",
                      "gh run view 99 --log-failed", "gh pr merge --squash --delete-branch"],
-            "sentinel": ["magician-scan .", "npm audit", "npm audit --json", "pip-audit", "pip-audit -f json",
+            "sentinel": [*SEARCH, "mkdir -p .workspace/local/security", "touch .workspace/local/security-scan.active",
+                         "magician-scan .", "npm audit", "npm audit --json", "pip-audit", "pip-audit -f json",
                          "safety check", "govulncheck ./...", "cargo audit"],
             "statusline": ["magician-ui status", "magician-ui voice status"],
-            "transmute": ["kg check", 'kg query "checkout"'],
-            "unravel": ["kg check", "kg neighbors src/app.ts"],
-            "weave": ["kg check", "kg refresh", 'kg query "feature"'],
+            "transmute": [*SEARCH, "kg check", 'kg query "checkout"'],
+            "unravel": [*SEARCH, "kg check", "kg neighbors src/app.ts"],
+            "ward": [*SEARCH],
+            "weave": [*SEARCH, "kg check", "kg refresh", 'kg query "feature"'],
         }
         granting = sorted(p.parent.name for p in skill_files() if bash_grants(p.parent.name))
         self.assertEqual(granting, sorted(runs), "every skill with a Bash grant needs a row here")
@@ -195,8 +210,14 @@ class SkillDefinitionTests(unittest.TestCase):
             "autopsy": ["git add .workspace/shared/postmortems/", "git add .workspace/shared/postmortems/x -f .env"],
             "magic": ["git add .workspace/shared/research/", "git add .workspace/shared/research/x -f .env"],
             "inscribe": ["git add .claude/skills/x -f .env"],
-            "almanac": ["mkdir -p .workspace/../../outside", "git add .workspace/shared/ CLAUDE.md .gitignore -f .env"],
+            "almanac": ["mkdir -p .workspace/../../outside", "git add .workspace/shared/ CLAUDE.md .gitignore -f .env",
+                        "git add REVIEW.md -f .env", "git add .claude/skills/", "git add .claude/skills/verify/SKILL.md .env",
+                        "git add AGENTS.md -f .env", "git add AGENTS.md .env"],
             "portal": ["mkdir -p .features/../../outside"],
+            # The Monitor runs `tail` itself; the skill never pre-approves it, nor the browser opener.
+            "blueprint": ["tail -n0 -F .workspace/local/plans/x/state/events.jsonl",
+                          "open http://127.0.0.1:51342/magician/app/plan/",
+                          "node ${CLAUDE_PLUGIN_ROOT}/tools/companion/server.cjs"],
         }
         for skill, commands in never.items():
             grants = bash_grants(skill)
@@ -241,6 +262,39 @@ class SkillDefinitionTests(unittest.TestCase):
                 rejected = (tool in NEVER_GRANTED or (tool in MUST_BE_SCOPED and entry == tool)
                             or bool(S.tool_problems(entry)))
                 self.assertTrue(rejected, f"{entry} should be rejected")
+
+    def test_mcp_grants_name_a_server_and_a_tool(self) -> None:
+        """An MCP allow rule must be the full normalized name, `mcp__<server>__<tool>` or
+        `mcp__<server>__*`; a bare `mcp__<server>` or `mcp__*` matches nothing (or everything) and
+        silently misgrants."""
+        shape = re.compile(r"^mcp__[A-Za-z0-9][A-Za-z0-9_-]*__(?:\*|[A-Za-z0-9][A-Za-z0-9_-]*)$")
+        for path in skill_files():
+            fields, _ = read_frontmatter(path)
+            for entry in S.split_tools(fields.get("allowed-tools", "")):
+                if not entry.startswith("mcp__"):
+                    continue
+                with self.subTest(skill=path.parent.name, grant=entry):
+                    self.assertRegex(entry, shape,
+                                     f"{path.parent.name}: {entry!r} must be mcp__<server>__<tool> or mcp__<server>__*")
+        self.assertRegex("mcp__context7__query-docs", shape)
+        self.assertRegex("mcp__playwright__*", shape)
+        for bad in ("mcp__context7", "mcp__*", "mcp____x", "mcp__context7__"):
+            self.assertNotRegex(bad, shape)
+
+    def test_search_heavy_skills_pre_approve_the_embedded_search_commands(self) -> None:
+        """Glob/Grep are absent by default on macOS/Linux/WSL: Claude searches with the embedded
+        `bfs`/`ugrep` (and `rg`/`grep`/`find`) through Bash. A read-only skill that grants only
+        Read/Grep/Glob therefore prompts on every search in manual mode, breaking the "reads never
+        prompt" promise. Every skill that grants Grep or Glob must grant the Bash search set too, and
+        keep Grep/Glob for sessions that restore them."""
+        for path in skill_files():
+            fields, _ = read_frontmatter(path)
+            tools = set(S.split_tools(fields.get("allowed-tools", "")))
+            if not tools & {"Grep", "Glob"} or path.parent.name in SEARCH_GRANT_EXEMPT:
+                continue
+            with self.subTest(skill=path.parent.name):
+                self.assertTrue(S.SEARCH_GRANTS <= tools,
+                                f"{path.parent.name}: missing {sorted(S.SEARCH_GRANTS - tools)}")
 
     def test_relative_links_resolve_inside_the_repo(self) -> None:
         link = re.compile(r"\[[^]]+\]\(([^)]+)\)")

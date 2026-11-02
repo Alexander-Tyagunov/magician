@@ -95,6 +95,43 @@ _in() { [[ $HAY =~ $1 ]]; }
 _arch() { [ "$ARCHETYPE" = unknown ] && ARCHETYPE=$1; }   # archetype only when nothing set one yet
 _any() { compgen -G "$1" >/dev/null; }                     # glob has at least one match (builtin)
 
+# ── Stack cache ──────────────────────────────────────────────────────────────
+# Detection below reads every manifest with many cat/grep calls. Its result (archetype, stack
+# techs, detected log SDKs) is kept per project under the plugin data folder, keyed by the git HEAD
+# commit and the sizes of the manifest files, and is reused while no manifest is newer than the
+# cache. Outside a git commit, or with MAGICIAN_LORE=eager (full cores at start), detection always runs.
+MANIFESTS="package.json pyproject.toml go.mod Cargo.toml pom.xml build.gradle build.gradle.kts Gemfile composer.json Dockerfile"
+STACK_CACHED=0; CACHE_FILE=""; CACHE_KEY=""
+OBS_MATCHES=""
+case "$(printf '%s' "${MAGICIAN_LORE:-}" | tr '[:upper:]' '[:lower:]')" in eager) ;; *)
+  if [ -n "$PROJ_DIR" ]; then
+    _head=$(git rev-parse HEAD 2>/dev/null)
+    re_head='^[0-9a-f]{40,64}$'
+    if [[ $_head =~ $re_head ]]; then
+      _sizes=""
+      for _m in $MANIFESTS *.csproj; do
+        [ -f "$_m" ] && _sizes="$_sizes $_m:$(wc -c < "$_m" 2>/dev/null | tr -d ' ')"
+      done
+      CACHE_KEY="$_head$_sizes"
+      CACHE_FILE="$PROJ_DIR/stack-cache"
+      if [ -f "$CACHE_FILE" ]; then
+        _newer=$(find ./ -maxdepth 1 \( -name package.json -o -name pyproject.toml -o -name go.mod -o -name Cargo.toml \
+          -o -name pom.xml -o -name 'build.gradle*' -o -name Gemfile -o -name composer.json -o -name '*.csproj' \
+          -o -name Dockerfile \) -newer "$CACHE_FILE" -print 2>/dev/null | head -1)
+        if [ -z "$_newer" ]; then
+          _k=""; _a=""; _t=""; _o=""
+          { IFS= read -r _k; IFS= read -r _a; IFS= read -r _t; IFS= read -r _o; } < "$CACHE_FILE" 2>/dev/null
+          re_val='^[a-z0-9,_ -]*$'
+          if [ "$_k" = "$CACHE_KEY" ] && [[ $_a =~ $re_val ]] && [[ $_t =~ $re_val ]] && [[ $_o =~ $re_val ]] && [ -n "$_a" ]; then
+            ARCHETYPE="$_a"; TECHS="$_t"; OBS_MATCHES="$_o"; STACK_CACHED=1
+          fi
+        fi
+      fi
+    fi
+  fi ;;
+esac
+
+if [ "$STACK_CACHED" != 1 ]; then
 # ── Base ecosystem detection ─────────────────────────────────────────────────
 [ -f "package.json" ]      && { detect_append "javascript"; ARCHETYPE="web"; }
 [ -f "tsconfig.json" ]     && detect_append "typescript"
@@ -270,6 +307,19 @@ if [ -n "$DB_HAY" ]; then
     for d in $DBS; do detect_append "$d"; done      # then the specific engine cores
   fi
 fi
+# ── Log-platform SDKs in the manifests (one match → confident; resolved with the record below) ──
+OBS_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile go.mod go.sum pom.xml build.gradle build.gradle.kts build.sbt docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]')
+obs_try() { if [[ $OBS_HAY =~ $2 ]]; then OBS_MATCHES="${OBS_MATCHES:+$OBS_MATCHES }$1"; fi; }
+obs_try dynatrace     'dynatrace|oneagent'
+obs_try grafana       'grafana|(^|[^a-z0-9_])loki([^a-z0-9_]|$)|promtail|-loki'   # loki as a whole word
+obs_try splunk        'splunk'
+obs_try gcp-logging   'google-cloud-logging|@google-cloud/logging|google\.cloud\.logging|stackdriver'
+obs_try cloudwatch    'cloudwatch|aws-embedded-metrics|watchtower'
+obs_try azure-monitor 'applicationinsights|azure-monitor|opencensus-ext-azure'
+if [ -n "$CACHE_FILE" ] && mkdir -p "$PROJ_DIR" 2>/dev/null; then
+  printf '%s\n%s\n%s\n%s\n' "$CACHE_KEY" "$ARCHETYPE" "$TECHS" "$OBS_MATCHES" > "$CACHE_FILE" 2>/dev/null
+fi
+fi   # end of stack detection (skipped on a cache hit)
 STACK_TECHS="$TECHS"   # what the directory's own markers revealed (before logging/security are added)
 
 # ── Observability / log-platform detection + per-project record ───────────────
@@ -283,15 +333,6 @@ if [ -n "$OBS_FILE" ] && [ -f "$OBS_FILE" ]; then
   case "$KNOWN_OBS" in *" $_op "*) [ -n "$_op" ] && { OBS_PLATFORM="$_op"; OBS_SRC="recorded"; } ;; esac
 fi
 if [ -z "$OBS_PLATFORM" ]; then
-  OBS_HAY=$(cat package.json requirements.txt requirements*.txt pyproject.toml Pipfile go.mod go.sum pom.xml build.gradle build.gradle.kts build.sbt docker-compose.yml docker-compose.yaml compose.yml compose.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]')
-  OBS_MATCHES=""
-  obs_try() { if [[ $OBS_HAY =~ $2 ]]; then OBS_MATCHES="${OBS_MATCHES:+$OBS_MATCHES }$1"; fi; }
-  obs_try dynatrace     'dynatrace|oneagent'
-  obs_try grafana       'grafana|(^|[^a-z0-9_])loki([^a-z0-9_]|$)|promtail|-loki'   # loki as a whole word
-  obs_try splunk        'splunk'
-  obs_try gcp-logging   'google-cloud-logging|@google-cloud/logging|google\.cloud\.logging|stackdriver'
-  obs_try cloudwatch    'cloudwatch|aws-embedded-metrics|watchtower'
-  obs_try azure-monitor 'applicationinsights|azure-monitor|opencensus-ext-azure'
   case "$OBS_MATCHES" in ""|*" "*) ;; *) OBS_PLATFORM="$OBS_MATCHES"; OBS_SRC="detected" ;; esac   # exactly one → confident
 fi
 case "$ARCHETYPE" in backend|web|data|mobile|gamedev) OBS_APP=1 ;; *) OBS_APP=0 ;; esac
@@ -303,14 +344,19 @@ fi
 
 detect_append "security"
 
-# ── Lore enable/disable flag (default ENABLED) ───────────────────────────────
+# ── Lore enable/disable flag (default ENABLED) and lazy/eager mode (default LAZY) ────────────
 # Bundled lore is a baseline BELOW the repo's own rules; a user can turn it off when it conflicts with
 # local/project knowledge or gives wrong judgment. Resolution (first match wins): env MAGICIAN_LORE=
 # 0/off/false → a per-project .magician/lore.off file → global cli-ui.json "lore":"disabled" → default ENABLED.
 # When disabled, NO lore is injected (the rest of the SessionStart context is unaffected).
+# Lazy (default): only the security core goes in here, with a one-line index of the other detected
+# cores; pattern-detect.sh (UserPromptSubmit) adds a core on the first prompt that names its stack or
+# starts a skill that uses it, once per session. MAGICIAN_LORE=eager injects every core here instead.
 LORE_ENABLED=1
+LORE_MODE=lazy
 case "$(printf '%s' "${MAGICIAN_LORE:-}" | tr '[:upper:]' '[:lower:]')" in
   0|off|false|no|disabled) LORE_ENABLED=0 ;;
+  eager) LORE_MODE=eager ;;
 esac
 [ -f ".magician/lore.off" ] && LORE_ENABLED=0
 if [ "$LORE_ENABLED" = 1 ] && [ -f "$UI_CFG" ] && grep -q '"lore"[[:space:]]*:[[:space:]]*"disabled"' "$UI_CFG" 2>/dev/null; then
@@ -349,8 +395,37 @@ ${VOICE_CORE} Scribe level (default): necessary explanation and structure stay, 
   *)       VOICE_NOTE="" ;;   # bard → native verbosity, nothing injected
 esac
 
+# ── STE-lite — simplified technical English for prose (default OFF) ──────────
+# Orthogonal to the voice: the voice sets length, STE-lite sets grammar. When on, one note (under 600
+# characters) with the checkable rules follows the voice note. STE-inspired, paraphrased, no compliance
+# claim; code, identifiers, numbers and error text stay verbatim. Resolution (first match wins): env
+# MAGICIAN_STE=1|0 → per-project .magician/ste (content on/off) → cli-ui.json "ste": true|false → off.
+STE_ON=0
+_sc=""
+case "$(printf '%s' "${MAGICIAN_STE:-}" | tr '[:upper:]' '[:lower:]')" in
+  1|on|true|yes)   _sc=on ;;
+  0|off|false|no)  _sc=off ;;
+esac
+if [ -z "$_sc" ] && [ -f ".magician/ste" ]; then
+  _ps="$(head -c64 .magician/ste 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+  case "$_ps" in 1|on|true|yes) _sc=on ;; 0|off|false|no) _sc=off ;; esac
+fi
+if [ -z "$_sc" ] && [ -f "$UI_CFG" ] && grep -qE '"ste"[[:space:]]*:[[:space:]]*true' "$UI_CFG" 2>/dev/null; then
+  _sc=on
+fi
+[ "$_sc" = on ] && STE_ON=1
+STE_NOTE=""
+if [ "$STE_ON" = 1 ]; then
+  STE_NOTE="
+
+STE-lite selected in magician (STE-inspired, no compliance claim). A descriptive sentence has 25 words or fewer, and a step has 20 words or fewer with one instruction and an imperative verb. A condition comes before its command, and a paragraph has one topic and 6 sentences or fewer. Sentences use the active voice and simple tenses, with no \`-ing\` word first and no semicolons, contractions or Latin abbreviations. Three or more items go in a vertical list, and code, identifiers, numbers and error text stay verbatim (details: \`lore/ste.md\` under the plugin root)."
+fi
+
 # ── Previous session in THIS directory (chronicle; off when session_history=false) ──
 # Only records whose working_dir equals the physical cwd count; the current session's own record is skipped.
+# The line carries a date, so it is the volatile part of the context: TAIL puts it last, after every
+# static note, which keeps the static prefix the same from one session to the next (prompt cache).
+# _cap trims from the end, so over the budget the dated line is the first text to go.
 CHRONICLE_NOTE=""
 case "$(printf '%s' "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" | tr '[:upper:]' '[:lower:]')" in
   false|0|no|off) ;;
@@ -365,6 +440,9 @@ case "$(printf '%s' "${CLAUDE_PLUGIN_OPTION_SESSION_HISTORY:-true}" | tr '[:uppe
         _c=$(head -c8192 "$PLUGIN_DATA/chronicle/$_f" 2>/dev/null | tr -d '\n\r')
         [ "$(_json_unescape "$(_json_field "$_c" working_dir)")" = "$PWD_P" ] || continue
         _s=$(_trunc 300 "$(_json_unescape "$(_json_field "$_c" summary)")")
+        _d=$(_json_field "$_c" timestamp); _d=${_d:0:10}
+        re_day='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        [ -n "$_s" ] && [[ $_d =~ $re_day ]] && _s="${_s} (ended ${_d})"   # no summary: no line at all
         [ -n "$_s" ] && CHRONICLE_NOTE="
 Previous magician session in this directory: ${_s}"
         break
@@ -431,6 +509,13 @@ elif [ "$OBS_APP" = 1 ] && [ -n "$OBS_FILE" ]; then
 No log platform is recorded for this project. Later sessions read a JSON record at ${OBS_FILE} ({\"platform\":\"<name>\",\"envs\":[…],\"note\":\"…\"}; known platforms: dynatrace, grafana, splunk, gcp-logging, cloudwatch, azure-monitor); logging conventions are in the plugin's logging lore."
 fi
 
+# ── Cloud session: no launchers, no credential bridge ──
+CLOUD_NOTE=""
+if [ "${CLAUDE_CODE_REMOTE:-}" = 1 ]; then
+  CLOUD_NOTE="
+Cloud session (CLAUDE_CODE_REMOTE=1): the launcher and credential hooks are skipped here, so magician's bundled commands run by full path only, as tools/<name> under the plugin root. Scheduled or unattended runs follow lore/unattended.md."
+fi
+
 # ── Post-compaction / resume: conventions the compaction may have dropped ──
 DOCTRINE_NOTE=""
 case "$SS_SOURCE" in compact|resume)
@@ -457,11 +542,13 @@ if grep -qE '"(allow|automode)"[[:space:]]*:[[:space:]]*"on"' "$UI_CFG" 2>/dev/n
 fi
 
 # ── Lore loader (runs last so its budget is whatever the other notes leave) ──
-# Always-injected cap in bytes (LC_ALL=C). Raised 3000 → 6000 → 8000 → 8100 as the lore corpus grew
-# (language, database and observability layers; +100 in v4.15.0 for the deep-dive section pointers).
-# It is clamped to the room the other notes leave under BUDGET. That room is usually smaller, so cores
-# are tried in the selection order below; about 2k tokens once per session. Deep-dive files
-# stay on-demand. The plugin root is written once, in HEAD; every lore path after it is relative to it.
+# Cap in bytes (LC_ALL=C) for the cores injected here. Raised 3000 → 6000 → 8000 → 8100 as the lore
+# corpus grew (language, database and observability layers; +100 in v4.15.0 for the deep-dive section
+# pointers). It is clamped to the room the other notes leave under BUDGET. In eager mode that room is
+# usually smaller than the cores, so they are tried in the selection order below (about 2k tokens once
+# per session); in lazy mode (default) only security is injected here and the index line names the
+# rest. Deep-dive files stay on-demand. The plugin root is written once, in HEAD; every lore path
+# after it is relative to it.
 MAX_LORE=8100
 HEAD="magician session context (plugin root: ${PLUGIN_ROOT})."
 if [ -n "$STACK_TECHS" ]; then
@@ -473,11 +560,11 @@ LORE_HDR=" Magician lore (baseline guidance; this repository's own conventions t
 "
 DEEP_TEXT="
 Deep-dive files: lore/deep/<stack>.md under the plugin root, one '## ' section per anchor id a core lists; Grep '^## ' gives line numbers for a Read with offset/limit."
-TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
+TAIL="${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REFERENCES_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}${CHRONICLE_NOTE}"
 _fixed=$(( ${#HEAD} + 1 + ${#STACK_NOTE} + ${#LORE_HDR} + ${#DEEP_TEXT} + ${#TAIL} ))   # cores add their exact cost below
 if [ "$_fixed" -gt "$BUDGET" ] && [ -n "$REFERENCES_NOTE" ]; then   # references are the first note to go
   _fixed=$(( _fixed - ${#REFERENCES_NOTE} )); REFERENCES_NOTE=""
-  TAIL="${CHRONICLE_NOTE}${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}"
+  TAIL="${LEARN_NOTE}${KG_NOTE}${OBS_NOTE}${CLOUD_NOTE}${DOCTRINE_NOTE}${REMEMBER_HINT}${VOICE_NOTE}${STE_NOTE}${CHRONICLE_NOTE}"
 fi
 _room=$(( BUDGET - _fixed ))
 [ "$_room" -lt "$MAX_LORE" ] && MAX_LORE=$_room
@@ -511,6 +598,23 @@ _rank() {  # $1=techs held back for a later call, then candidates in rank order;
 _rank "databases logging $_late" security $LANG_TIER $FRAMEWORK_TIER $DB_TIER
 _rank "$_late" databases logging ${TECHS//,/ }
 _rank "" $_late ${TECHS//,/ }
+
+# Lazy mode: security is the only core injected here; the rest wait for pattern-detect.sh, which
+# reads the pending list written below (one file per session, next to the start stamp).
+LORE_PENDING=""
+if [ "$LORE_MODE" = lazy ]; then
+  for TECH in $RANKED; do
+    [ "$TECH" = security ] && continue
+    [ -f "${PLUGIN_ROOT}/lore/${TECH}.md" ] && LORE_PENDING="${LORE_PENDING:+$LORE_PENDING }$TECH"
+  done
+  RANKED="security"
+fi
+LORE_INDEX=""
+if [ "$LORE_ENABLED" = 1 ] && [ -n "$LORE_PENDING" ]; then
+  LORE_INDEX="
+Magician lore available for this stack: ${LORE_PENDING// /, } — say the name, or read lore/<name>.md under the plugin root."
+  MAX_LORE=$(( MAX_LORE - ${#LORE_INDEX} ))
+fi
 
 LORE_TEXT=""
 LORE_CHARS=0
@@ -546,19 +650,38 @@ LORE_NOTE="$STACK_NOTE"
 if [ "$LORE_ENABLED" != 1 ]; then
   LORE_NOTE="${LORE_NOTE} Magician lore is disabled for this session (re-enable it with magician-ui lore on)."
 elif [ -n "$LORE_TEXT" ]; then
-  LORE_NOTE="${LORE_NOTE}${LORE_HDR}${LORE_TEXT}${DEEP_HINT}"
+  LORE_NOTE="${LORE_NOTE}${LORE_HDR}${LORE_TEXT}${DEEP_HINT}${LORE_INDEX}"
+else
+  LORE_NOTE="${LORE_NOTE}${LORE_INDEX}"
 fi
+
+# ── Pending-lore list for pattern-detect.sh (lazy mode; one file per session) ──
+# Written on a new session and after a compaction (the summary keeps only a digest of hook context),
+# kept on resume (a resumed session still holds what was injected), removed when nothing is pending.
+if [[ $SS_SID =~ $re_sid ]]; then
+  _pf="$PLUGIN_DATA/sessions/$SS_SID.lore"
+  if [ "$LORE_ENABLED" = 1 ] && [ -n "$LORE_PENDING" ]; then
+    if [ "$SS_SOURCE" != resume ] || [ ! -f "$_pf" ]; then
+      mkdir -p "$PLUGIN_DATA/sessions" 2>/dev/null && printf '%s\n' "$LORE_PENDING" > "$_pf" 2>/dev/null
+    fi
+  else
+    rm -f "$_pf" 2>/dev/null
+  fi
+fi
+find "$PLUGIN_DATA/sessions" -maxdepth 1 -type f -name '*.lore' -mtime +30 -exec rm -f {} + 2>/dev/null
 
 # ── Status-bar markers (only when the user enabled the status line) ──
 if grep -qE '"state"[[:space:]]*:[[:space:]]*"enabled"' "$UI_CFG" 2>/dev/null; then
   _st="$MAG_HOME/status"
   if mkdir -p "$_st" 2>/dev/null; then
     _cores=""; for _c in $LORE_INJECTED; do _cores="${_cores:+$_cores, }\"$_c\""; done
+    _pend=""; for _c in $LORE_PENDING; do _pend="${_pend:+$_pend, }\"$_c\""; done
     _cnt=$(printf '%s' "$LORE_INJECTED" | wc -w | tr -d ' ')
     _en=false; [ "$LORE_ENABLED" = 1 ] && _en=true
     _now=$(date +%s)
-    printf '{"enabled": %s, "count": %s, "cores": [%s], "ts": %s}\n' "$_en" "${_cnt:-0}" "$_cores" "$_now" > "$_st/${SID_SAFE}.lore.json" 2>/dev/null
-    printf '{"level": "%s", "ts": %s}\n' "$VOICE_LEVEL" "$_now" > "$_st/${SID_SAFE}.voice.json" 2>/dev/null
+    printf '{"enabled": %s, "count": %s, "cores": [%s], "pending": [%s], "mode": "%s", "ts": %s}\n' "$_en" "${_cnt:-0}" "$_cores" "$_pend" "$LORE_MODE" "$_now" > "$_st/${SID_SAFE}.lore.json" 2>/dev/null
+    _se=false; [ "$STE_ON" = 1 ] && _se=true
+    printf '{"level": "%s", "ste": %s, "ts": %s}\n' "$VOICE_LEVEL" "$_se" "$_now" > "$_st/${SID_SAFE}.voice.json" 2>/dev/null
     find "$_st" -maxdepth 1 -type f \( -name '*.lore.json' -o -name '*.voice.json' -o -name '*.effort.json' -o -name '*.spark' \) -mtime +7 -exec rm -f {} + 2>/dev/null
   fi
 fi

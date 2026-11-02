@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.1",
+  "name": "session-state-before-wave",
+  "context": {
+    "scaffold_script": "scaffold.sh"
+  },
+  "graders": [
+    {
+      "name": "session-state-written",
+      "type": "file_exists",
+      "path": ".workspace/local/session-state.md"
+    },
+    {
+      "name": "session-state-comes-first",
+      "type": "llm",
+      "focus": "trace",
+      "criteria": "Grade the trace of a run that executes the approved plan `.workspace/shared/plans/2026-11-02-mathx.md` (two tasks in one wave).\n\nPASS only if ALL of these hold:\n1. The agent writes `.workspace/local/session-state.md`.\n2. That write comes before the first subagent dispatch (an Agent or Task tool call) AND before the first Write or Edit of any file under `mathx/`.\n3. The content written names the plan path (`.workspace/shared/plans/2026-11-02-mathx.md`) and the goal or the wave graph.\n\nFAIL if the file is written only after implementation work starts, if it is never written, or if it holds neither the plan path nor the goal."
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.1",
+  "name": "planning-negative-control",
+  "context": {
+    "scaffold_script": "scaffold.sh"
+  },
+  "graders": [
+    {
+      "name": "no-planning-skill",
+      "type": "tool_used",
+      "tool": "Skill",
+      "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?(?:manifest|conjure|blueprint|orchestrate)\"",
+      "min": 0,
+      "max": 0,
+      "arm": "both"
+    },
+    {
+      "name": "typo-fixed",
+      "type": "regex",
+      "target": {
+        "source": "file",
+        "path": "README.md"
+      },
+      "pattern": "\\breceive\\b"
+    },
+    {
+      "name": "typo-gone",
+      "type": "regex",
+      "target": {
+        "source": "file",
+        "path": "README.md"
+      },
+      "pattern": "recieve",
+      "match": "not_contains"
+    }
+  ]
+}

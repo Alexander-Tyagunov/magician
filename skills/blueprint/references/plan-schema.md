@@ -73,7 +73,7 @@ a time, in order, after the wave's parallel group.
 | `touches` | string[] | yes | Component ids the step changes; they light up on the map. Every id must exist in `context.components` |
 | `red` | object | yes | `{test, code, run}` — the failing test: `test` is `path::name`, `code` the actual test code, `run` the command that proves it fails |
 | `green` | object | yes | `{sketch, run}` — the minimal implementation sketch (code or precise prose) and the command that proves it passes (normally the same as `red.run`); `run` is required |
-| `verify` | string[] | yes, ≥ 1 | Commands that prove the step is done (test, lint, type-check). Read-only or test commands only — never a destructive command |
+| `verify` | string[] | yes, ≥ 1 | The **exact commands that will be run** to prove the step is done (test, lint, type-check) — the step's definition of done, run verbatim by `/ward` and `/orchestrate`. Take them, in this order, from: the project's `.claude/skills/verify/SKILL.md` when present; `REVIEW.md` when present (its verification commands, nit caps and skip paths); the stack lore's commands (`npm test -- <pattern>`, `pytest -q <path>`, `go test ./...`, …); else what the spec names. Never a placeholder such as "run the tests". Read-only or test commands only — never a destructive command |
 | `risk` | object | yes | `{level, note}` — `level` is exactly `low` · `medium` · `high` (enforced); `note` says what could go wrong (empty for `low`) |
 | `effort` | object | yes | `{minutes}` — integer estimate for one implementer; 5 to 60 is the useful range |
 | `diff_sketch` | string | no | Unified-diff-style sketch of the change, `-`/`+` lines, at most 40 lines. Shown in the side panel for `change` steps |

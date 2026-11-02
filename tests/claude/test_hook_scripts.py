@@ -47,6 +47,7 @@ STRICT = ("pattern-detect.sh", "chronicle-stop.sh", "format.sh", "notify.sh", "c
 GUARD = "destructive-guard.sh"          # the one hook allowed to exit 2 (it blocks the tool call)
 ENV_WRITERS = ("userconfig-env.sh", "tools-path.sh")  # the hooks allowed to touch CLAUDE_ENV_FILE
 TOOLS_LINKER = "tools-path.sh"  # names the plugin tools folder to write launchers; runs nothing from it
+LINT_RUNNER = "ste-lint-hook.sh"  # the one hook that runs a bundled command: tools/ste-lint, by plugin root
 
 # Steering phrases that must never appear in text a hook writes into Claude's context.
 IMPERATIVE = re.compile(
@@ -104,7 +105,7 @@ INTERPRETERS = ("python[0-9.]*", "node", "nodejs", "perl", "ruby", "php", "lua",
                 "gawk", "mawk", "nawk", "jq", "pwsh", "powershell", "tclsh", "expect", "Rscript", "osascript",
                 "osacompile")
 PLUGIN_CLIS = ("ctx", "kg", "jira", "confluence", "magician-ui", "magician-statusline", "magician-scan",
-               "gate.sh")
+               "ste-lint", "gate.sh")
 LAUNCHERS = (_j("n", "px"), _j("bun", "x"), _j("u", "vx"), _j("pnpm", r"\s+dlx"), _j("yarn", r"\s+dlx"),
              _j("pip", r"x\s+run"), _j("uv", r"\s+run"), _j("npm", r"\s+exec"), _j("go", r"\s+run"))
 INSTALLS = tuple(_j(tool, r"\s+", verb) for tool, verb in (
@@ -141,7 +142,7 @@ CODE_RULES = {   # name -> pattern (applied to comment-free code of every script
     "top-level additionalContext": r"\{\s*\\?\"additionalContext",
     "Claude Code settings write": r"(?:>|\btee\b|\bmv\b|\bcp\b|\bsed\s+-i)[^\n;|&]*settings(?:\.local)?\.json",
     "removed feature": r"patterns\.json|\bcapsule|\.resume\b|kg-?nudge|access-tracker|access-patterns"
-                       r"|agent-lifecycle|worktree-init|pre-compact|mcp-?nudge|fingerprint|session-start-time"
+                       r"|agent-lifecycle|worktree-init|mcp-?nudge|fingerprint|session-start-time"
                        r"|\bctx\s+(?:capsule|hook|resume)\b|\bgreet|statusLine",
     "imperative wording": r"(?i:\binvoke\b|before responding|before doing any other work|\bdo not\b"
                           r"|AskUserQuestion|auto-activat|let the user know|\byou must\b|\bIMPORTANT:)",
@@ -149,6 +150,9 @@ CODE_RULES = {   # name -> pattern (applied to comment-free code of every script
 TEXT_RULES = {   # applied to the whole file (comments included)
     "transcript field": r"transcript_path|last_assistant_message|agent_transcript_path",
 }
+# The one documented exception: subagent-stop.sh reads the last 4 KiB of the finished agent's own
+# transcript, named by the event, to find a STATUS: BLOCKED / DEGRADED / CLEAN line (README, PRIVACY.md).
+TRANSCRIPT_READER = "subagent-stop.sh"
 STRICT_TOKENS = (r"\bpython", r"\bnode\b", r"\bperl\b", r"\bruby\b", r"\bawk\b", r" -c ", r"\beval\b",
                  r"\bsource\s", r"(?m)^\s*\.\s", r"\bjq\b", r"/bin/", r"PLUGIN_ROOT", r"transcript_path",
                  r"last_assistant_message", r"settings\.json", r"CLAUDE_ENV_FILE", r"\binscribe\b",
@@ -230,6 +234,8 @@ class StaticScriptTests(unittest.TestCase):
                     m = re.search(pattern, code, re.M)
                     self.assertIsNone(m, f"{rule}: {m.group(0)!r}" if m else "")
             for rule, pattern in TEXT_RULES.items():
+                if rule == "transcript field" and name == TRANSCRIPT_READER:
+                    continue
                 with self.subTest(script=name, rule=rule):
                     self.assertIsNone(re.search(pattern, text), rule)
 
@@ -290,6 +296,22 @@ class StaticScriptTests(unittest.TestCase):
             self.assertTrue(_computed_program_sites(s), s)
         for s in missed:
             self.assertFalse(_computed_program_sites(s), s)
+
+    def test_only_the_lint_hook_names_the_bundled_linter(self) -> None:
+        """ste-lint-hook.sh runs tools/ste-lint by the plugin root (the one bundled command a hook
+        runs, read-only, on the file the event names); no other hook names it or the tools folder,
+        and the runner names nothing else in it."""
+        for name, text in self.texts.items():
+            code = _code(text)
+            with self.subTest(script=name):
+                if name == LINT_RUNNER:
+                    self.assertEqual(code.count("/tools/ste-lint"), 1)
+                    self.assertRegex(code, r'LINT="\$\{CLAUDE_PLUGIN_ROOT:-[^\n]*\}/tools/ste-lint"')
+                    self.assertIn('[ -x "$LINT" ] || exit 0', code)
+                    self.assertIn('"$LINT" --max 10 "$F"', code)
+                elif name != TOOLS_LINKER:
+                    self.assertNotIn("/tools/", code)
+                    self.assertNotIn("ste-lint", code)
 
     def test_ci_watch_reads_only_the_run_number(self) -> None:
         text = self.texts["ci-watch.sh"]
@@ -573,9 +595,20 @@ class FormatTests(_SandboxCase):
         self.assertEqual(self.sb.calls("gofmt"), [["-w", str(self.go)]])
         self.assertEqual(self.go.read_text(encoding="utf-8"), "package main\n")
         again = self.sb.run(self.SCRIPT, self._payload(str(self.go)), **self.ON)
-        self.assertEqual(again.stdout, "")                      # already formatted: nothing to report
+        self.assertEqual(again.stdout, "")                      # formatted under 2 s ago: skipped
+        self.assertEqual(len(self.sb.calls("gofmt")), 1)
+        stamps = list((self.sb.data / "format-stamps").iterdir())
+        self.assertEqual(len(stamps), 1, "one stamp per file path, under the plugin data folder")
+        self.assertRegex(stamps[0].read_text(encoding="utf-8"), r"^[0-9]+\n$")
+        self.assertEqual(_tree(self.sb.home), before[0])        # nothing stored outside the data folder
+        self.assertEqual(_tree(self.sb.mag), before[2])
+        stamps[0].write_text("1000000000\n", encoding="utf-8")  # the stamp is old: format again
+        third = self.sb.run(self.SCRIPT, self._payload(str(self.go)), **self.ON)
+        self.assertEqual(third.stdout, "")                      # already formatted: nothing to report
         self.assertEqual(len(self.sb.calls("gofmt")), 2)
-        self.assertEqual(self.sb.snapshot(), before)            # nothing stored
+        stamps[0].write_text("junk\n", encoding="utf-8")        # an unreadable stamp counts as old
+        self.sb.run(self.SCRIPT, self._payload(str(self.go)), **self.ON)
+        self.assertEqual(len(self.sb.calls("gofmt")), 3)
 
     def test_prettier_needs_its_own_option(self) -> None:
         md = self.sb.work / "notes.md"
@@ -661,6 +694,14 @@ class NotifyTests(_SandboxCase):
         self.assertEqual(seq, "\x1b]777;notify;Magician;Background run finished\x07")
         for name in ("osascript", "notify-send", "uname"):
             self.assertEqual(self.sb.calls(name), [], f"notify.sh ran {name}")
+
+    def test_plugin_notification_is_shown(self) -> None:
+        seq = self._seq(self.sb.run(self.SCRIPT, self._event("plugin_notification", "Index refreshed"),
+                                    TERM_PROGRAM="ghostty", **self.ON))
+        self.assertEqual(seq, "\x1b]777;notify;Magician;Index refreshed\x07")
+        seq = self._seq(self.sb.run(self.SCRIPT, self._event("plugin_notification", ""), TERM_PROGRAM="ghostty",
+                                    **self.ON))
+        self.assertEqual(seq, "\x1b]777;notify;Magician;plugin notice\x07")
 
     def test_other_notification_types_are_ignored(self) -> None:
         for kind in ("idle_prompt", "permission_prompt", "auth_success"):
@@ -776,6 +817,89 @@ class PatternDetectTests(_SandboxCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("magician:divine", proc.stdout)
 
+    # ---- lazy lore: the pending list session-start.sh leaves in sessions/<id>.lore ----
+
+    def _pending(self, cores: str, sid: str = "s1") -> Path:
+        f = self.sb.data / "sessions" / f"{sid}.lore"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(cores + "\n", encoding="utf-8")
+        return f
+
+    def _lore(self, prompt: str, sid: str = "s1") -> tuple[str, list]:
+        """(additionalContext, injected core names); the hook-authored lines are held to the wording
+        rule, the lore cores themselves are bundled text and are not."""
+        proc = self._run(prompt, sid)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        if not proc.stdout:
+            return "", []
+        doc = json.loads(proc.stdout)
+        self.assertEqual(doc["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
+        ctx = doc["hookSpecificOutput"]["additionalContext"]
+        self.assertLessEqual(len(ctx), BUDGET)
+        own = [l for l in ctx.splitlines() if l.startswith(("Magician", "Deep-dive files"))]
+        self.assertIsNone(IMPERATIVE.search("\n".join(own)), own)
+        return ctx, re.findall(r"(?m)^\[([a-z0-9-]+)\] ", ctx)
+
+    def test_lore_core_is_injected_once_when_the_prompt_names_its_stack(self) -> None:
+        f = self._pending("python react postgres docker")
+        ctx, cores = self._lore("the React component re-renders on every keystroke")
+        self.assertEqual(cores, ["react"])
+        self.assertIn("Magician lore (baseline guidance; this repository's own conventions take precedence):", ctx)
+        self.assertIn((ROOT / "lore" / "react.md").read_text(encoding="utf-8").strip(), ctx)
+        self.assertIn("Deep-dive files: lore/deep/<stack>.md under the plugin root", ctx)
+        self.assertEqual(f.read_text(encoding="utf-8"), "python react postgres docker\n".replace("react ", ""))
+        # the same stack again: nothing, the core is already in the context
+        self.assertEqual(self._lore("more react work on the same component please"), ("", []))
+        # the title line counts (PostgreSQL), and so does a program on the Commands: line (docker build)
+        _, cores = self._lore("we store the sessions in PostgreSQL now")
+        self.assertEqual(cores, ["postgres"])
+        _, cores = self._lore("why does docker build fail on the second stage")
+        self.assertEqual(cores, ["docker"])
+        self.assertEqual(f.read_text(encoding="utf-8"), "python\n")
+        # the hint and the core share one output
+        ctx, cores = self._lore("there is a bug in the python parser, it crashes on empty input")
+        self.assertEqual(cores, ["python"])
+        self.assertIn("magician:unravel", ctx)
+        self.assertEqual(ctx.count("Magician:"), 1)
+        self.assertFalse(f.exists(), "an empty pending list is removed")
+
+    def test_unknown_words_and_short_prompts_inject_nothing_and_write_nothing(self) -> None:
+        f = self._pending("python react postgres")
+        before = f.read_text(encoding="utf-8"), self.sb.snapshot()
+        for prompt in ("rust traits are confusing", "hi", "rename the helper", "/divine the branch",
+                       "typescript generics"):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(self._lore(prompt), ("", []))
+        self.assertEqual((f.read_text(encoding="utf-8"), self.sb.snapshot()), before)
+        self.assertEqual(self._lore("python one", "other"), ("", []), "another session has no pending list")
+
+    def test_skill_invocation_injects_every_pending_core(self) -> None:
+        for lead in ("/ward", "/magician:unravel", "/certify", "/accelerate the hot path"):
+            with self.subTest(lead=lead):
+                f = self._pending("python react", sid="k1")
+                ctx, cores = self._lore(lead, "k1")
+                self.assertEqual(cores, ["python", "react"])
+                self.assertNotIn("Magician:", ctx)
+                self.assertFalse(f.exists())
+        f = self._pending("python react", sid="k2")
+        self.assertEqual(self._lore("/divine the latest commit", "k2"), ("", []))
+        self.assertTrue(f.exists())
+
+    def test_lore_cap_leaves_the_rest_pending(self) -> None:
+        big = [p.stem for p in sorted((ROOT / "lore").glob("*.md"))]
+        f = self._pending(" ".join(big), sid="c1")
+        ctx, cores = self._lore("/ward implement it", "c1")
+        self.assertLessEqual(len(ctx), BUDGET)
+        self.assertGreater(len(cores), 1)
+        rest = f.read_text(encoding="utf-8").split()
+        self.assertEqual(set(cores) | set(rest), set(big))
+        self.assertFalse(set(cores) & set(rest))
+        # a tampered list cannot name a file outside lore/
+        f.write_text("../README ../../PRIVACY python\n", encoding="utf-8")
+        ctx, cores = self._lore("/ward again", "c1")
+        self.assertEqual(cores, ["python"])
+        self.assertNotIn("# magician", ctx)
+
 
 class CiWatchTests(_SandboxCase):
     SCRIPT = "ci-watch.sh"
@@ -835,6 +959,346 @@ class CiWatchTests(_SandboxCase):
             with self.subTest(cwd=cwd.name):
                 self.assertEqual(self._watch(cwd), [])
         self.assertEqual(self.sb.calls("gh"), [])
+
+
+class PreCompactTests(_SandboxCase):
+    SCRIPT = "pre-compact.sh"
+
+    def _doc(self, payload) -> dict:
+        proc = self.sb.run(self.SCRIPT, payload)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_asks_for_the_state_file_before_the_summary_and_reads_no_transcript(self) -> None:
+        marker = "TRANSCRIPT-ONLY-MARKER-9c1d"
+        transcript = self.sb.base / "t.jsonl"
+        transcript.write_text(json.dumps({"type": "user", "message": marker}) + "\n", encoding="utf-8")
+        before = self.sb.snapshot()
+        for trigger in ("auto", "manual"):
+            with self.subTest(trigger=trigger):
+                doc = self._doc({"hook_event_name": "PreCompact", "trigger": trigger,
+                                 "transcript_path": str(transcript), "session_id": "s"})
+                self.assertEqual(set(doc), {"systemMessage", "hookSpecificOutput"})
+                self.assertEqual(doc["hookSpecificOutput"]["hookEventName"], "PreCompact")
+                ctx = doc["hookSpecificOutput"]["additionalContext"]
+                self.assertIn(".workspace/local/session-state.md", ctx)
+                self.assertIn("none is written yet", ctx)
+                self.assertNotIn(marker, ctx + doc["systemMessage"])
+                self.assertIsNone(IMPERATIVE.search(ctx), ctx)
+                self.assertIn("/compact" if trigger == "manual" else "context is full", ctx)
+        self.assertEqual(self.sb.snapshot(), before)
+        self.assertEqual({p.name for p in self.sb.work.iterdir()}, set(), "the hook wrote into the project")
+
+    def test_notes_an_existing_state_file_and_an_unknown_trigger(self) -> None:
+        state = self.sb.work / ".workspace" / "local" / "session-state.md"
+        state.parent.mkdir(parents=True)
+        state.write_text("# state\n", encoding="utf-8")
+        ctx = self._doc({"trigger": "weird"})["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("one exists and gets the latest state", ctx)
+        self.assertTrue(ctx.startswith("Claude Code is about to summarize this session."), ctx)
+
+
+class SubagentStopTests(_SandboxCase):
+    SCRIPT = "subagent-stop.sh"
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.sb.work / ".workspace").mkdir()
+        self.transcript = self.sb.base / "agent.jsonl"
+
+    def _payload(self, agent: str = "magician:reviewer", key: str = "transcript_path") -> dict:
+        return {"hook_event_name": "SubagentStop", "agent_type": agent, "agent_id": "a1",
+                key: str(self.transcript), "session_id": "s", "cwd": str(self.sb.work)}
+
+    def _write(self, lines: list) -> None:
+        self.transcript.write_text("".join(json.dumps(l) + "\n" for l in lines), encoding="utf-8")
+
+    def _log(self) -> list:
+        f = self.sb.work / ".workspace" / "local" / "obstacles.jsonl"
+        if not f.exists():
+            return []
+        return [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines()]
+
+    def test_blocked_and_degraded_status_lines_are_recorded(self) -> None:
+        self._write([{"type": "assistant", "text": "reading"},
+                     {"type": "assistant", "text": "Report:\nSTATUS: BLOCKED - the staging DB refused the connection\nnext"}])
+        proc = self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        (rec,) = self._log()
+        self.assertEqual(set(rec), {"ts", "agent", "status", "obstacle"})
+        self.assertRegex(rec["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual((rec["agent"], rec["status"]), ("magician:reviewer", "BLOCKED"))
+        self.assertEqual(rec["obstacle"], "the staging DB refused the connection")
+        self._write([{"type": "assistant", "text": "STATUS: DEGRADED: no network, static review only"}])
+        self.sb.run(self.SCRIPT, self._payload("magician:sentinel", "agent_transcript_path"))
+        self.assertEqual([(r["agent"], r["status"], r["obstacle"]) for r in self._log()],
+                         [("magician:reviewer", "BLOCKED", "the staging DB refused the connection"),
+                          ("magician:sentinel", "DEGRADED", "no network, static review only")])
+
+    def test_reads_only_the_last_4kib_and_keeps_records_under_1kb(self) -> None:
+        old = "STATUS: BLOCKED early marker that must not count"
+        self._write([{"type": "assistant", "text": old}, {"type": "assistant", "text": "x" * 5000},
+                     {"type": "assistant", "text": "STATUS: DEGRADED " + "long " * 300}])
+        self.sb.run(self.SCRIPT, self._payload())
+        (rec,) = self._log()
+        self.assertEqual(rec["status"], "DEGRADED")
+        self.assertLess(len(json.dumps(rec)), 1024)
+        self.assertTrue(rec["obstacle"].startswith("long long"))
+        self._write([{"type": "assistant", "text": old}, {"type": "assistant", "text": "y" * 5000}])
+        self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual(len(self._log()), 1, "a marker outside the last 4 KiB was recorded")
+
+    def test_control_characters_and_quotes_are_stripped(self) -> None:
+        # raw bytes, as a transcript that is not JSON would carry them: the text ends at a quote or backslash
+        self.transcript.write_text("STATUS: BLOCKED \u001b[31mred\u001b[0m\ttab \"q\" \\ back\n", encoding="utf-8")
+        self.sb.run(self.SCRIPT, self._payload('magician:fix"er'))
+        self.assertEqual(self._log(), [])          # an agent name outside the allowed characters is skipped
+        self.sb.run(self.SCRIPT, self._payload())
+        (rec,) = self._log()
+        self.assertEqual(rec["obstacle"], "[31mred[0m tab")
+        self.assertNotIn("\u001b", json.dumps(rec))
+        # in a JSON transcript line the text ends at the first escape, so the record stays well-formed
+        self._write([{"type": "assistant", "text": "STATUS: DEGRADED one\ntwo"}])
+        self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual(self._log()[-1]["obstacle"], "one")
+
+    def test_silent_without_a_status_a_workspace_a_magician_agent_or_a_real_file(self) -> None:
+        self._write([{"type": "assistant", "text": "all good, STATUS: OK"}])
+        self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual(self._log(), [])
+        self._write([{"type": "assistant", "text": "STATUS: BLOCKED x"}])
+        self.sb.run(self.SCRIPT, self._payload("reviewer"))
+        self.sb.run(self.SCRIPT, self._payload("other:magician:x"))
+        self.assertEqual(self._log(), [])
+        missing = dict(self._payload(), transcript_path=str(self.sb.base / "nope.jsonl"))
+        self.sb.run(self.SCRIPT, missing)
+        relative = dict(self._payload(), transcript_path="agent.jsonl")
+        self.sb.run(self.SCRIPT, relative)
+        self.assertEqual(self._log(), [])
+        shutil.rmtree(self.sb.work / ".workspace")
+        proc = self.sb.run(self.SCRIPT, self._payload())
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertFalse((self.sb.work / ".workspace").exists(), "the hook created .workspace")
+
+
+class ModelSwitchTests(_SandboxCase):
+    PRE = "pre-model-switch.sh"
+    POST = "post-model-switch.sh"
+    EVENT = {"hook_event_name": "PreModelSwitch", "from_model": "claude-opus-5-5", "to_model": "claude-sonnet-5-5"}
+
+    def test_pre_switch_is_silent_unless_a_scan_is_active(self) -> None:
+        proc = self.sb.run(self.PRE, self.EVENT)
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        for how in ("env", "marker"):
+            with self.subTest(how=how):
+                extra = {"MAGICIAN_PIN_MODEL": "1"} if how == "env" else {}
+                if how == "marker":
+                    marker = self.sb.work / ".workspace" / "local" / "security-scan.active"
+                    marker.parent.mkdir(parents=True, exist_ok=True)
+                    marker.write_text("", encoding="utf-8")
+                proc = self.sb.run(self.PRE, self.EVENT, **extra)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                doc = json.loads(proc.stdout)
+                out = doc["hookSpecificOutput"]
+                self.assertEqual(out["hookEventName"], "PreModelSwitch")
+                self.assertEqual(out["permissionDecision"], "ask")
+                self.assertIn("safety fallback would change tier mid-scan", out["permissionDecisionReason"])
+                self.assertIn("claude-opus-5-5 to claude-sonnet-5-5", out["permissionDecisionReason"])
+        proc = self.sb.run(self.PRE, {"from_model": "x\"y", "to_model": "z"}, MAGICIAN_PIN_MODEL="1")
+        reason = json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("mid-scan;", reason, "an odd model name is left out of the reason")
+        self.assertNotIn("x", reason.split(";")[0])
+
+    def test_post_switch_adds_one_plain_line_of_context(self) -> None:
+        proc = self.sb.run(self.POST, self.EVENT)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.count("\n"), 1)
+        self.assertIn("model changed from claude-opus-5-5 to claude-sonnet-5-5; re-check effort and cache assumptions",
+                      proc.stdout)
+        self.assertIsNone(IMPERATIVE.search(proc.stdout), proc.stdout)
+        self.assertEqual(self.sb.run(self.POST, {"from_model": "a"}).stdout, "")
+        self.assertIn("from the previous model to b;", self.sb.run(self.POST, {"to_model": "b"}).stdout)
+
+
+class SetupInitTests(_SandboxCase):
+    SCRIPT = "setup-init.sh"
+
+    def test_creates_the_workspace_once_at_the_repo_root(self) -> None:
+        repo = self.sb.repo("proj")
+        (repo / ".gitignore").write_text("node_modules/", encoding="utf-8")   # no trailing newline
+        proc = self.sb.run(self.SCRIPT, {"hook_event_name": "Setup", "trigger": "init"}, cwd=repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        msg = json.loads(proc.stdout)["systemMessage"]
+        self.assertIn("created .workspace/shared/ and .workspace/local/", msg)
+        self.assertIn(".gitignore now lists .workspace/local/", msg)
+        for d in ("shared/decisions", "shared/specs", "shared/plans", "shared/research", "shared/postmortems", "local"):
+            self.assertTrue((repo / ".workspace" / d).is_dir(), d)
+        self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8"),
+                         "node_modules/\n# Magician workspace (local machine only)\n.workspace/local/\n")
+        again = self.sb.run(self.SCRIPT, {}, cwd=repo)
+        self.assertEqual((again.returncode, again.stdout), (0, ""))
+        self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8").count(".workspace/local/"), 1)
+
+    def test_creates_gitignore_and_respects_an_existing_entry(self) -> None:
+        repo = self.sb.repo("fresh")
+        self.sb.run(self.SCRIPT, {}, cwd=repo)
+        self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8"),
+                         "# Magician workspace (local machine only)\n.workspace/local/\n")
+        private = self.sb.repo("private")
+        (private / ".gitignore").write_text(".workspace/\n", encoding="utf-8")
+        msg = json.loads(self.sb.run(self.SCRIPT, {}, cwd=private).stdout)["systemMessage"]
+        self.assertIn("already covers .workspace/local/", msg)
+        self.assertEqual((private / ".gitignore").read_text(encoding="utf-8"), ".workspace/\n")
+
+    def test_silent_outside_a_repo_root(self) -> None:
+        proc = self.sb.run(self.SCRIPT, {}, cwd=self.sb.work)        # no git
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(list(self.sb.work.iterdir()), [])
+        repo = self.sb.repo("deep")
+        sub = repo / "pkg"
+        sub.mkdir()
+        proc = self.sb.run(self.SCRIPT, {}, cwd=sub)                 # below the root
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertFalse((sub / ".workspace").exists())
+        self.assertFalse((repo / ".workspace").exists())
+
+
+class StopFailureTests(_SandboxCase):
+    SCRIPT = "stop-failure.sh"
+
+    def test_points_at_compact_and_the_state_file(self) -> None:
+        proc = self.sb.run(self.SCRIPT, {"hook_event_name": "StopFailure", "error": "max_output_tokens"})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        doc = json.loads(proc.stdout)
+        self.assertEqual(set(doc), {"systemMessage"})
+        self.assertIn("/compact", doc["systemMessage"])
+        self.assertIn("written to .workspace/local/session-state.md survives", doc["systemMessage"])
+        state = self.sb.work / ".workspace" / "local" / "session-state.md"
+        state.parent.mkdir(parents=True)
+        state.write_text("# s\n", encoding="utf-8")
+        doc = json.loads(self.sb.run(self.SCRIPT, {}).stdout)
+        self.assertIn("holds the running state", doc["systemMessage"])
+
+
+class SteLintHookTests(_SandboxCase):
+    """PostToolUse(Write|Edit) STE-lite check: off by default, on through env, .magician/ste or
+    cli-ui.json (in that order), only for Markdown under .workspace/shared/ or an opted-in glob,
+    findings returned as additionalContext, never a block, exit 0 on anything."""
+    SCRIPT = "ste-lint-hook.sh"
+    PROSE = "We utilize the cache prior to the build.\n"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.proj = self.sb.work
+        self.shared = self.proj / ".workspace" / "shared" / "specs"
+        self.shared.mkdir(parents=True)
+        self.spec = self.shared / "login.md"
+        self.spec.write_text(self.PROSE, encoding="utf-8")
+        self.other = self.proj / "docs"
+        self.other.mkdir()
+        self.note = self.other / "note.md"
+        self.note.write_text(self.PROSE, encoding="utf-8")
+
+    def _payload(self, path: Path, tool: str = "Write") -> dict:
+        return {"hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": {"file_path": str(path)}}
+
+    def _ctx(self, proc: subprocess.CompletedProcess) -> str:
+        doc = json.loads(proc.stdout)
+        self.assertEqual(set(doc), {"hookSpecificOutput"})
+        self.assertEqual(doc["hookSpecificOutput"]["hookEventName"], "PostToolUse")
+        self.assertNotIn("decision", doc)
+        return doc["hookSpecificOutput"]["additionalContext"]
+
+    def test_off_by_default(self) -> None:
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec))
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(self.spec.read_text(encoding="utf-8"), self.PROSE)
+
+    def test_on_and_under_shared_workspace_reports_findings(self) -> None:
+        for tool in ("Write", "Edit"):
+            proc = self.sb.run(self.SCRIPT, self._payload(self.spec, tool), MAGICIAN_STE="1")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            ctx = self._ctx(proc)
+            self.assertTrue(ctx.startswith("STE-lite: fix these in the same turn"))
+            self.assertIn(str(self.spec) + ":1: W4:", ctx)
+            self.assertIn('"utilize"', ctx)
+            self.assertIn('"prior to"', ctx)
+            self.assertLessEqual(len(ctx), BUDGET)
+        self.assertEqual(self.spec.read_text(encoding="utf-8"), self.PROSE, "the hook never edits the file")
+
+    def test_on_but_outside_the_shared_workspace_is_silent(self) -> None:
+        proc = self.sb.run(self.SCRIPT, self._payload(self.note), MAGICIAN_STE="1")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        txt = self.proj / ".workspace" / "shared" / "plain.txt"
+        txt.write_text(self.PROSE, encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(txt), MAGICIAN_STE="1")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""), "only Markdown is checked")
+
+    def test_ste_paths_globs_opt_a_folder_in(self) -> None:
+        mag = self.proj / ".magician"
+        mag.mkdir()
+        (mag / "ste-paths").write_text("# project prose\n\ndocs/*.md\n", encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(self.note), MAGICIAN_STE="1")
+        self.assertIn(str(self.note) + ":1: W4:", self._ctx(proc))
+        elsewhere = self.proj / "README.md"
+        elsewhere.write_text(self.PROSE, encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(elsewhere), MAGICIAN_STE="1")
+        self.assertEqual(proc.stdout, "", "a file no glob names stays silent")
+
+    def test_precedence_env_then_project_file_then_cli_ui(self) -> None:
+        mag = self.proj / ".magician"
+        mag.mkdir()
+        (mag / "ste").write_text("on\n", encoding="utf-8")
+        self.assertIn("W4", self._ctx(self.sb.run(self.SCRIPT, self._payload(self.spec))))
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec), MAGICIAN_STE="0")
+        self.assertEqual(proc.stdout, "", "env off wins over the project file")
+        (mag / "ste").write_text("off\n", encoding="utf-8")
+        (self.sb.mag / "cli-ui.json").write_text('{"ste": true}', encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec))
+        self.assertEqual(proc.stdout, "", "the project file off wins over cli-ui.json")
+        (mag / "ste").unlink()
+        self.assertIn("W4", self._ctx(self.sb.run(self.SCRIPT, self._payload(self.spec))))
+        (self.sb.mag / "cli-ui.json").write_text('{"ste": false}', encoding="utf-8")
+        self.assertEqual(self.sb.run(self.SCRIPT, self._payload(self.spec)).stdout, "")
+
+    def test_clean_prose_and_bad_events_are_silent(self) -> None:
+        self.spec.write_text("Use the cache before the build.\n", encoding="utf-8")
+        proc = self.sb.run(self.SCRIPT, self._payload(self.spec), MAGICIAN_STE="1")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        for payload in ("", "not json", "{}", '{"tool_input":{"file_path":"relative.md"}}',
+                        json.dumps(self._payload(self.shared / "missing.md"))):
+            with self.subTest(payload=payload):
+                proc = self.sb.run(self.SCRIPT, payload, MAGICIAN_STE="1")
+                self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertFalse(self.sb.envfile.exists())
+
+
+class CloudSessionTests(_SandboxCase):
+    """CLAUDE_CODE_REMOTE=1: no launchers, no credential bridge, one note that commands run by full path."""
+
+    def test_launcher_and_credential_hooks_write_nothing_in_the_cloud(self) -> None:
+        opts = {"CLAUDE_PLUGIN_OPTION_JIRA_BASE_URL": "https://x.atlassian.net",
+                "CLAUDE_PLUGIN_OPTION_JIRA_API_TOKEN": "tok-" + "s3cr3t"}
+        for script in ("tools-path.sh", "userconfig-env.sh"):
+            with self.subTest(script=script):
+                proc = self.sb.run(script, {"session_id": "c", "source": "startup"}, CLAUDE_CODE_REMOTE="1", **opts)
+                self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+                self.assertIn("cloud session", proc.stderr)
+                self.assertIn("full path only", proc.stderr)
+                self.assertNotIn("s3cr3t", proc.stderr)
+        self.assertFalse(self.sb.envfile.exists())
+        self.assertFalse((self.sb.data / "tools").exists())
+        proc = self.sb.run("tools-path.sh", {}, CLAUDE_CODE_REMOTE="0")
+        self.assertTrue((self.sb.data / "tools").exists(), "the launcher hook stays on outside the cloud")
+
+    def test_session_start_names_the_cloud_branch(self) -> None:
+        proc = self.sb.run("session-start.sh", {"session_id": "c", "source": "startup"}, CLAUDE_CODE_REMOTE="1")
+        ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Cloud session (CLAUDE_CODE_REMOTE=1)", ctx)
+        self.assertIn("run by full path only, as tools/<name> under the plugin root", ctx)
+        self.assertEqual(ctx.count(str(ROOT)), 1)
+        proc = self.sb.run("session-start.sh", {"session_id": "c", "source": "startup"})
+        self.assertNotIn("Cloud session", json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"])
 
 
 if __name__ == "__main__":

@@ -11,14 +11,37 @@
 #   3. Directory limits: at most 512 tracked files, no non-image file of 256 KiB or more, only text,
 #      SVG, PNG, JPEG, GIF, WebP and font files, and no OS junk (.DS_Store, Thumbs.db, desktop.ini,
 #      __MACOSX).
-#   (The Codex package is built and gated on the `codex-plugin` branch.)
+#   4. Token budget: an offline estimate (bytes / 4) of the always-on cost (skill and agent names and
+#      descriptions, which sit in every session) and of each skill body, and, when the `claude` CLI
+#      is installed, the CLI's own projection from `claude --plugin-dir . plugin details magician`
+#      (text output; the command has no JSON flag). Fails when the offline always-on estimate is
+#      over 1,370, when an offline skill body is over 6,000 tokens, and when the offline always-on
+#      estimate grew by more than 10% over the value recorded in evals/results/budget.json, unless
+#      the top CHANGELOG entry mentions "token budget". The CLI figure is information only: it
+#      depends on sign-in (signed in it is the real tokenizer, signed out an estimate), so it never
+#      fails the gate; it prints a warning above 1,800. Both numbers are recorded in that file.
+#   5. STE-lite (warn only): `tools/ste-lint --max 200` over skills/*/SKILL.md, README.md and lore/*.md;
+#      prints the finding count and the rules that fire most, records the count as `ste_findings` in
+#      evals/results/budget.json (merged into the file the token-budget tier wrote), and never fails.
+#   (The Codex package is built and checked in tier 1: tests/claude/test_codex_build.py runs
+#   scripts/build-codex.sh twice into temporary folders, validates the output and diffs the builds.)
 #
 # The behavioral eval suite (claude plugin eval --trust-plugin) spends API budget and needs the
 # network, so it is OPT-IN and local-only: pass `--evals` (or set MAGICIAN_GATE_EVALS=1). CI never
-# runs it.
+# runs it. The tier runs both arms (--ablation with-without), runs case scaffolds (--scaffold), grants
+# the write tools the cases need (MAGICIAN_EVAL_ALLOW_TOOLS, default "Bash Edit Write"), stops at
+# MAGICIAN_EVAL_MAX_COST dollars (default 20) and writes .gate-evals.json. Then evals/flip.py compares
+# each case with evals/results/last.json: a case that passed every run there and fails a run now is
+# a FLIP and fails the tier whatever the aggregate says; a case below the threshold fails it too;
+# new and improved cases are only reported; cases tagged expected-fail are left out until they first
+# pass; a baseline case missing from the run fails it too, unless the run was filtered with
+# `--tag T` (repeatable, passed to claude plugin eval; the gate then sets MAGICIAN_EVAL_TAG_FILTERED=1
+# for flip.py). `--update-baseline` (or MAGICIAN_EVAL_UPDATE_BASELINE=1) rewrites last.json from this
+# run only when the tier passed; add `--force-baseline` to record a failed run anyway.
 #
 # Exit 0 only if every selected tier passes. Any failure → non-zero, and the gate stops reporting
 # GO. Usage:  scripts/gate.sh [--evals] [--threshold N] [--eval-model M] [--judge-model M]
+#                             [--tag T]... [--update-baseline [--force-baseline]]
 set -uo pipefail
 export LC_ALL=C
 
@@ -29,6 +52,9 @@ RUN_EVALS="${MAGICIAN_GATE_EVALS:-0}"
 THRESHOLD="0.8"
 EVAL_MODEL=""
 JUDGE_MODEL=""
+UPDATE_BASELINE="${MAGICIAN_EVAL_UPDATE_BASELINE:-0}"
+FORCE_BASELINE=0
+EVAL_TAGS=()
 
 MAX_FILES=512
 MAX_BYTES=262144   # 256 KiB; applies to every file that isn't an image
@@ -39,6 +65,9 @@ while [ $# -gt 0 ]; do
     --threshold) THRESHOLD="$2"; shift ;;
     --eval-model) EVAL_MODEL="$2"; shift ;;
     --judge-model) JUDGE_MODEL="$2"; shift ;;
+    --update-baseline) UPDATE_BASELINE=1 ;;
+    --force-baseline) FORCE_BASELINE=1 ;;
+    --tag) EVAL_TAGS+=("$2"); shift ;;
     -h|--help)
       grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "gate: unknown option '$1'" >&2; exit 64 ;;
@@ -61,14 +90,15 @@ run_tier() {
 }
 
 # Files that ship: tracked files still present in the working tree. Outside a git checkout
-# (e.g. an installed plugin copy) every regular file except .git/ and caches counts.
+# (e.g. an installed plugin copy) every regular file except .git/, caches and the generated Codex
+# package in dist/ (scripts/build-codex.sh) counts.
 list_files() {
   if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$ROOT" ls-files -z | while IFS= read -r -d '' f; do
       [ -f "$ROOT/$f" ] && printf '%s\n' "$f"
     done
   else
-    (cd "$ROOT" && find . -type f ! -path './.git/*' ! -path '*/__pycache__/*' | sed 's|^\./||')
+    (cd "$ROOT" && find . -type f ! -path './.git/*' ! -path '*/__pycache__/*' ! -path './dist/*' | sed 's|^\./||')
   fi
 }
 
@@ -146,13 +176,218 @@ run_tier "File count (at most ${MAX_FILES} files)" check_file_count
 run_tier "File sizes (no non-image file of 256 KiB or more)" check_file_sizes
 run_tier "File types (text, SVG, PNG, JPEG, GIF, WebP and fonts; no OS junk)" check_file_types
 
-# ---- Tier 4: behavioral evals (opt-in, local only) ---------------------------------------------
+# ---- Tier 4: token budget (always; the CLI projection when the `claude` CLI is installed) ------
+BUDGET_FILE="$ROOT/evals/results/budget.json"
+# The gating figure is the offline estimate (bytes / 4), so the result is the same on every machine.
+# Limit derivation, measured 2026-11-02: signed in, the CLI (real tokenizer) reported ~2,002
+# always-on tokens when the offline estimate was ~1,522, a ratio of 2002 / 1522 = 1.315. A real
+# ceiling of 1,800 tokens is 1800 / 1.315 = 1,369, so the offline limit is 1,370.
+MAX_ALWAYS_ON=1370
+CLI_WARN_ALWAYS_ON=1800
+MAX_SKILL_BODY=6000
+GROWTH_PCT=10
+
+# frontmatter_bytes FILE -> bytes of the name, description and when_to_use lines of the frontmatter
+frontmatter_bytes() {
+  local n=0 line infm=0 first=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$first" = 1 ]; then first=0; [ "$line" = "---" ] && { infm=1; continue; } || break; fi
+    [ "$line" = "---" ] && break
+    case "$line" in
+      name:*|description:*|when_to_use:*) n=$((n + ${#line} + 1)) ;;
+    esac
+  done < "$1"
+  printf '%s' "$n"
+}
+# body_bytes FILE -> bytes after the frontmatter
+body_bytes() {
+  local total fm
+  total=$(wc -c < "$1" | tr -d ' ')
+  fm=$(awk 'NR==1 && $0!="---" {exit} NR>1 && $0=="---" {print NR; exit}' "$1")
+  if [ -n "$fm" ]; then
+    printf '%s' "$(( total - $(head -n "$fm" "$1" | wc -c | tr -d ' ') ))"
+  else
+    printf '%s' "$total"
+  fi
+}
+# Number in text such as ~1,797 or ~5k or ~730 -> plain integer
+tok_number() {
+  local s=$1
+  s=${s#\~}; s=${s//,/}
+  case "$s" in
+    *k) s=${s%k}; case "$s" in *.*) s=$(( ${s%.*} * 1000 + ${s#*.} * 100 )) ;; *) s=$(( s * 1000 )) ;; esac ;;
+  esac
+  printf '%s' "$s"
+}
+
+check_token_budget() {
+  local ok=1 bytes=0 f name b tok body_json="" line comp always invoke cli_always="" cli_json="" prev
+  local changelog_ok=0 top
+  # Offline estimate: always-on = name + description lines of every skill and agent, / 4.
+  for f in "$ROOT"/skills/*/SKILL.md "$ROOT"/agents/*.md; do
+    [ -f "$f" ] || continue
+    bytes=$(( bytes + $(frontmatter_bytes "$f") ))
+  done
+  local offline_always=$(( bytes / 4 ))
+  echo "offline estimate: always-on ~${offline_always} tokens (skill and agent names and descriptions, bytes / 4; limit ${MAX_ALWAYS_ON})"
+  if [ "$offline_always" -gt "$MAX_ALWAYS_ON" ]; then
+    echo "always-on estimate over ${MAX_ALWAYS_ON} (offline estimate): ~${offline_always}"
+    ok=0
+  fi
+  for f in "$ROOT"/skills/*/SKILL.md; do
+    [ -f "$f" ] || continue
+    name=${f%/SKILL.md}; name=${name##*/}
+    b=$(body_bytes "$f"); tok=$(( b / 4 ))
+    body_json="${body_json:+$body_json, }\"$name\": $tok"
+    if [ "$tok" -gt "$MAX_SKILL_BODY" ]; then
+      echo "skill body over ${MAX_SKILL_BODY} tokens (offline estimate): ${name} ~${tok}"
+      ok=0
+    fi
+  done
+  # The CLI's own projection, when available. `claude plugin details` prints text (no JSON flag is
+  # documented); the "Always-on:" line and the per-component table are read from it.
+  if command -v claude >/dev/null 2>&1; then
+    local out
+    out=$(cd "$ROOT" && claude --plugin-dir "$ROOT" plugin details magician 2>/dev/null) || out=""
+    if [ -n "$out" ]; then
+      always=$(printf '%s\n' "$out" | grep -E '^[[:space:]]*Always-on:' | head -1 | sed -E 's/.*Always-on:[[:space:]]*~?([0-9,.k]+).*/\1/')
+      [ -n "$always" ] && cli_always=$(tok_number "$always")
+      if [ -n "$cli_always" ]; then
+        echo "claude plugin details: always-on ~${cli_always} tokens (information only; an estimate when signed out)"
+        if [ "$cli_always" -gt "$CLI_WARN_ALWAYS_ON" ]; then
+          echo "warning: claude plugin details reports always-on over ${CLI_WARN_ALWAYS_ON} (~${cli_always}); the gate does not fail on this figure"
+        fi
+      fi
+      while IFS= read -r line; do
+        set -- $line
+        [ "$#" -eq 3 ] || continue
+        comp=$1; invoke=$3
+        case "$invoke" in ~[0-9]*) ;; *) continue ;; esac
+        tok=$(tok_number "$invoke")
+        [ -d "$ROOT/skills/$comp" ] || comp="agent:$comp"   # skills and agents can share a name
+        cli_json="${cli_json:+$cli_json, }\"$comp\": $tok"
+        if [ -d "$ROOT/skills/$comp" ] && [ "$tok" -gt "$MAX_SKILL_BODY" ]; then
+          echo "warning: skill body over ${MAX_SKILL_BODY} tokens (claude plugin details, information only): ${comp} ~${tok}"
+        fi
+      done <<EOF_DETAILS
+$(printf '%s\n' "$out" | sed -n '/^Per-component/,/^$/p' | sed -n '3,$p')
+EOF_DETAILS
+    else
+      echo "claude plugin details gave no output; CLI projection skipped"
+    fi
+  else
+    echo "claude CLI not found; CLI projection skipped (offline estimate only)"
+  fi
+  # Growth check against the recorded offline value, waived by a CHANGELOG note.
+  top=$(awk '/^## /{n++} n==1' "$ROOT/CHANGELOG.md" 2>/dev/null)
+  case "$top" in *"token budget"*) changelog_ok=1 ;; esac
+  if [ -f "$BUDGET_FILE" ]; then
+    prev=$(grep -oE '"offline_always_on_tokens": *[0-9]+' "$BUDGET_FILE" | head -1 | grep -oE '[0-9]+$')
+    if [ -n "$prev" ] && [ "$prev" -gt 0 ]; then
+      if [ $(( offline_always * 100 )) -gt $(( prev * (100 + GROWTH_PCT) )) ]; then
+        if [ "$changelog_ok" = 1 ]; then
+          echo "always-on estimate grew over ${GROWTH_PCT}% (${prev} -> ${offline_always}); accepted, the CHANGELOG's top entry mentions the token budget"
+        else
+          echo "always-on estimate grew over ${GROWTH_PCT}% (${prev} -> ${offline_always}) with no \"token budget\" note in the CHANGELOG's top entry"
+          ok=0
+        fi
+      else
+        echo "always-on estimate within ${GROWTH_PCT}% of the recorded ${prev}"
+      fi
+    fi
+  else
+    echo "no recorded budget yet; this run sets the baseline"
+  fi
+  mkdir -p "${BUDGET_FILE%/*}" 2>/dev/null
+  {
+    printf '{\n  "recorded_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "offline_always_on_tokens": %s,\n' "$offline_always"
+    printf '  "offline_skill_body_tokens": {%s},\n' "$body_json"
+    printf '  "cli_always_on_tokens": %s,\n' "${cli_always:-null}"
+    if [ -n "$cli_json" ]; then printf '  "cli_on_invoke_tokens": {%s}\n' "$cli_json"; else printf '  "cli_on_invoke_tokens": null\n'; fi
+    printf '}\n'
+  } > "$BUDGET_FILE" 2>/dev/null && echo "recorded in ${BUDGET_FILE#$ROOT/}"
+  [ "$ok" = 1 ]
+}
+run_tier "Token budget (offline always-on under ${MAX_ALWAYS_ON}, skill bodies under ${MAX_SKILL_BODY}, growth under ${GROWTH_PCT}%)" check_token_budget
+
+# ---- Tier 5: STE-lite over magician's own prose (always; warn only, never fails) ---------------
+# Skill bodies, the README and the lore cores are read by the model and by people; the count of
+# ste-lint findings is a size and clarity signal recorded next to the token budget. The tier
+# prints the count and the rules that fire most and passes whatever the count is.
+STE_LINT="$ROOT/tools/ste-lint"
+# Reads ste-lint's JSON report on stdin, prints one summary line, and merges ste_findings into the
+# budget file (argument 1) without touching its other keys.
+STE_MERGE='
+import json, sys
+from collections import Counter
+budget = sys.argv[1]
+try:
+    doc = json.load(sys.stdin)
+except ValueError:
+    print("unreadable report"); sys.exit(0)
+total = int(doc.get("total", 0))
+tally = Counter(f.get("rule", "?") for f in doc.get("findings", []))
+top = ", ".join("%s %d" % (r, c) for r, c in tally.most_common(6))
+print("%d findings (%d errors, %d warnings) over %d files; most frequent among the first %d: %s" % (
+    total, doc.get("errors", 0), doc.get("warnings", 0), len(doc.get("files", [])), doc.get("shown", 0), top or "none"))
+try:
+    cur = json.load(open(budget, encoding="utf-8"))
+    if not isinstance(cur, dict):
+        cur = {}
+except (OSError, ValueError):
+    cur = {}
+cur["ste_findings"] = total
+with open(budget, "w", encoding="utf-8") as fh:
+    json.dump(cur, fh, indent=2)
+    fh.write("\n")
+'
+check_ste_lite() {
+  local n
+  if [ ! -x "$STE_LINT" ]; then
+    echo "tools/ste-lint not executable; STE-lite tier skipped"
+    return 0
+  fi
+  n=$(cd "$ROOT" && "$STE_LINT" --json --max 200 skills/*/SKILL.md README.md lore/*.md 2>/dev/null | "$PY" -c "$STE_MERGE" "$BUDGET_FILE")
+  echo "STE-lite: ${n:-no report}"
+  echo "recorded as ste_findings in ${BUDGET_FILE#$ROOT/} (warn only; the gate never fails on this count)"
+  return 0
+}
+run_tier "STE-lite (warn)" check_ste_lite
+
+# ---- Tier 6: behavioral evals (opt-in, local only) ---------------------------------------------
+EVAL_JSON="$ROOT/.gate-evals.json"
+EVAL_BASELINE="$ROOT/evals/results/last.json"
+# check_evals: run the suite, then the flip check. The CLI exits 1 when any case is under the
+# threshold, expected-fail cases included, so its status goes to flip.py, which decides.
+check_evals() {
+  local rc allow flip_args
+  read -r -a allow <<< "${MAGICIAN_EVAL_ALLOW_TOOLS:-Bash Edit Write}"
+  eval_cmd=(claude plugin eval "$ROOT" --trust-plugin --json "$EVAL_JSON" --threshold "$THRESHOLD"
+            --no-publish --max-cost-usd "${MAGICIAN_EVAL_MAX_COST:-20}" --ablation with-without --scaffold)
+  [ -n "$EVAL_MODEL" ]  && eval_cmd+=(--model "$EVAL_MODEL")
+  [ -n "$JUDGE_MODEL" ] && eval_cmd+=(--judge-model "$JUDGE_MODEL")
+  [ "${#EVAL_TAGS[@]}" -gt 0 ] && eval_cmd+=(--tag "${EVAL_TAGS[@]}")
+  # --allow-tools takes a list, so it goes last.
+  [ "${#allow[@]}" -gt 0 ] && eval_cmd+=(--allow-tools "${allow[@]}")
+  rm -f "$EVAL_JSON"
+  "${eval_cmd[@]}"
+  rc=$?
+  echo
+  echo "flip check against ${EVAL_BASELINE#$ROOT/} (claude plugin eval exited ${rc}):"
+  flip_args=(compare --results "$EVAL_JSON" --baseline "$EVAL_BASELINE" --evals-dir "$ROOT/evals"
+             --threshold "$THRESHOLD" --exit-code "$rc")
+  [ "$UPDATE_BASELINE" = "1" ] && flip_args+=(--update-baseline)
+  [ "$FORCE_BASELINE" = "1" ] && flip_args+=(--force-baseline)
+  if [ "${#EVAL_TAGS[@]}" -gt 0 ]; then
+    MAGICIAN_EVAL_TAG_FILTERED=1 "$PY" "$ROOT/evals/flip.py" "${flip_args[@]}"
+  else
+    "$PY" "$ROOT/evals/flip.py" "${flip_args[@]}"
+  fi
+}
 if [ "$RUN_EVALS" = "1" ]; then
   if command -v claude >/dev/null 2>&1; then
-    eval_cmd=(claude plugin eval --trust-plugin "$ROOT" --threshold "$THRESHOLD" --json "$ROOT/.gate-evals.json")
-    [ -n "$EVAL_MODEL" ]  && eval_cmd+=(--model "$EVAL_MODEL")
-    [ -n "$JUDGE_MODEL" ] && eval_cmd+=(--judge-model "$JUDGE_MODEL")
-    run_tier "Behavioral evals (claude plugin eval)" "${eval_cmd[@]}"
+    run_tier "Behavioral evals (claude plugin eval, flip-aware)" check_evals
   else
     hr; echo "▶ Behavioral evals (claude plugin eval)"; hr
     echo "✘ 'claude' CLI not found — cannot run the eval tier."; fail=1; echo

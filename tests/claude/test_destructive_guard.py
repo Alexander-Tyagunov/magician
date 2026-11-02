@@ -63,7 +63,8 @@ def event(command: str, tool: str = "Bash") -> dict:
     }
 
 
-def invoke(payload: object, *, raw: bool = False) -> subprocess.CompletedProcess[str]:
+def invoke(payload: object, *, raw: bool = False,
+           extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     data = payload if raw else json.dumps(payload)
     with tempfile.TemporaryDirectory() as tmp:
         env = {
@@ -76,6 +77,7 @@ def invoke(payload: object, *, raw: bool = False) -> subprocess.CompletedProcess
             "MAGICIAN_SETTINGS": os.path.join(tmp, "settings.json"),
             "CLAUDE_ENV_FILE": os.path.join(tmp, "session.env"),
         }
+        env.update(extra_env or {})
         return subprocess.run(
             [BASH, str(GUARD)], input=str(data), text=True, capture_output=True,
             env=env, timeout=20, check=False,
@@ -790,6 +792,20 @@ class DestructiveGuardTests(unittest.TestCase):
             "git clean -xfd",
             "chmod -R 777 /usr/local",
             "mkfs.ext4 ./scratch.img",
+            # 5.0 hardening (batch 2): obfuscated heads and cd-relative wipes
+            _RM[0] + "''" + _RM[1] + " " + _RECURSIVE_FORCE + " " + _ROOT,
+            _RM[0] + '""' + _RM[1] + " " + _RECURSIVE_FORCE + " ~",
+            "'" + _RM[0] + "'" + _RM[1] + " " + _RECURSIVE_FORCE + " " + _ROOT,
+            "\\" + rm_rf("~"),
+            "$(echo " + _RM + ") " + _RECURSIVE_FORCE + " " + _ROOT,
+            "`echo " + _RM + "` " + _RECURSIVE_FORCE + " " + _ROOT,
+            "cd / && " + rm_rf("."),
+            "cd ~ && " + rm_rf("."),
+            "pushd / && " + rm_rf("."),
+            rm_rf(dq(_HOME_VAR)),
+            rm_rf(_HOME_BRACE),
+            "cd / && find . -delete",
+            "truncate -s0 /etc/" + "passwd",
         ]
         for command in corpus:
             with self.subTest(command=command):
@@ -815,6 +831,11 @@ class DestructiveGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assert_soft_blocked(command)
         self.assert_blocked_any(pipeline("cat .env", _POST_STDIN, "ba" + "sh"))
+        # 5.0 hardening (batch 2): cwd-wide and piped deletes, truncate outside cwd, git force/hard
+        for command in ("ls | xargs " + _RM + " " + _RECURSIVE_FORCE, "find . -delete", rm_rf("."),
+                        "truncate -s0 ../x", "git push --force origin main", "git push -f", "git reset --hard"):
+            with self.subTest(command=command):
+                self.assert_soft_blocked(command)
         for command in (
             rm_rf("./build"),
             rm_rf("build/cache"),
@@ -824,9 +845,105 @@ class DestructiveGuardTests(unittest.TestCase):
             "git status",
             "npm test",
             pipeline(_GET_JSON, "python3 -m json.tool"),
+            "find build -name '*.o' -delete",
+            "truncate -s0 build/log",
+            "git push --force-with-lease origin main",
+            "git push origin main",
+            "git reset --soft HEAD~1",
+            "cd / && ls",
+            "pushd build && " + rm_rf("./out"),
+            "cd build && " + rm_rf("./out"),
         ):
             with self.subTest(command=command):
                 self.assert_allowed(command)
+
+    # ---- 5.0 hardening: obfuscated heads, cwd-relative wipes, xargs, find -delete, truncate, git ----
+
+    def test_obfuscated_rm_heads_are_hard_blocked_like_the_plain_form(self) -> None:
+        """Quotes inside the command word, a leading backslash and an echo substitution all reach
+        the same rm the shell runs, so each spelling gets the plain form's verdict (exit 2)."""
+        r, m = _RM[0], _RM[1]
+        for head in (r + "''" + m, r + '""' + m, "'" + r + "'" + m, "\\" + _RM,
+                     "$(echo " + _RM + ")", "`echo " + _RM + "`", "$(printf " + _RM + ")"):
+            for target in (_ROOT, "~", _HOME_VAR):
+                with self.subTest(head=head, target=target):
+                    self.assert_hard_blocked(_join(head, _RECURSIVE_FORCE, target))
+        for benign in (r + "''" + m + " -f build/x.o", "\\" + _RM + " " + _RECURSIVE_FORCE + " ./build",
+                       "$(echo " + _RM + ") " + _RECURSIVE_FORCE + " node_modules", "$(echo hello)", "`echo done`"):
+            with self.subTest(command=benign):
+                self.assert_allowed(benign)
+
+    def test_cd_then_dot_resolves_to_that_folder(self) -> None:
+        """`cd / &&` followed by a delete of `.` is a root wipe; the guard follows cd (absolute, ~,
+        $HOME, a relative name appended to the folder it knows) and reads . ./ ./* and * against it."""
+        for prefix in ("cd / && ", "cd / ; ", "cd ~ && ", "cd " + _HOME_VAR + " && ", "cd " + dq(_HOME_VAR) + " && ",
+                       "cd /etc && ", "cd / && cd etc && ", "(cd / && "):
+            for dot in (".", "./", "./*", "*"):
+                with self.subTest(prefix=prefix, dot=dot):
+                    self.assert_hard_blocked(prefix + rm_rf(dot) + (")" if prefix.startswith("(") else ""))
+        self.assert_hard_blocked("cd / && find . -delete")
+        self.assert_hard_blocked("cd ~ && find . -delete")
+        for benign in ("cd / && ls", "cd / && cat etc/hosts", "cd src && npm test", "cd build && " + rm_rf("./out"),
+                       "cd /tmp/work && " + rm_rf("./cache")):
+            with self.subTest(command=benign):
+                self.assert_allowed(benign)
+        # The event's own cwd counts as the starting folder: in the home folder, a delete of . is a home wipe.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"PATH": "/usr/bin:/bin", "HOME": tmp, "LC_ALL": "C", "CLAUDE_PLUGIN_ROOT": str(ROOT)}
+            for cwd, code in ((tmp, 2), ("/", 2), (os.path.join(tmp, "proj"), 0)):
+                with self.subTest(cwd=cwd):
+                    ev = dict(event(rm_rf(".")), cwd=cwd)
+                    result = subprocess.run([BASH, str(GUARD)], input=json.dumps(ev), text=True,
+                                            capture_output=True, env=env, timeout=20, check=False)
+                    self.assertEqual(result.returncode, code, (cwd, result.stdout, result.stderr))
+
+    def test_cwd_wide_deletes_and_xargs_are_soft_blocked(self) -> None:
+        """A delete of the whole working directory, or of whatever a pipe lists, is not OS-fatal
+        from an ordinary project folder, so it gets the soft verdict a person reviews."""
+        for command in (rm_rf("."), rm_rf("*"), rm_rf("./*"), "cd build && " + rm_rf("."),
+                        "ls | xargs " + _RM + " " + _RECURSIVE_FORCE,
+                        "find . -name node_modules -type d | xargs " + _RM + " " + _RECURSIVE_FORCE,
+                        "find . -delete", "find -delete", "find . -type f -delete", "find ./ -delete"):
+            with self.subTest(command=command):
+                self.assert_soft_blocked(command)
+        for benign in (rm_rf("./build"), rm_rf("node_modules"), "ls | xargs " + _RM + " -f",
+                       "ls | xargs wc -l", "find build -name '*.o' -delete", "find . -name '*.pyc' -delete",
+                       "find . -path './tmp/*' -delete", "find . -mtime +30 -delete", "find . -empty -delete",
+                       "find src -type f | wc -l", "find . -name '*.py' -newer main.py"):
+            with self.subTest(command=benign):
+                self.assert_allowed(benign)
+
+    def test_truncate_outside_the_working_directory(self) -> None:
+        self.assert_hard_blocked("truncate -s0 /etc/" + "passwd")
+        self.assert_hard_blocked("truncate -s 0 /usr/lib/x")
+        self.assert_hard_blocked("truncate --size=0 " + _HOME_VAR)
+        for command in ("truncate -s0 ../x", "truncate -s0 ~/notes.txt", "truncate -s 0 /var/log/app.log",
+                        "truncate -s0 " + dq(_HOME_VAR + "/x"), "truncate -s0 /tmp/a"):
+            with self.subTest(command=command):
+                self.assert_soft_blocked(command)
+        for benign in ("truncate -s0 build/log", "truncate -s 0 app.log", "truncate --size=1M disk.img",
+                       "truncate -r ref.bin out.bin"):
+            with self.subTest(command=benign):
+                self.assert_allowed(benign)
+
+    def test_git_force_push_and_hard_reset_are_soft_blocked(self) -> None:
+        for command in ("git push --force origin main", "git push -f origin master", "git push -f",
+                        "git push origin feature --force", "git push -fu origin feature",
+                        "git -C repo push --force origin main", "git reset --hard", "git reset --hard HEAD~1",
+                        "git reset --hard origin/main", "git push --dry-run -f",
+                        "git push origin +main", "git push origin +HEAD:main"):
+            with self.subTest(command=command):
+                self.assert_soft_blocked(command)
+        result = invoke(event("git push --force origin main"))
+        self.assertIn("main or master", json.loads(result.stdout)["reason"])
+        result = invoke(event("git reset --hard"))
+        self.assertIn("reset --hard", json.loads(result.stdout)["reason"])
+        for benign in ("git push origin main", "git push --force-with-lease origin main",
+                       "git push --force-with-lease=main:abc123 origin main", "git push --force-if-includes --force-with-lease",
+                       "git push -u origin feature", "git reset --soft HEAD~1", "git reset HEAD~1", "git reset --mixed",
+                       "git reset file.txt", "git status"):
+            with self.subTest(command=benign):
+                self.assert_allowed(benign)
 
     def test_malformed_and_unrelated_events_fail_open(self) -> None:
         payloads = (
@@ -843,6 +960,106 @@ class DestructiveGuardTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 result = invoke(payload, raw=raw)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+
+# ---- all-soft mode (MAGICIAN_GUARD_ALL_SOFT=1, set only by the magician mod) ----
+
+_DOT = "."
+_SSH_KEY = _TILDE_SLASH + _DOT + "ssh/id_rsa"
+_AWS_CREDS = _TILDE_SLASH + _DOT + "aws/credentials"
+_ENV_FILE = _DOT + "env"
+_ABS = "rm -rf on an absolute path"
+_RESET = "git reset --hard, which discards every uncommitted change in the working tree"
+_PUSH = "git push --force without --force-with-lease, which overwrites the remote branch blindly"
+_PUSH_MAIN = "git push --force to main or master without --force-with-lease"
+_TRIFECTA = "private data, network access and execution together (a lethal trifecta); needs manual review"
+# private data read, piped to an interpreter, with a network call after it (no download piped in)
+_TRIFECTA_CMD = "cat token.txt | python3 x.py && " + _DOWNLOADER + " https://x.example"
+
+# Twenty single-reason soft shapes and the exact bytes the guard has always printed for them.
+SOFT_SAMPLES = [
+    (rm_rf("/tmp/build"), _ABS),
+    (rm_rf("/var/tmp/cache"), _ABS),
+    ("cat " + _SSH_KEY, "reading the SSH directory"),
+    ("cat " + _AWS_CREDS, "reading AWS credentials"),
+    ("cat " + _TILDE_SLASH + _DOT + "config/gcloud/application_default_credentials.json", "reading gcloud credentials"),
+    ("cat " + _TILDE_SLASH + _DOT + "azure/accessTokens.json", "reading Azure credentials"),
+    ("cat " + _ENV_FILE, "reading .env file"),
+    ("cat config/" + _ENV_FILE + ".local", "reading .env file"),
+    ("git reset --hard", _RESET),
+    ("git reset --hard HEAD~1", _RESET),
+    ("git push --force origin main", _PUSH_MAIN),
+    ("git push -f origin feature", _PUSH),
+    ("git push origin +feature", _PUSH),
+    (rm_rf(_DOT), "rm -rf on the whole working directory, dot or star; needs manual review"),
+    (rm_rf("*"), "rm -rf on the whole working directory, dot or star; needs manual review"),
+    ("find . -delete", "find -delete over the whole working tree with no name or path filter; needs manual review"),
+    ("find . -print0 | xargs -0 " + _RM + " " + _RECURSIVE_FORCE, "rm -rf with no path, deleting whatever xargs feeds it; needs manual review"),
+    (EVAL_WORD + ' "$X"', "the eval builtin used with dynamic content"),
+    (_TRIFECTA_CMD, _TRIFECTA),
+    (rm_rf("/tmp/build") + "; cat " + _SSH_KEY, _ABS),
+]
+
+
+class AllSoftModeTests(unittest.TestCase):
+    def test_default_output_is_byte_identical_for_soft_samples(self) -> None:
+        self.assertEqual(len(SOFT_SAMPLES), 20)
+        for command, reason in SOFT_SAMPLES:
+            expected = '{"decision": "block", "reason": "' + reason + '"}\n'
+            for extra in (None, {"MAGICIAN_GUARD_ALL_SOFT": ""}, {"MAGICIAN_GUARD_ALL_SOFT": "0"}):
+                with self.subTest(command=command, env=extra):
+                    result = invoke(event(command), extra_env=extra)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, expected)
+                    self.assertEqual(result.stderr, "")
+
+    def _all_soft(self, command: str) -> subprocess.CompletedProcess[str]:
+        return invoke(event(command), extra_env={"MAGICIAN_GUARD_ALL_SOFT": "1"})
+
+    def test_all_soft_lists_every_reason(self) -> None:
+        cases = [
+            (rm_rf("/tmp/build") + "; cat " + _SSH_KEY, [_ABS, "reading the SSH directory"]),
+            (rm_rf("/tmp/build") + " && cat " + _AWS_CREDS, [_ABS, "reading AWS credentials"]),
+            (rm_rf("/tmp/build") + "; cat " + _ENV_FILE, [_ABS, "reading .env file"]),
+            ("git reset --hard; " + _TRIFECTA_CMD, [_RESET, _TRIFECTA]),
+            ("git push --force origin feat; " + _TRIFECTA_CMD, [_PUSH, _TRIFECTA]),
+            ("git reset --hard; git push --force origin feat", [_RESET, _PUSH]),
+            ("git reset --hard; " + rm_rf("./build"), [_RESET]),
+            (rm_rf("/tmp/a") + "; " + rm_rf("/tmp/b"), [_ABS]),
+        ]
+        for command, reasons in cases:
+            with self.subTest(command=command):
+                result = self._all_soft(command)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                verdict = json.loads(result.stdout)
+                self.assertEqual(verdict["decision"], "block")
+                self.assertEqual(verdict["reasons"], reasons)
+                self.assertEqual(verdict["reason"], reasons[0])
+
+    def test_all_soft_single_reason_matches_default_reason(self) -> None:
+        for command, reason in SOFT_SAMPLES[:-1]:
+            with self.subTest(command=command):
+                verdict = json.loads(self._all_soft(command).stdout)
+                self.assertEqual(verdict["reason"], reason)
+                self.assertIn(reason, verdict["reasons"])
+
+    def test_all_soft_keeps_hard_blocks_and_allows(self) -> None:
+        hard = self._all_soft(rm_rf(_ROOT))
+        self.assertEqual(hard.returncode, 2)
+        self.assertEqual(hard.stdout, "")
+        hard_after_soft = self._all_soft("git reset --hard; " + rm_rf(_ROOT))
+        self.assertEqual(hard_after_soft.returncode, 2)
+        for benign in ("ls -la", "git status", rm_rf("./build")):
+            with self.subTest(command=benign):
+                ok = self._all_soft(benign)
+                self.assertEqual((ok.returncode, ok.stdout), (0, ""))
+
+    def test_all_soft_too_long_is_one_reason(self) -> None:
+        result = self._all_soft("echo " + "a" * 60000)
+        self.assertEqual(result.returncode, 0)
+        verdict = json.loads(result.stdout)
+        self.assertEqual(len(verdict["reasons"]), 1)
+        self.assertIn("too long to check", verdict["reason"])
 
 
 if __name__ == "__main__":

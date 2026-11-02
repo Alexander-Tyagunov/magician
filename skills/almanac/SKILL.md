@@ -1,40 +1,31 @@
 ---
 name: almanac
-description: One-time workspace setup — creates the .workspace/ structure, .gitignore entries and a lean CLAUDE.md, then suggests relevant MCPs and permission rules you can add yourself with /permissions. Writes no Claude Code settings. Run once per project.
-allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git commit -m *)
+description: One-time workspace setup; .workspace/, .gitignore, CLAUDE.md, optional AGENTS.md and REVIEW.md. Run once per project.
+allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(./AGENTS.md), Edit(./REVIEW.md), Edit(./.claude/skills/verify/SKILL.md), Edit(./.claude/skills/simplify/SKILL.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git add AGENTS.md), Bash(git add REVIEW.md), Bash(git add .claude/skills/verify/SKILL.md), Bash(git add .claude/skills/simplify/SKILL.md), Bash(git commit -m *)
 disable-model-invocation: true
 ---
 
 # /almanac — Workspace Initialization
 
-Set up the magician workspace for this project. Run once per project.
+## When to use
+
+Once per project, on request: create `.workspace/`, update `.gitignore`, write a lean `CLAUDE.md`, and optionally `AGENTS.md`, `REVIEW.md` and project verify/simplify skills, with MCP and permission suggestions only (it writes no settings). Not for a project that already has a `.workspace/`.
 
 ## What Gets Created
 
-```
-.workspace/
-├── shared/           ← committed to git
-│   ├── context.md    current team state and open decisions
-│   ├── roadmap.md    feature priorities
-│   ├── decisions/    architecture decision records
-│   ├── specs/        /conjure design specs
-│   └── postmortems/  /autopsy outputs
-└── local/            ← always gitignored
-    ├── prefs.md      per-machine preferences
-    └── session.md    last session state
-```
+`.workspace/shared/` (committed in Shared mode): `context.md`, `roadmap.md`, and `decisions/`, `specs/`, `plans/`, `research/`, `postmortems/`. `.workspace/local/` (always gitignored): `prefs.md` and per-machine session state.
 
-Almanac never edits Claude Code settings files (`.claude/settings*.json` or `~/.claude/settings.json`) and never changes the permission mode. Permission rules are only suggested in chat (step 6) for the user to add with `/permissions`.
+Almanac never edits Claude Code settings files (`.claude/settings*.json` or `~/.claude/settings.json`) and never changes the permission mode. Permission rules are only suggested in chat (step 7) for the user to add with `/permissions`. Step 5 can add `AGENTS.md`. Step 6 can add `REVIEW.md` and two short project skills under `.claude/skills/`. Step 9 can add `north-star.md` and a hook template under `.workspace/shared/`.
 
 ## Process
 
 ### 1. Workspace Mode Decision
 
-If `${CLAUDE_PLUGIN_DATA}/workspace-strategy.json` exists (written by step 8 of an earlier run on this machine), Read it first and put the mode it records first in the options, labelled "(last used)".
+If `${CLAUDE_PLUGIN_DATA}/workspace-strategy.json` exists (written by step 10 of an earlier run on this machine), Read it first and put the mode it records first in the options, labelled "(last used)".
 
-Use the `AskUserQuestion` tool with the **Workspace Mode** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
+Use the `AskUserQuestion` tool with the **Workspace Mode** configuration in [`references/setup-questions.md`](references/setup-questions.md) — do not write any text before calling it.
 
-**Wait for reply before creating any directories or files.** Remember the selected mode (Shared or Private) — it controls steps 3, 8, and 9.
+**Wait for reply before creating any directories or files.** Remember the selected mode (Shared or Private) — it controls steps 3, 10 and 11.
 
 ### 2. Create Directory Structure
 ```bash
@@ -52,86 +43,71 @@ If private mode: `.workspace/` instead.
 
 ### 4. Create Initial Files
 
-`.workspace/shared/context.md`:
-```markdown
-# Project Context
+Write `.workspace/shared/context.md`, `.workspace/shared/roadmap.md` and `.workspace/local/prefs.md` from [`references/file-templates.md`](references/file-templates.md#step-4-initial-workspace-files). Fill the stack and archetype from the detected stack.
 
-**Stack:** <from inspector>
-**Archetype:** <from inspector>
-**Started:** <today's date>
+### 5. Minimal CLAUDE.md (and optional AGENTS.md)
 
-## Open Decisions
-(none yet)
+Use the `AskUserQuestion` tool with the **Instructions file** configuration in [`references/setup-questions.md`](references/setup-questions.md) — do not write any text before calling it. Wait for the reply.
 
-## Current Focus
-(describe what you're working on)
-```
-
-`.workspace/shared/roadmap.md`:
-```markdown
-# Roadmap
-
-## In Progress
-(none yet)
-
-## Planned
-(none yet)
-
-## Completed
-(none yet)
-```
-
-`.workspace/local/prefs.md`:
-```markdown
-# Local Preferences
-
-disableGit: false
-# Set disableGit: true to skip worktrees and PR flow
-```
-
-### 5. Minimal CLAUDE.md
-If no CLAUDE.md exists, create a lean one:
+If no `CLAUDE.md` exists, create a lean one:
 ```markdown
 # Project Rules
 
 (Add earned rules here — only what Claude consistently gets wrong.)
 ```
-Do not write generic best practices. CLAUDE.md should only contain rules specific to this project.
+Do not write generic best practices. `CLAUDE.md` should only contain rules specific to this project.
 
-### 6. Permission Suggestions (guidance only)
+Codex and other agents read `AGENTS.md`. Claude Code reads it through the `@AGENTS.md` import, so the commands are in one file. If the reply is **`AGENTS.md` + `CLAUDE.md` import**:
+- If `AGENTS.md` does not exist, write it from [`references/agents-md-template.md`](references/agents-md-template.md) (everything below its marker line, 40 lines or fewer). Fill the commands from the detected stack. If `AGENTS.md` exists, never overwrite it.
+- Make `@AGENTS.md` the first line of `CLAUDE.md`, above `# Project Rules`. If `CLAUDE.md` exists and has no `@AGENTS.md` line, add only that line at the top and change nothing else.
 
-Use the `AskUserQuestion` tool with the **Permission suggestions** configuration in [references/setup-questions.md](references/setup-questions.md) — do not write any text before calling it.
+### 6. Review setup (REVIEW.md and pre-commit skills)
 
-If **Show suggestions**: print a short list in chat, built from the detected stack, and write nothing:
-- **Allow** — the project's own test, lint and build commands, each named with its subcommand (for example `Bash(npm test *)`, `Bash(npm run lint *)`, `Bash(pytest *)`, `Bash(go test *)`). Never suggest a whole CLI (`Bash(git *)`, `Bash(npm *)`), an interpreter, or a package launcher.
-- **Deny** — files that should stay off-limits to Claude (for example `Read(./.env)`, `Read(./.env.*)`, `Read(./secrets/**)`, plus any credential files you noticed while inspecting the project).
+Use the `AskUserQuestion` tool with the **Review setup** configuration in [`references/setup-questions.md`](references/setup-questions.md) — do not write any text before calling it. Wait for the reply. Skip every write below that the reply did not select.
 
-Then tell the user they can add any of these with `/permissions` (or by editing their own settings). If **Skip**: continue.
+**`REVIEW.md`**: write it as [`references/file-templates.md`](references/file-templates.md#step-6-reviewmd) says, if the file does not exist. `/divine` and `/scrutinize` read it before every review.
 
-### 7. MCP Suggestions
+**`.claude/skills/verify/SKILL.md`** and **`.claude/skills/simplify/SKILL.md`**: since Claude Code 2.1.286, a non-bundled skill named `verify` or `simplify` that Claude may invoke runs before each commit. Write each selected delegator exactly as [`references/file-templates.md`](references/file-templates.md#step-6-pre-commit-skills) gives it, if the file does not exist. It must stay model-invocable (no `disable-model-invocation`), or the pre-commit run does not happen. Then tell the user the two notes in that reference.
+
+### 7. Permission Suggestions (guidance only)
+
+Use the `AskUserQuestion` tool with the **Permission suggestions** configuration in [`references/setup-questions.md`](references/setup-questions.md) — do not write any text before calling it. Act on the reply as that reference says below the configuration. Write nothing.
+
+### 8. MCP Suggestions
 Based on detected archetype, mention MCP servers that could help:
 - web: browser automation MCP for UI testing
 - data: notebook MCP for Jupyter integration
 - devops: cloud provider CLI MCPs
 
-Adding an MCP server changes Claude Code's configuration, so almanac does not install one. If the user wants one, point them to that server's install instructions (a `/plugin` entry or the `claude mcp add …` command for them to run).
+State the tool budget with the suggestions: tool choice degrades above about 30–50 tool definitions ([`lore/skill-authoring.md`](../../lore/skill-authoring.md#tool-budget)). Suggest deferred loading (ToolSearch) for a rarely used server.
 
-### 8. Save Strategy
-Record the workspace mode chosen in step 1 in `${CLAUDE_PLUGIN_DATA}/workspace-strategy.json` — the magician plugin data folder; step 1 of a later run reads it. No hook reads it. Read the file first if it exists, then write it with exactly one of:
+An MCP server changes Claude Code's configuration, so almanac does not install one. If the user wants one, point them to that server's install instructions (a `/plugin` entry or the `claude mcp add …` command for them to run).
+
+### 9. Optional extras
+
+Use the `AskUserQuestion` tool with the **Optional extras** configuration in [`references/setup-questions.md`](references/setup-questions.md) — do not write any text before calling it. Wait for the reply. For each selected extra, follow [`references/optional-setup.md`](references/optional-setup.md): a one-paragraph `.workspace/shared/north-star.md`, a production-gate hook template at `.workspace/shared/hooks/production-gate.sh` (never installed), or cost-attribution hints in chat.
+
+### 10. Save Strategy
+Record the workspace mode chosen in step 1 in `${CLAUDE_PLUGIN_DATA}/workspace-strategy.json`, the magician plugin data folder. Step 1 of a later run reads it. No hook reads it. Read the file first if it exists, then write it with exactly one of:
 - Shared mode (only `.workspace/local/` is gitignored): `{"mode": "shared", "ignored": "false"}`
 - Private mode (the whole `.workspace/` is gitignored): `{"mode": "private", "ignored": "true"}`
 
-### 9. Commit (if shared mode)
+### 11. Commit (if shared mode)
 ```bash
 git add .workspace/shared/ CLAUDE.md .gitignore
+git add AGENTS.md
+git add REVIEW.md
+git add .claude/skills/verify/SKILL.md
+git add .claude/skills/simplify/SKILL.md
 git commit -m "chore: initialize magician workspace"
 ```
+The first line also stages the step 9 files. Run the other lines only for files steps 5 and 6 wrote. Each is a separate exact command, so a skipped file never breaks the staging.
 
 ## Obstacles
 
-This is a terminal, user-facing skill — it reports to the human directly, not upward to an orchestrator — so it emits no upward Obstacles block: surface any blocker in prose to the user and stop.
+This is a terminal, user-facing skill. It reports to the human directly, not upward to an orchestrator, so it emits no upward Obstacles block. Surface any blocker in prose to the user and stop.
 
-See [lore/obstacles.md](../../lore/obstacles.md).
+See [`lore/obstacles.md`](../../lore/obstacles.md).
 
 ## Completion Signal
 

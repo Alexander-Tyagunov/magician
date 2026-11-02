@@ -1,7 +1,9 @@
 """SessionStart hook contract (scripts/session-start.sh).
 
-The hook detects the project's stack, injects the bundled lore cores and a few per-project notes as
-`hookSpecificOutput.additionalContext`, and shows user-only notices as a top-level `systemMessage`.
+The hook detects the project's stack, injects the security lore core, a one-line index of the other
+detected cores (lazy mode, the default; `MAGICIAN_LORE=eager` injects them all) and a few per-project
+notes as `hookSpecificOutput.additionalContext`, writes the pending cores to `sessions/<id>.lore` for
+the prompt hook, and shows user-only notices as a top-level `systemMessage`.
 It is plain bash: it runs no interpreter and no other plugin file, never writes Claude Code settings
 or the session env file, and writes only under the plugin data dir (plus the status-bar markers when
 the user enabled the status line). These tests run it for real under /bin/bash in temp project
@@ -165,16 +167,26 @@ class OutputShapeTests(unittest.TestCase):
             chron.mkdir()
             (chron / "20260101T000000Z-old.json").write_text(json.dumps(
                 {"working_dir": os.path.realpath(proj), "summary": "a" + "é" * 900}, ensure_ascii=False), encoding="utf-8")
-            doc = sb.out(proj, {"session_id": "big", "source": "compact"})
-            ctx = _ctx(doc)
-            self.assertLessEqual(len(ctx), BUDGET)
-            self.assertLessEqual(len(ctx.encode("utf-8")), BUDGET)
-            self.assertIn("[security] ", ctx)
-            self.assertIn("Previous magician session in this directory: ", ctx)
-            self.assertIn("decided €", ctx)
-            self.assertIn("a" + "é" * 149, ctx)          # 299 bytes: the whole characters that fit are kept
-            self.assertNotIn("a" + "é" * 150, ctx)
-            self.assertNotIn("\ufffd", ctx)  # byte-level truncation never splits a UTF-8 sequence
+            for mode in ("lazy", "eager"):
+                with self.subTest(mode=mode):
+                    extra = {"MAGICIAN_LORE": "eager"} if mode == "eager" else {}
+                    doc = sb.out(proj, {"session_id": f"big-{mode}", "source": "compact"}, MAGICIAN_STE="1",
+                                 MAGICIAN_VOICE="warrior", **extra)
+                    ctx = _ctx(doc)
+                    self.assertLessEqual(len(ctx), BUDGET)
+                    self.assertLessEqual(len(ctx.encode("utf-8")), BUDGET)
+                    self.assertIn("STE-lite selected", ctx)
+                    self.assertIn("[security] ", ctx)
+                    self.assertIn("Previous magician session in this directory: ", ctx)
+                    self.assertIn("decided €", ctx)
+                    self.assertIn("a" + "é" * 149, ctx)          # 299 bytes: the whole characters that fit are kept
+                    self.assertNotIn("a" + "é" * 150, ctx)
+                    self.assertNotIn("\ufffd", ctx)  # byte-level truncation never splits a UTF-8 sequence
+                    if mode == "eager":
+                        self.assertNotIn("Magician lore available for this stack", ctx)
+                    else:
+                        self.assertIn("Magician lore available for this stack: ", ctx)
+                        self.assertNotIn("[python] ", ctx)
 
     def test_trunc_keeps_a_character_that_ends_at_the_cut(self) -> None:
         """_trunc drops only an incomplete trailing sequence: a character ending exactly at the cut stays,
@@ -248,9 +260,15 @@ class NoSideEffectTests(unittest.TestCase):
             lore = json.loads((sb.mag / "status" / "m1.lore.json").read_text(encoding="utf-8"))
             voice = json.loads((sb.mag / "status" / "m1.voice.json").read_text(encoding="utf-8"))
             self.assertTrue(lore["enabled"])
-            self.assertIn("python", lore["cores"])
+            self.assertEqual(lore["cores"], ["security"])
+            self.assertIn("python", lore["pending"])
+            self.assertEqual(lore["mode"], "lazy")
             self.assertEqual(lore["count"], len(lore["cores"]))
             self.assertEqual(voice["level"], "scribe")
+            sb.out(proj, {"session_id": "m2", "source": "startup"}, MAGICIAN_LORE="eager")
+            lore = json.loads((sb.mag / "status" / "m2.lore.json").read_text(encoding="utf-8"))
+            self.assertIn("python", lore["cores"])
+            self.assertEqual((lore["pending"], lore["mode"]), ([], "eager"))
             self.assertFalse((sb.mag / "statusline.py").exists())
 
 
@@ -285,6 +303,17 @@ class WordingTests(unittest.TestCase):
                 self.assertNotIn("settings.json", text)
                 self.assertNotIn("CLAUDE_ENV_FILE", text)
 
+    def test_lazy_index_line_is_factual(self) -> None:
+        """In lazy mode the index line and everything before the security core is hook-authored."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            ctx = _ctx(sb.out(proj, {"session_id": "w-lazy", "source": "startup"}))
+            line = re.search(r"(?m)^Magician lore available for this stack: .*$", ctx)
+            self.assertIsNotNone(line)
+            self.assertIsNone(IMPERATIVE.search(line.group(0)))
+            self.assertIsNone(IMPERATIVE.search(ctx.split("[security] ")[0]))
+
     def test_voice_levels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             sb = Sandbox(tmp)
@@ -293,20 +322,89 @@ class WordingTests(unittest.TestCase):
             self.assertIn("Warrior level", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_VOICE="warrior")))
             self.assertNotIn("Output style selected", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_VOICE="bard")))
 
+    def test_ste_note_is_off_by_default_and_follows_the_voice_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"})))
+            ctx = _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="1"))
+            note = ctx[ctx.index("STE-lite selected in magician"):]
+            self.assertLessEqual(len(note), 600, "the STE note stays under 600 characters")
+            self.assertGreater(ctx.index("STE-lite selected"), ctx.index("(voice: scribe)"))
+            self.assertIn("lore/ste.md", note)
+            self.assertIn("no compliance claim", note)
+            for needle in ("25 words", "20 words", "6 sentences", "no semicolons, contractions or Latin abbreviations", "active voice", "stay verbatim"):
+                self.assertIn(needle, note)
+            for bad in (";", "n't", "e.g.", "i.e."):
+                self.assertNotIn(bad, note, "the STE note is written in STE-lite itself")
+            self.assertIsNone(IMPERATIVE.search(note))
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="1", MAGICIAN_VOICE="bard")),
+                          "the STE flag is orthogonal to the voice")
+
+    def test_ste_precedence_env_then_project_file_then_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            (sb.mag / "cli-ui.json").write_text('{"state": "enabled", "ste": true}', encoding="utf-8")
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"session_id": "s1", "source": "startup"})))
+            voice = json.loads((sb.mag / "status" / "s1.voice.json").read_text(encoding="utf-8"))
+            self.assertEqual((voice["level"], voice["ste"]), ("scribe", True))
+            (proj / ".magician").mkdir()
+            (proj / ".magician" / "ste").write_text("off\n", encoding="utf-8")
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"session_id": "s2", "source": "startup"})))
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="on")))
+            (proj / ".magician" / "ste").write_text("on", encoding="utf-8")
+            (sb.mag / "cli-ui.json").write_text('{"ste": false}', encoding="utf-8")
+            self.assertIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"})))
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="0")))
+            self.assertNotIn("STE-lite", _ctx(sb.out(proj, {"source": "startup"}, MAGICIAN_STE="0", MAGICIAN_LORE="0")))
+
 
 class LoreTests(unittest.TestCase):
-    def test_detected_stack_gets_lore_and_one_deep_hint(self) -> None:
+    def test_lazy_default_injects_security_and_an_index_of_the_rest(self) -> None:
+        """Lazy mode (default): the security core and one index line naming the other detected cores;
+        the pending list goes to sessions/<id>.lore for pattern-detect.sh, in selection order."""
         with tempfile.TemporaryDirectory() as tmp:
             sb = Sandbox(tmp)
             proj = sb.project("app", PY_FILES)
             ctx = _ctx(sb.out(proj, {"session_id": "l1", "source": "startup"}))
             self.assertIn("Detected stack: python,django,tdd,databases,postgres.", ctx)
+            self.assertEqual(re.findall(r"(?m)^\[([a-z0-9-]+)\] ", ctx), ["security"])
+            self.assertIn("Magician lore available for this stack: python, django, postgres, databases, logging, tdd"
+                          " — say the name, or read lore/<name>.md under the plugin root.", ctx)
+            self.assertNotIn("Deep-dive files: ", ctx)
+            self.assertEqual(ctx.count(str(ROOT)), 1, "the plugin root is written once, in the first line")
+            self.assertLess(len(ctx), 3500)
+            pending = sb.data / "sessions" / "l1.lore"
+            self.assertEqual(pending.read_text(encoding="utf-8"), "python django postgres databases logging tdd\n")
+            # compact rewrites the list (the summary keeps only a digest); resume keeps what is left
+            pending.write_text("tdd\n", encoding="utf-8")
+            sb.out(proj, {"session_id": "l1", "source": "resume"})
+            self.assertEqual(pending.read_text(encoding="utf-8"), "tdd\n")
+            sb.out(proj, {"session_id": "l1", "source": "compact"})
+            self.assertEqual(pending.read_text(encoding="utf-8"), "python django postgres databases logging tdd\n")
+            # no stack, lore off or eager: no pending file
+            sb.out(sb.project("empty"), {"session_id": "l1", "source": "startup"})
+            self.assertFalse(pending.exists())
+            sb.out(proj, {"session_id": "l2", "source": "startup"}, MAGICIAN_LORE="off")
+            self.assertFalse((sb.data / "sessions" / "l2.lore").exists())
+            sb.out(proj, {"session_id": "l3", "source": "startup"}, MAGICIAN_LORE="eager")
+            self.assertFalse((sb.data / "sessions" / "l3.lore").exists())
+
+    def test_eager_mode_injects_every_core_and_one_deep_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            ctx = _ctx(sb.out(proj, {"session_id": "e1", "source": "startup"}, MAGICIAN_LORE="eager"))
+            self.assertIn("Detected stack: python,django,tdd,databases,postgres.", ctx)
             for core in ("security", "python", "databases", "postgres", "django"):
                 self.assertIn(f"[{core}] ", ctx)
+            self.assertNotIn("Magician lore available for this stack", ctx)
             self.assertTrue((ROOT / "lore" / "deep" / "python.md").is_file())
             self.assertEqual(ctx.count("Deep-dive files: "), 1)
             self.assertIn("Deep-dive files: lore/deep/<stack>.md under the plugin root", ctx)
             self.assertEqual(ctx.count(str(ROOT)), 1, "the plugin root is written once, in the first line")
+            self.assertGreater(len(ctx), 7000)
 
     def test_specific_cores_are_kept_when_notes_leave_little_room(self) -> None:
         """Language, framework and engine outrank the generic cores (databases, logging, tdd)."""
@@ -320,7 +418,7 @@ class LoreTests(unittest.TestCase):
             (sb.data / "chronicle").mkdir()
             (sb.data / "chronicle" / "20260101T000000Z-p.json").write_text(json.dumps(
                 {"working_dir": os.path.realpath(proj), "summary": "y" * 600}), encoding="utf-8")
-            ctx = _ctx(sb.out(proj, {"session_id": "tight", "source": "compact"}))
+            ctx = _ctx(sb.out(proj, {"session_id": "tight", "source": "compact"}, MAGICIAN_LORE="eager"))
             self.assertLessEqual(len(ctx.encode("utf-8")), BUDGET)
             self.assertIn("Detected stack: python,django,tdd,databases,postgres.", ctx)
             injected = set(re.findall(r"(?m)^\[([a-z0-9-]+)\] ", ctx))
@@ -343,8 +441,73 @@ class LoreTests(unittest.TestCase):
             off_proj = _ctx(sb.out(proj, {"source": "startup"}))
             for ctx in (off_env, off_global, off_proj):
                 self.assertNotIn("[python] ", ctx)
+                self.assertNotIn("[security] ", ctx)
+                self.assertNotIn("Magician lore available", ctx)
                 self.assertNotIn("Deep-dive files: ", ctx)
                 self.assertIn("Magician lore is disabled for this session", ctx)
+
+    def test_stack_cache_is_keyed_by_head_and_manifests(self) -> None:
+        """Detection runs once per commit and manifest state; the cached result is reused, a new
+        commit, a changed manifest or MAGICIAN_LORE=eager (full cores at start) runs it again, and no
+        git means no cache."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES, git=True)
+            cache = sb.data / "projects" / _proj_hash(proj) / "stack-cache"
+            ctx = _ctx(sb.out(proj, {"session_id": "c1", "source": "startup"}))
+            self.assertIn("Detected stack: python,django,git,tdd,databases,postgres.", ctx)
+            self.assertFalse(cache.exists(), "no commit yet: nothing to key the cache on")
+            sb.git(proj, "add", "-A")
+            sb.git(proj, "commit", "-q", "-m", "init")
+            sb.out(proj, {"session_id": "c2", "source": "startup"})
+            self.assertTrue(cache.is_file())
+            lines = cache.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 4)
+            self.assertRegex(lines[0], r"^[0-9a-f]{40}")
+            self.assertEqual(lines[1:], ["backend", "python,django,git,tdd,databases,postgres", ""])
+            # a hit: the detection is skipped, so a marker file it would otherwise see changes nothing
+            (proj / "go.mod").write_text("module x\n", encoding="utf-8")
+            time.sleep(0.05)
+            (proj / "go.mod").unlink()
+            (proj / "Package.swift").write_text("// swift\n", encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c3", "source": "startup"}))
+            self.assertIn("Detected stack: python,django,git,tdd,databases,postgres.", ctx)
+            self.assertNotIn("swift", ctx)
+            # MAGICIAN_LORE=eager always detects (and does not touch the cache)
+            before = cache.read_text(encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c4", "source": "startup"}, MAGICIAN_LORE="eager"))
+            self.assertIn("swift", ctx)
+            self.assertEqual(cache.read_text(encoding="utf-8"), before)
+            # a changed manifest (size and mtime) misses
+            (proj / "pyproject.toml").write_text("[project]\ndependencies = ['fastapi']\n", encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c5", "source": "startup"}))
+            self.assertIn("fastapi", ctx)
+            self.assertIn("swift", ctx)
+            self.assertNotEqual(cache.read_text(encoding="utf-8"), before)
+            # a new commit misses
+            sb.git(proj, "add", "-A")
+            sb.git(proj, "commit", "-q", "-m", "more")
+            (proj / "Package.swift").unlink()
+            ctx = _ctx(sb.out(proj, {"session_id": "c6", "source": "startup"}))
+            self.assertNotIn("swift", ctx)
+            self.assertRegex(cache.read_text(encoding="utf-8").splitlines()[0], r"^[0-9a-f]{40}")
+            # a corrupt cache is ignored and rewritten
+            cache.write_text(cache.read_text(encoding="utf-8").splitlines()[0] + "\nbackend\nrm -rf /\n\n", encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "c7", "source": "startup"}))
+            self.assertIn("Detected stack: python,fastapi,django,git,tdd,databases,postgres.", ctx)
+            self.assertEqual(cache.read_text(encoding="utf-8").splitlines()[2], "python,fastapi,django,git,tdd,databases,postgres")
+
+    def test_stack_cache_keeps_the_detected_log_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("obs", {"package.json": '{"dependencies": {"@splunk/otel": "1"}}\n'}, git=True)
+            sb.git(proj, "add", "-A")
+            sb.git(proj, "commit", "-q", "-m", "init")
+            for sid in ("o1", "o2"):
+                ctx = _ctx(sb.out(proj, {"session_id": sid, "source": "startup"}))
+                self.assertIn("Log platform for this project: splunk (detected)", ctx)
+            cache = sb.data / "projects" / _proj_hash(proj) / "stack-cache"
+            self.assertEqual(cache.read_text(encoding="utf-8").splitlines()[3], "splunk")
 
     def test_kubernetes_detection_survives_odd_yaml_names(self) -> None:
         """File names with spaces, quotes or a leading `--` must neither hide a manifest nor be read as options."""
@@ -484,6 +647,33 @@ class PreviousSessionTests(unittest.TestCase):
                     self.assertNotIn("THIS-DIR", ctx)
             self.assertIn("THIS-DIR", _ctx(sb.out(proj, {"source": "startup"},
                                                   CLAUDE_PLUGIN_OPTION_SESSION_HISTORY="true")))
+
+    def test_dated_line_is_last_so_the_static_prefix_stays_cached(self) -> None:
+        """The previous-session line carries a date and changes every session. It is the last line of
+        the context, after the voice and STE notes, so everything before it is the same from one
+        session to the next (lore/models.md, prompt cache rules: volatile last)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sb = Sandbox(tmp)
+            proj = sb.project("app", PY_FILES)
+            d = sb.data / "chronicle"
+            d.mkdir()
+            (d / "20261001T090000Z-old.json").write_text(json.dumps(
+                {"timestamp": "2026-10-01T10:00:00Z", "working_dir": os.path.realpath(proj),
+                 "summary": "3 commit(s) on main"}), encoding="utf-8")
+            for extra in ({}, {"MAGICIAN_STE": "1"}, {"CLAUDE_CODE_REMOTE": "1", "MAGICIAN_VOICE": "warrior"}):
+                with self.subTest(**extra):
+                    ctx = _ctx(sb.out(proj, {"session_id": "now", "source": "startup"}, **extra))
+                    self.assertEqual(ctx.splitlines()[-1],
+                                     "Previous magician session in this directory: 3 commit(s) on main (ended 2026-10-01)")
+            (d / "20261001T090000Z-old.json").write_text(json.dumps(
+                {"timestamp": "not-a-date", "working_dir": os.path.realpath(proj), "summary": "S"}), encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "now", "source": "startup"}))
+            self.assertTrue(ctx.endswith("Previous magician session in this directory: S"), "no date, no suffix")
+            (d / "20261001T090000Z-old.json").write_text(json.dumps(
+                {"timestamp": "2026-10-01T10:00:00Z", "working_dir": os.path.realpath(proj), "summary": ""}),
+                encoding="utf-8")
+            ctx = _ctx(sb.out(proj, {"session_id": "now", "source": "startup"}))
+            self.assertNotIn("Previous magician session", ctx, "no summary, no line (not a bare date)")
 
 
 class ProjectNoteTests(unittest.TestCase):

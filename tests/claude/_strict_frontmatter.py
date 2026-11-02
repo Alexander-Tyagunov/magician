@@ -21,10 +21,14 @@ SKILL_KEYS = {
     "model", "effort", "context", "agent", "background", "hooks", "paths", "shell",
     "metadata", "license", "compatibility",
 }
+# `memory` (user|project|local) and `isolation` (worktree) are documented plugin-agent fields:
+# code.claude.com/docs/en/sub-agents "Supported frontmatter fields" (memory: `.claude/agent-memory/
+# <agent>/` for project scope; isolation: temp worktree from the default branch, removed if unchanged)
+# and the plugins reference's supported-fields list for `agents/*.md`.
 AGENT_KEYS = {
     "name", "description", "tools", "disallowedTools", "model", "color", "effort",
     "permissionMode", "maxTurns", "skills", "mcpServers", "hooks", "memory",
-    "background", "isolation", "initialPrompt",
+    "background", "isolation", "initialPrompt", "autoCompactWindow", "omitClaudeMd",
 }
 BOOL_KEYS = {"disable-model-invocation", "user-invocable", "background"}
 MAP_KEYS = {"metadata", "hooks", "mcpServers"}
@@ -191,9 +195,15 @@ BANNED_TOOLS = {"Monitor": "runs arbitrary commands in the background",
                 "WebSearch": "unscoped network egress",
                 "Write": "Write(path) rules are never consulted; use Edit(<path>)",
                 "NotebookEdit": "use Edit(<path>) (covers all edit tools)"}
-# Read-only commands Claude Code already auto-allows; granting them is noise.
-REDUNDANT = {"ls", "cat", "echo", "pwd", "head", "tail", "grep", "find", "wc", "which", "diff",
+# Read-only commands Claude Code already auto-allows; granting them is noise. `grep`/`find` are
+# deliberately NOT here: Glob/Grep are absent by default on macOS/Linux/WSL (Claude searches with
+# the embedded `bfs`/`ugrep` and plain `grep`/`find`/`rg` via Bash), so a read-only skill must
+# pre-approve those searches explicitly (`Bash(ugrep *)`, `Bash(bfs *)`, `Bash(rg *)`,
+# `Bash(grep *)`, `Bash(find *)`) to keep the "reads never prompt" promise of lore/autonomy.md.
+REDUNDANT = {"ls", "cat", "echo", "pwd", "head", "tail", "wc", "which", "diff",
              "stat", "du", "cd", "git status", "git log", "git diff", "git show"}
+# The read-only search grants above, as a set, so a test can require them on search-heavy skills.
+SEARCH_GRANTS = {"Bash(ugrep *)", "Bash(bfs *)", "Bash(rg *)", "Bash(grep *)", "Bash(find *)"}
 BROAD_EDIT = {"*", "**", "./**", "./*", "/**", "//**", "~/**", "~/.claude/**"}
 SETTINGS_PATH = re.compile(r"(^|/)\.claude/(settings(\.local)?\.json|\*)")
 # Commands that change Claude Code's own configuration/permissions: never pre-approve.

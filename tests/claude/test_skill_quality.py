@@ -5,7 +5,8 @@ Claude Code needs to load it). This gate proves it is *well-authored* — it enc
 Anthropic's current skill/subagent authoring standard that a linter can check deterministically, so
 the qualities that make a skill route well and age well can't silently regress:
 
-  * progressive disclosure (SKILL.md stays lean; deep detail moves to references/),
+  * progressive disclosure (SKILL.md stays lean; deep detail moves to references/; the router
+    skills stay within an 8,192-byte file cap, proposal B4),
   * no time-sensitive prose that goes stale and is then followed confidently,
   * subagent tool grants that Claude Code will actually honor (some tools are always stripped from
     a subagent, so requesting one is a silent no-op that masks a design mistake),
@@ -22,6 +23,8 @@ from pathlib import Path
 import re
 import unittest
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_skill_quality
 from _frontmatter import read_frontmatter
 
 
@@ -33,8 +36,26 @@ AGENTS = ROOT / "agents"
 # push deep reference material into references/ loaded on demand. ~500 lines is the documented bar.
 MAX_SKILL_BODY_LINES = 500
 
+# Router skills: their SKILL.md is a router (phases, gates, completion signal) and the detail lives
+# in references/. Magician 5 proposal B4 caps each router file at 8,192 bytes (the whole file, with
+# frontmatter), so the per-turn cost of an active router stays bounded.
+ROUTER_SKILLS = ("conjure", "magic", "transmute", "divine", "blueprint")
+MAX_ROUTER_SKILL_BYTES = 8192
+
 # The documented hard cap on a skill description (description + when_to_use combined).
 MAX_DESCRIPTION_CHARS = 1536
+
+# magician's own budget: descriptions sit in context every turn (and Codex truncates long ones), so
+# each stays a single "use when / not when" sentence pair; trigger-phrase lists live in the body
+# under "## When to use", which Claude reads only after selecting the skill.
+MAX_HOUSE_DESCRIPTION_CHARS = 250
+MAX_TOTAL_DESCRIPTION_CHARS = 5000
+
+# The 8-field Obstacles block is canonical in lore/obstacles.md only; a skill or agent carries a
+# two-line pointer with the field names, never the pasted fence (it is re-injected after
+# compaction per skill, so one copy per file was ~230 tokens paid dozens of times).
+OBSTACLE_FIELDS = ("STATUS", "OBSTACLE", "BLOCKER", "SEVERITY", "WORKAROUND", "RECURRENCE", "SCOPE", "NEXT")
+OBSTACLE_FENCE_LINE = re.compile(r"(?m)^(?:OBSTACLE|BLOCKER|WORKAROUND|RECURRENCE):")
 
 # High-signal time-sensitive phrasing. A skill/agent body is a standing instruction the model
 # follows confidently; a dated claim ("as of <date>", "currently") silently goes wrong once it
@@ -91,6 +112,20 @@ class SkillQualityTests(unittest.TestCase):
                     "move reference detail into references/ for progressive disclosure",
                 )
 
+    def test_router_skills_within_byte_cap(self) -> None:
+        """Proposal B4: each router SKILL.md (conjure, magic, transmute, divine, blueprint) is at
+        most 8,192 bytes; detail that does not fit moves to the skill's references/."""
+        for name in ROUTER_SKILLS:
+            path = SKILLS / name / "SKILL.md"
+            with self.subTest(skill=name):
+                self.assertTrue(path.is_file(), f"{name}: SKILL.md is missing")
+                size = path.stat().st_size
+                self.assertLessEqual(
+                    size, MAX_ROUTER_SKILL_BYTES,
+                    f"{name}: SKILL.md is {size} bytes (> {MAX_ROUTER_SKILL_BYTES}, proposal B4 router "
+                    "cap); move detail into references/",
+                )
+
     def test_skill_descriptions_within_hard_cap(self) -> None:
         """The router injects the description every session; the documented hard cap is 1,536 chars
         (description + when_to_use). Over it, Claude Code truncates and routing degrades."""
@@ -100,6 +135,62 @@ class SkillQualityTests(unittest.TestCase):
             with self.subTest(skill=path.parent.name):
                 self.assertLessEqual(len(desc), MAX_DESCRIPTION_CHARS,
                                      f"{path.parent.name}: description exceeds {MAX_DESCRIPTION_CHARS} chars")
+
+    def test_skill_descriptions_within_house_budget(self) -> None:
+        """Every description is injected every turn: keep each under 300 chars and all of them under
+        5,000 combined. Move trigger-phrase lists into the body ("## When to use")."""
+        total = 0
+        for path in skill_files():
+            fields, _ = read_frontmatter(path)
+            desc = fields.get("description", "")
+            total += len(desc)
+            with self.subTest(skill=path.parent.name):
+                self.assertLessEqual(len(desc), MAX_HOUSE_DESCRIPTION_CHARS,
+                                     f"{path.parent.name}: description is {len(desc)} chars "
+                                     f"(> {MAX_HOUSE_DESCRIPTION_CHARS}); move trigger phrases to the body")
+        self.assertLessEqual(total, MAX_TOTAL_DESCRIPTION_CHARS,
+                             f"all skill descriptions total {total} chars (> {MAX_TOTAL_DESCRIPTION_CHARS})")
+
+    def test_always_on_offline_estimate_within_gate_limit(self) -> None:
+        """scripts/gate.sh gates on the offline always-on estimate (name, description and
+        when_to_use lines of every skill and agent, bytes / 4) against 1,370, which is about 1,800
+        real tokens at the real/offline ratio 1.315 measured on 2026-11-02. The CLI figure depends
+        on sign-in, so it only warns and never fails the gate."""
+        gate = (ROOT / "scripts" / "gate.sh").read_text(encoding="utf-8")
+        self.assertIn("MAX_ALWAYS_ON=1370", gate)
+        self.assertIn("CLI_WARN_ALWAYS_ON=1800", gate)
+        self.assertIn("2026-11-02", gate)
+        cli = gate[gate.index('if [ -n "$cli_always" ]'):gate.index("EOF_DETAILS")]
+        self.assertNotIn("ok=0", cli, "the claude plugin details figure must never fail the gate")
+        total = 0
+        for path in skill_files() + agent_files():
+            lines = path.read_text(encoding="utf-8").split("\n")
+            end = lines.index("---", 1)
+            total += sum(len(l.encode("utf-8")) + 1 for l in lines[1:end]
+                         if l.startswith(("name:", "description:", "when_to_use:")))
+        self.assertLessEqual(total // 4, 1370, f"offline always-on estimate ~{total // 4} (> 1,370)")
+
+    def test_obstacles_block_is_only_in_lore(self) -> None:
+        """The fenced 8-field Obstacles block lives in lore/obstacles.md alone. A skill or agent that
+        pastes it (a fenced line starting `OBSTACLE:` / `BLOCKER:` ...) pays ~230 tokens per load and
+        drifts from the canonical shape; it must carry the pointer plus the field names instead."""
+        producers = []
+        for path in skill_files() + agent_files():
+            _, body = read_frontmatter(path)
+            name = path.parent.name if path.name == "SKILL.md" else path.stem
+            fenced = "\n".join(m.group(0) for m in re.finditer(r"(?ms)^[ \t]*(```|~~~).*?\1", body))
+            with self.subTest(component=name):
+                self.assertIsNone(OBSTACLE_FENCE_LINE.search(fenced),
+                                  f"{name}: pastes the Obstacles fence; point to lore/obstacles.md instead")
+            if re.search(r"return (?:the|an) Obstacles block", body):
+                producers.append((name, body))
+        # A pointer without the field names strands a dispatched unit that never read the lore.
+        for name, body in producers:
+            with self.subTest(component=name):
+                self.assertIn("lore/obstacles.md", body, f"{name}: Obstacles pointer must link the lore")
+                missing = [f for f in OBSTACLE_FIELDS if f not in body]
+                self.assertFalse(missing, f"{name}: Obstacles pointer lacks field names {missing}")
+        self.assertGreaterEqual(len(producers), 15, "most skills return the Obstacles block from the lore")
 
     def test_no_time_sensitive_prose_in_skills_or_agents(self) -> None:
         """A skill/agent body is a standing instruction. A point-in-time claim ("as of <date>",

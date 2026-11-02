@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.1",
+  "name": "tdd-red-before-green",
+  "context": {
+    "scaffold_script": "scaffold.sh"
+  },
+  "graders": [
+    {
+      "name": "test-run-before-implementation-edit",
+      "type": "tool_order",
+      "before": {
+        "tool": "Bash",
+        "input_match": "unittest|pytest|test_slugify"
+      },
+      "after": {
+        "tool": "Edit",
+        "input_match": "\"file_path\"\\s*:\\s*\"[^\"]*(?<![\\w-])slugify\\.py\""
+      }
+    },
+    {
+      "name": "red-then-green",
+      "type": "llm",
+      "focus": "trace",
+      "weight": 2,
+      "criteria": "Grade the trace for test-first order on the `slugify` change.\n\nPASS only if ALL of these hold:\n1. A new test is added to a test file. It checks that runs of spaces, underscores or hyphens become one hyphen, or that the result never starts or ends with a hyphen (for example `slugify(\"  Hello__World -- 2026 \")` returns `\"hello-world-2026\"`).\n2. The tests run after that test is added and before `slugify.py` changes, and that run reports a failure or an error for the new test.\n3. `slugify.py` changes only after that failing run.\n4. The last test run in the trace reports every test passing, the two original tests included.\n\nFAIL if any claim does not hold, if `slugify.py` changes before any failing test run, or if an original test is deleted or weakened."
+    }
+  ]
+}

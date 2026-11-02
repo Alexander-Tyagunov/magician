@@ -44,3 +44,13 @@ Why not a Rust/C core or GPU by default? At repo scale this is small data that f
 ## Env knobs
 
 `MAGICIAN_HOME` (root) · `KG_PARSER` (`treesitter|ctags|regex|auto`) · `KG_JOBS` (parallel parse workers) · `KG_MAX_FILE` (skip files larger than N bytes).
+
+## Optional MCP server (`tools/kg-mcp`)
+
+`kg-mcp` is a second front end on the same engine. It is for MCP clients such as Codex, or for a Claude Code user who wants MCP permission rules. magician does not register it, because a registered server puts tool definitions into every session. Setup, tools and protocol details → [`mcp-server.md`](mcp-server.md).
+
+- **Engine reuse.** It loads `tools/kg` as a module and calls only its read paths: `query`, `blast`, `neighbors`, `status_data` and `stale_files`. It swaps the engine's `connect()` for a read-only connection (`mode=ro` URI, `PRAGMA query_only`). It never calls the index builder or the result cache, because both write.
+- **Four tools, grouped by intent.** `kg_query`, `kg_blast`, `kg_neighbors` and `kg_status`. Results hold only the fields the model reasons with (path, line, symbol, score, a short snippet), at most 100 items and 200 characters per string.
+- **Dual-era stdio.** Newline-delimited JSON-RPC 2.0. A request with the modern `_meta` protocol version gets stateless 2026-07-28 handling, `server/discover` included. Other requests get the legacy `initialize` handling. The era is chosen per request.
+- **Stateless paging.** The `kg_query` cursor is opaque base64 JSON (query, offset, index version) that the client sends back. The server keeps no state between requests except the loaded graph, which it reloads when the index version changes.
+- **Errors.** Protocol faults are JSON-RPC errors. A tool that cannot run returns `isError: true` with the next step, for example "run `kg init`".

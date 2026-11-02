@@ -22,6 +22,8 @@ import subprocess
 import tempfile
 import unittest
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_guardrails
 from _frontmatter import read_frontmatter
 
 
@@ -233,8 +235,8 @@ class GuardrailsTests(unittest.TestCase):
         are skipped, and the no-git walk finds at least every file git tracks."""
         scanned = {p.relative_to(ROOT).as_posix() for p in shipped_text_files()}
         for rel in ("README.md", "lore/python.md", "monitors/monitors.json",
-                    "skills/conjure/scripts/helper.js", "skills/conjure/scripts/server.cjs",
-                    "skills/conjure/scripts/frame-template.html"):
+                    "tools/companion/helper.js", "skills/conjure/scripts/server.cjs",
+                    "tools/companion/server.cjs", "tools/companion/frame-template.html"):
             if (ROOT / rel).is_file():
                 with self.subTest(file=rel):
                     self.assertIn(rel, scanned)

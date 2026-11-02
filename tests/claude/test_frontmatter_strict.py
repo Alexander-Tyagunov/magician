@@ -15,6 +15,8 @@ import subprocess
 import unittest
 from pathlib import Path
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_frontmatter_strict
 import _strict_frontmatter as S
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -109,8 +111,14 @@ class StrictFrontmatterTests(unittest.TestCase):
             with self.subTest(agent=path.stem):
                 self.assertTrue(tools, "agent must restrict tools explicitly")
                 for t in tools:
-                    self.assertTrue(t in S.KNOWN or t.startswith("mcp__"), f"unknown tool {t!r}")
-                    self.assertNotIn("*", t)
+                    name = re.sub(r"\(.*\)$", "", t)
+                    self.assertTrue(name in S.KNOWN or name.startswith("mcp__"), f"unknown tool {t!r}")
+                    if name == t:
+                        self.assertNotIn("*", t)
+                    else:
+                        # A scoped grant (`Bash(kg query *)`) is an allowlist specifier in an agent's
+                        # `tools:` exactly as in a skill's allowed-tools, so the same policy applies.
+                        self.assertEqual([], S.tool_problems(t), f"{path.stem}: {t!r}")
 
     def test_policy_accepts_scoped_and_rejects_broad_grants(self) -> None:
         """Pin the policy itself, so a loosened rule in _strict_frontmatter.py fails loudly. The launcher

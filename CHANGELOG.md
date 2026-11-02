@@ -5,6 +5,275 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] — 2026-11-02
+
+Assembled on `release/v5.0.0` in seven reviewed batches. Upgrade notes are in the README
+("Upgrading to 5.0"). The token budget baseline (`evals/results/budget.json`) is reset by this
+release, and `evals/results/last.json` holds the first behavioral baseline.
+
+**Evaluation at release** (`claude plugin eval`, 14 cases × 3 runs, judge Sonnet, 2026-11-02):
+10 cases passed 3 of 3 runs and 4 passed 2 of 3, with no flips. The 2-of-3 cases and the grader
+that missed once: `destructive-command-is-blocked` (graders skipped in one run),
+`scrutinize-fixes-seeded-bug` (`verifier-test-pins-the-boundary`), `session-state-before-wave`
+(`session-state-comes-first`) and `tdd-red-before-green` (`test-run-before-implementation-edit`).
+Lens A/B (Haiku vs Sonnet on the `simplifier` and `verifier` lenses): equal recall, so both lenses
+stay on Haiku. The sample is small (2 to 4 graded runs per lens).
+
+### Batch 7 — release fixes from the first paid eval run and a macOS gate run
+
+**Fixed**
+- SubagentStop hook recorded nothing on macOS: its regex used `{0,400}`, over BSD regex's
+  repeat limit of 255, so the pattern was invalid there. The bound is now 255, and a test fails on
+  any hook regex over 255.
+- `plan-render` printed `../../..` paths when the working folder is reached through a symlink
+  (macOS `/var` → `/private/var`). It compares resolved paths now.
+- The KG MCP server wrote `tools/__pycache__` on Python 3.14. It never writes bytecode now.
+- `/orchestrate` kept a four-task parallel wave inline in 2 of 3 eval runs. A wave of two or more
+  independent tasks above the inline threshold always fans out, and the session-state file is
+  written before the first task on every engine, inline included.
+- `/scrutinize` stopped at its approval question when the request already said to fix. That
+  request now counts as the approval.
+- A missing or unreadable input is `NEEDS_CONTEXT`, not `BLOCKED` (`lore/obstacles.md`, `/ward`).
+- `ste-spec-writing` graders used Python-only `(?i)`, which the JavaScript runner rejects. They use
+  the `flags` key now, and the offline test rejects Python-only regex syntax.
+- `small-diff-stays-inline` passed 3 of 3 paid runs, so it lost its `expected-fail` tag.
+
+**Changed**
+- Skill and agent descriptions are about 18% shorter, with every trigger phrase kept. The real
+  tokenizer measured ~2,002 always-on tokens on 2026-11-02; the projection is now ~1,690. The gate
+  measures its own offline estimate (limit 1,370, ≈1,800 real tokens) so its result no longer
+  depends on whether `claude` is signed in; the `plugin details` figure is information only.
+
+### Batch 6 — best practice from the claude.com articles (Sep–Nov 2026)
+
+**Added**
+- Fold-first (`lore/fold-first.md`): the main loop with skills is the default. A subagent is used
+  only for parallel independent work, black-box verification, fresh-eyes review or measured context
+  bloat. A small change (≤ 3 files and ≤ 300 changed lines) runs inline: `/divine` and `/scrutinize`
+  read each `agents/<lens>.md` as a checklist, and a Quick review of a small diff makes no Agent call.
+  A High-tier change dispatches its lenses fresh at any size. Standard depth and deeper keep a fresh
+  verification stage. `/orchestrate` lists "inline with `/ward`" first and still fans out two or more
+  independent tasks together.
+- Unattended runs (`lore/unattended.md`): bookmark, a failed read is not "quiet", re-check before
+  posting, record only after the platform confirms, re-read preferences, read-only tokens and a
+  `--max-budget-usd` cap. Linked from `/divine` monitor mode, `/seal`, `/deploy` and the cloud note.
+- Review approvals: an agent's approval never counts as a human's; an approval binds to one commit;
+  human approvals per tier Low 0 / Medium 1 / High 2, with one Medium definition everywhere. `/seal`
+  takes tiers from REVIEW.md, writes Intent, links, Risk tier and How to revert into the PR body, and
+  stops before merging when the required human approvals are not on the head commit. After a merge it
+  offers a bounded fix-forward loop.
+- SDLC spine: `/manifest` writes `.workspace/shared/intents/<date>-<feature>.md`; `/conjure` records
+  approach decisions in `.workspace/shared/decisions/` and reads an optional north star;
+  `/deploy` acts up to the production gate, never past it, with control bands for `/loop` maintenance.
+- Rubrics for specs, plans, research and post-mortems (`references/rubric.md` in `/conjure`,
+  `/blueprint`, `/magic`, `/autopsy`), graded before the Completion Signal. `/autopsy` writes an eval
+  skeleton in the repository's eval schema for each incident.
+- `/sentinel` cadence and ledger: weekly scans, baseline first, dismissals with reasons. The ledger
+  stays in `.workspace/local/security/` (open rows are a map of unfixed findings, so it is never
+  committed).
+- `/chronicle lessons` (`ctx lessons`): a lessons-and-missteps note from obstacles, closed review
+  rounds and learnings, at most 5 obstacle groups, all third-party text fenced and stripped.
+  `ctx consolidate` prints clean and blocked runs per agent; the SubagentStop hook now also records a
+  CLEAN row for `STATUS: DONE`.
+- `/almanac` optional extras: north star, a production-gate hook template written under
+  `.workspace/shared/hooks/` (never installed; a guard rail against mistakes, not a security
+  boundary), OTel cost attribution. The status line saves the session cost, so `/weave` and
+  `/orchestrate` report "cost ≈ $X (session delta)" when it is known.
+- Authoring lore: tool budget (30–50 definitions), "where does it live", advisory vs enforced,
+  prompt-cache rules (static first, volatile last, stable tool lists) and one canonical list of
+  characters stripped from untrusted text.
+
+**Changed**
+- The dated previous-session line is last in the session-start text, for cache stability.
+  Always-on cost unchanged (~1,411 tokens).
+- Several skill routers trimmed so every router stays ≤ 8,192 bytes.
+- Tests close caught `HTTPError` objects (no ResourceWarning on Python 3.14).
+- Token budget: skill and agent descriptions trimmed about 15% (offline always-on ~1,522 → ~1,285;
+  every trigger phrase and "use when" / "not for" clause kept). The gate now fails on the offline
+  estimate above 1,370 (≈1,800 real tokens at the 1.315 real/offline ratio measured 2026-11-02),
+  so the result no longer depends on sign-in. The `claude plugin details` figure is information
+  only, with a warning above 1,800.
+
+### Batch 5 — ecosystem: Codex package, eval suite, mods, KG MCP server
+
+**Added**
+- Codex package: `scripts/build-codex.sh` builds `dist/codex/magician` (AAIF frontmatter, agents as
+  `-lens` skills, marketplace file, `$schema` first). Claude-only text is rewritten or noted, and the
+  build fails on any leftover `${CLAUDE_*}` in Markdown or any claim that hooks ship. The statusline
+  and `magician-ui` are excluded. CI runs the build. Mapping table in `lore/skill-authoring.md`.
+- `/almanac` can write an `AGENTS.md` from a template.
+- Behavioral evals: 14 golden cases under `evals/`, `evals/flip.py` (flip inspection, missing-case
+  detection, refuses to baseline a failed run unless `--force-baseline`), and the opt-in gate tier
+  `scripts/gate.sh --evals` (cost cap `MAGICIAN_EVAL_MAX_COST`, default $20; `--tag`,
+  `--update-baseline`). `evals/lens-ab/run.sh` compares lens models (for example Haiku vs Sonnet).
+- Mods (experimental, `MAGICIAN_MODS=1`): `mods/register.js` turns a destructive-guard deny into a
+  person-decided ask only when every guard reason is confirmable and the deny is the guard's own;
+  credential and trifecta reasons stay denied.
+- Guard: `MAGICIAN_GUARD_ALL_SOFT=1` reports every soft reason in one JSON line. Default output is
+  byte-identical.
+- `tools/kg-mcp`: read-only, opt-in MCP server for the knowledge graph (`kg_query`, `kg_blast`,
+  `kg_neighbors`, `kg_status`; both MCP eras; stateless cursors). Not registered by default.
+
+**Changed**
+- Always-on token cost ~1,498 → ~1,411 (shorter skill descriptions; detail moved into bodies).
+- Invalid plan fixtures collapsed into `tests/claude/fixtures/plans/invalid-cases.json` (29 files
+  fewer). Seven test modules now also import as `tests.claude.*`.
+
+### Batch 4 — `/design`-first conjure, review dialect, lazy lore, skill routers
+
+**Added**
+- `/conjure` surfaces: `/design` artboards (bundled skill, research preview; used when the session
+  has the Artifact tool), the local companion as the offline/CI fallback, or text. The four GATE 0
+  options keep their meaning; Design Only is a flag on either visual surface. In every mode the
+  approaches, architecture and directions are written to disk as Mermaid + HTML, so they outlive
+  the surface that showed them. Architecture is code (`architecture.mmd`, rendered only when `mmdc`
+  is already installed). After the design gate, `/design-sync` is offered once, never run unasked.
+- Screenshot evidence shared by `/conjure`, `/certify` and `/transmute`
+  (`skills/conjure/references/capture.md`): per theme and viewport under
+  `.workspace/local/screens/`, and `skills/conjure/scripts/screen-diff.cjs` compares v<n> with
+  v<n+1> using Playwright's own comparator (diff image written) or a stdlib pixel count.
+- Review dialect: `REVIEW.md` template (`/almanac` scaffolds it on request); `/divine` and
+  `/scrutinize` read it first, tag every finding Important / Nit / Pre-existing with file:line,
+  cap remediation at three rounds, re-review only the diff, keep a round ledger under
+  `.workspace/shared/diffs/` so a closed finding is never repeated, and lead the summary with the
+  count line. Lenses run as forks when the diff is already in context and fresh otherwise; the
+  verification stage is always fresh. Rules in `lore/review.md`.
+- `/almanac` can write project `verify` and `simplify` skills (short delegators to `/certify` and
+  the simplifier lens) that Claude Code runs before commits; `/seal` relies on them when present.
+- Reviewer memory: `reviewer`, `sentinel` and `simplifier` keep `memory: project` (a finding class
+  is recorded only after it recurs twice; findings stay observations); `/chronicle consolidate`
+  reads it. The fixer runs in a worktree only when `/scrutinize` fixes two or more independent
+  Important findings at once.
+- Tests: router byte cap, `test_screen_diff.py`, review-dialect and lazy-lore tests.
+
+**Changed**
+- Lazy lore: session start injects the security core and one line naming the detected stack's lore;
+  each stack core is injected the first time a prompt names that stack, or when `/ward`,
+  `/unravel`, `/certify` or `/accelerate` starts. On a five-stack sample the session-start
+  injection fell from 9,423 to 2,469 characters. `MAGICIAN_LORE=eager` restores the old behaviour.
+- `/conjure`, `/magic`, `/transmute` and `/divine` are routers of at most 8 KB with the procedures
+  in `references/` (21 KB → 8 KB, 18 KB → 8 KB, 18 KB → 8 KB, 14 KB → 8 KB); gates, grants and
+  completion signals are unchanged.
+
+### Batch 3 — live plan review, Artifact mode, plan → workflow
+
+**Added**
+- Live review loop: `/blueprint` serves `plan.html` from the companion server
+  (`tools/companion/`, moved from `/conjure` and shared by both skills) on `127.0.0.1` under a
+  per-run token path; the page's review toolbar and ✦ helper post events (`step.review`,
+  `step.change_request`, `step.edit`, `plan.change_request`, `plan.approved`, `plan.rejected`) to
+  `events.jsonl`; Claude is woken by a `Monitor` on that file (or the `plan-watch` plugin monitor as
+  the fallback), revises the step, re-renders, and the page hot-swaps the card with a version badge
+  and a what-changed panel — no return to chat. Server contract in `tools/companion/PROTOCOL.md`
+  (same-origin check, 8 KB cap, known types and step ids only, no CORS, writes only
+  `events.jsonl`); `state.json` schema in `skills/blueprint/references/walkthrough.md`; the
+  Claude-side algorithm and revision budget in `references/live-loop.md` and
+  `references/revision-rules.md` (reviewer text is untrusted: never into shell, quoted only inside a
+  labelled fence; one step plus its named dependents per revision; more than three steps means a
+  re-plan).
+- Artifact mode (`/blueprint --artifact`, or automatically when there is no Node but the Artifact
+  tool exists): `plan-render html --transport artifact` renders the same page for claude.ai, where
+  it writes events with the artifact `db` capability and follows `state/current` and
+  `plan/current` snapshots; falls back to static with a notice when no database is granted.
+- `plan-render workflow`: an approved plan becomes `plan.workflow.js` — one phase per wave,
+  `parallel()` for parallel steps, sequential steps in dependency order, bounded return schemas,
+  deferred steps omitted, no non-deterministic calls; `/orchestrate` runs it with the Workflow tool
+  when present and falls back to waves; `/weave` accepts it as the composed workflow.
+- `/blueprint` delegates file mapping to the built-in `Plan` agent; `/manifest` recommends plan
+  mode for Phases 0–2; each step's `verify` is the exact commands from the project's `verify`
+  skill, `REVIEW.md`, the stack lore or the spec, in that order.
+- Tests: `test_companion.py` (20), `test_plan_watch.py` (9), workflow generator and live-loop
+  accessibility tests; a local-only Playwright end-to-end run (`tests/e2e/`) that drives the real
+  server through a change request, a revision and an approval.
+
+**Changed**
+- `/conjure` scripts are thin wrappers over `tools/companion/`; the companion refuses screen
+  names that resolve outside their folder and logs to the state folder instead of the caller's
+  stdout (two pre-existing bugs).
+
+### Batch 2 — STE-lite (simplified technical English, STE-inspired)
+
+**Added**
+- `lore/ste.md` and `lore/deep/ste.md`: the STE-lite rule layer (sentence limits 25/20 words, one
+  instruction per sentence, imperative steps, condition before command, six sentences per paragraph,
+  active voice and simple tenses, no semicolons, contractions or Latin abbreviations, identifiers
+  verbatim in backticks, facts and hedges never dropped) with magician's own avoid→use word list and
+  rewrite patterns. Paraphrased; the standard's text and dictionary are not shipped; no compliance
+  claim is made anywhere.
+- `magician-ui ste on|off|status`: an STE flag orthogonal to the voice level (env `MAGICIAN_STE`,
+  then `.magician/ste`, then `cli-ui.json`; default off). When on, session start adds a note under
+  600 chars with the checkable rules. `status` shows the effective state and its source.
+- Output style `magician:ste` (`/output-style magician:ste`) with `keep-coding-instructions`.
+- `tools/ste-lint`: a deterministic checker for Markdown prose (rules S1, S2, P1, V2, V3, W2, W3,
+  W4, W6, C1 as errors; S3, S4, S5, V1, V4, W1, N1, L1 as warnings), STE word counting, code,
+  tables, URLs, quotes and frontmatter excluded, `.magician/ste-terms` allow-list, `--json`,
+  `--max`, `--strict`; exit 0 clean, 1 findings, 2 usage.
+- `PostToolUse` hook `scripts/ste-lint-hook.sh`: when STE is on and a written Markdown file lives
+  under `.workspace/shared/` (or matches `.magician/ste-paths`), returns up to ten findings as
+  context so Claude fixes them in the same turn; never blocks.
+- Eval `evals/ste-spec-writing/` (regex and rubric graders for an STE-lite spec).
+- Gate tier "STE-lite (warn)" that counts findings over magician's own prose and records
+  `ste_findings` in `evals/results/budget.json` (3,482 at this batch; warn-only).
+
+**Changed**
+- Guard hardening: obfuscated delete heads (`r''m`, `\rm`, `$(echo rm)`, backquoted echo), `cd`
+  or `pushd` into a root or home folder followed by a delete of `.`, a subshell around the delete,
+  `truncate` of system files are hard blocks; cwd-wide `rm -rf .`, `xargs rm -rf`, unfiltered
+  `find . -delete`, `truncate` outside the working directory, `git push --force` (also `+refspec`)
+  without `--force-with-lease`, and `git reset --hard` are soft blocks with a reason. Benign
+  neighbours (`find build -name '*.o' -delete`, `--force-with-lease`, `git reset --soft`) stay
+  allowed.
+
+### Batch 1 — model and effort currency, token diet, hooks, security refresh
+
+**Added**
+- Hooks: `PreCompact` (asks for `.workspace/local/session-state.md` to be flushed before a summary),
+  `SubagentStop` (records `STATUS: BLOCKED|DEGRADED` returns of magician agents into
+  `.workspace/local/obstacles.jsonl`, reading only the last 4 KiB of the agent transcript),
+  `PreModelSwitch` (holds a safety-fallback model switch while a security scan is active or
+  `MAGICIAN_PIN_MODEL=1`), `PostModelSwitch` (notes the change and the effort/cache consequences),
+  `Setup init` (creates `.workspace/` folders and the ignore line), `StopFailure max_output_tokens`
+  (suggests `/compact`); `Notification` also matches `plugin_notification`.
+- Cloud sessions (`CLAUDE_CODE_REMOTE=1`): session-start, tools-path and userconfig hooks skip
+  launcher installs and credential reads and say that bundled commands run by full path.
+- Token-budget tier in `scripts/gate.sh`: fails when `claude plugin details` reports more than
+  1,500 always-on tokens, any skill body above 6,000 tokens, or more than 10 % growth of the recorded
+  baseline without a CHANGELOG note; `tests/claude/test_guard_latency.py` (median guard run on
+  benign commands under 40 ms).
+- Lore: `lore/research.md` (research sources: OpenAI Docs MCP, Anthropic `mcp-server-dev`,
+  `/claude-api`), `lore/skill-authoring.md` (the vendor-neutral skill standard versus Claude Code
+  extensions, provider-neutral wording), new sections in `lore/deep/llm-sdks.md` (Claude API
+  2026-10-21, MCP 2026-07-28, OpenAI Responses/Codex, deprecations).
+- `magician-scan` patterns for Dockerfile/compose `ENV`/`ARG`, LiteLLM configs and mobile resource
+  strings holding key-like values; README warning about fake installers and resellers.
+- Agents: `simplifier` and `verifier` run on `haiku` (`effort: high`), `fixer` and `gatekeeper` on
+  `sonnet` (`effort: medium`), the review lenses on `opus` (`effort: high`, `autoCompactWindow`
+  200k); the five lenses locate code with `kg` (`check`, `query`, `blast`, `neighbors`).
+- Tests: every `mcp__` grant names a server and a tool; the Obstacles block appears only in lore;
+  descriptions stay within the house budget; search-heavy skills pre-approve the embedded search
+  commands.
+
+**Changed**
+- `lore/models.md` rewritten for the 5.5 generation (Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1:
+  prices, effort defaults, `ultrathink` = `xhigh`, cache rule on effort changes, refusal fallback,
+  deprecation dates). Effort guidance in `/ward`, `/orchestrate`, `/weave`, `/manifest`: `medium`
+  for implementation turns, `high` for certify/review/security turns; one level only on
+  Bedrock/Vertex/gateways. `xhigh` is the deep level; `max` is an opt-in.
+- Token diet: skill descriptions 7,621 → 4,977 chars, agent descriptions one sentence each; the
+  Obstacles block is pasted nowhere — every skill and agent points at `lore/obstacles.md`; always-on
+  cost measured by `claude plugin details` 2,443 → 1,474 tokens.
+- Guard: `onFailure: block`, `timeout: 5`, and a fast path that exits immediately for commands with
+  no dangerous token (verdicts identical to the full parser on the parity corpus).
+- `format.sh` runs asynchronously and skips a file formatted less than 2 s ago; session-start caches
+  the stack fingerprint per commit and manifest sizes (`MAGICIAN_LORE=eager` forces detection).
+- Search grants (`ugrep`, `bfs`, `rg`, `grep`, `find`) on every search-heavy skill, because Glob and
+  Grep are no longer default tools on macOS/Linux/WSL; `paths:` on `/deploy`.
+- `/weave` template and `/orchestrate` task prompts return bounded schemas (summary ≤ 1,200 chars,
+  obstacles, files changed) and document `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS` (first task of a
+  wave alone, then the rest).
+- Security lore: fallback switching made visible, thinking blocks never echoed or moved, which
+  grants matter in auto versus manual mode.
+
 ## [4.18.0] — 2026-11-01
 
 **Static plan walkthrough.** `/blueprint` now writes one plan source, `plan.json`, and renders two

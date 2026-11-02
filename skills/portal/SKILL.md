@@ -1,6 +1,6 @@
 ---
 name: portal
-description: Creates a git worktree for isolated feature work (and documents cleanup post-merge); respects the disableGit preference. Use to isolate a feature on its own branch/worktree.
+description: Creates a git worktree for isolated feature work; respects disableGit. Use to isolate a feature on its own branch.
 allowed-tools: Read, Bash(git worktree add *)
 argument-hint: "[feature-name]"
 ---
@@ -23,6 +23,17 @@ Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git op
 3. **Workspace files** — tracked files (`.workspace/shared/`) come with the branch; gitignored ones such as `.workspace/local/prefs.md` don't. Worktrees that Claude Code creates itself (`claude --worktree`, subagent worktree isolation) copy the gitignored files listed in a `.worktreeinclude` file at the repo root, so listing `.workspace/local/prefs.md` there is a useful tip for the user. For this plain `git worktree add`, copy any local file the new worktree needs (that copy goes through the normal permission prompt).
 4. **Confirm** the new worktree path to the user
 5. Say: "Worktree created at `../<path>`. Work there for isolation. Run /seal when ready to merge."
+
+## Alternatives at agent scale
+
+Pick the lightest isolation that fits. Feature-detect each one. Do not ask the user to check a version.
+
+- **`claude --worktree <name>`.** Use it when `claude --help` lists `--worktree`. It starts a new session in its own worktree and copies the files listed in `.worktreeinclude`. Tell the user the command. Do not run it from this session.
+- **Agent `isolation: worktree`.** Use it for a dispatched subagent that edits files in parallel with others. Set it in the agent's frontmatter or in the `Agent` call when the tool accepts it. Claude Code removes the worktree when the agent made no change.
+- **`git sparse-checkout` in a monorepo.** Use it when the repository has more than about 10,000 tracked files and the feature touches one or two packages. After step 2, run `git -C ../<repo-name>-<name> sparse-checkout set --cone <package-dirs>`. That command is not pre-approved, so it prompts. Add the shared config folders the build needs.
+- **Plain `git worktree add`.** Use it in every other case (the process above).
+
+Keep each change small and state its intent in the branch name and the first commit ([lore/git.md](../../lore/git.md)).
 
 ## Process (disableGit mode)
 

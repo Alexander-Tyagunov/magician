@@ -323,7 +323,9 @@ class LoreReferenceTests(unittest.TestCase):
 
 class LoreBudgetTests(unittest.TestCase):
     """SessionStart run for real on fixture projects, with install-length plugin root and data paths:
-    each stack's listed cores are injected and the context stays under the 9,500-character cap.
+    with MAGICIAN_LORE=eager each stack's listed cores are injected and the context stays under the
+    9,500-character cap; in the lazy default the same cores are named on the index line instead and
+    only security is injected.
 
     The listed cores are the language, framework and engine plus the databases foundation. logging and
     other libraries fill what is left. A Next.js project also detects javascript (package.json) and
@@ -370,19 +372,29 @@ class LoreBudgetTests(unittest.TestCase):
                 for rel, text in files.items():
                     (proj / rel).parent.mkdir(parents=True, exist_ok=True)
                     (proj / rel).write_text(text, encoding="utf-8")
-                proc = subprocess.run(["/bin/bash", str(ROOT / "scripts" / "session-start.sh")],
-                                      input='{"source": "startup"}', capture_output=True, text=True,
-                                      cwd=proj, env=env, timeout=60, check=False)
-                with self.subTest(stack=detected):
-                    self.assertEqual(proc.returncode, 0, proc.stderr)
-                    ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
-                    injected = re.findall(r"(?m)^\[([a-z0-9-]+)\] ", ctx)
-                    self.assertIn(f"Detected stack: {detected}.", ctx)
-                    for core in ["security", *cores]:
-                        self.assertIn(core, injected, f"{core} starved; injected {injected}")
-                    self.assertLessEqual(len(ctx.encode("utf-8")), self.CAP)
-                    # The hook cuts anything over the cap from the end, so the voice note comes last.
-                    self.assertIn("(voice: scribe)", ctx, "the lore budget overran and the tail was cut")
+                for mode in ("eager", "lazy"):
+                    proc = subprocess.run(["/bin/bash", str(ROOT / "scripts" / "session-start.sh")],
+                                          input='{"source": "startup"}', capture_output=True, text=True,
+                                          cwd=proj, env={**env, "MAGICIAN_LORE": mode}, timeout=60, check=False)
+                    with self.subTest(stack=detected, mode=mode):
+                        self.assertEqual(proc.returncode, 0, proc.stderr)
+                        ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+                        injected = re.findall(r"(?m)^\[([a-z0-9-]+)\] ", ctx)
+                        self.assertIn(f"Detected stack: {detected}.", ctx)
+                        if mode == "eager":
+                            for core in ["security", *cores]:
+                                self.assertIn(core, injected, f"{core} starved; injected {injected}")
+                        else:
+                            self.assertEqual(injected, ["security"])
+                            index = re.search(r"(?m)^Magician lore available for this stack: (.*?) — ", ctx)
+                            self.assertIsNotNone(index, "no lore index line")
+                            listed = index.group(1).split(", ")
+                            for core in cores:
+                                self.assertIn(core, listed, f"{core} missing from the index {listed}")
+                            self.assertLess(len(ctx), 4000, "lazy mode left more than the index in the context")
+                        self.assertLessEqual(len(ctx.encode("utf-8")), self.CAP)
+                        # The hook cuts anything over the cap from the end, so the voice note comes last.
+                        self.assertIn("(voice: scribe)", ctx, "the lore budget overran and the tail was cut")
 
 
 class PackageLimitTests(unittest.TestCase):

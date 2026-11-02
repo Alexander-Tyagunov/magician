@@ -191,11 +191,34 @@ class CompactContextTests(unittest.TestCase):
             with self.subTest(payload=payload, repo=True):
                 self.assertIn("Branch: ", self.context(payload))
 
+    def test_restates_the_head_of_the_session_state_file(self) -> None:
+        self.make_repo()
+        state = self.repo / ".workspace" / "local" / "session-state.md"
+        state.parent.mkdir(parents=True)
+        body = "# Goal\nport the login flow\n\n## Done\n- spec\n\n## Next\n- tests\n" + "- caf\u00e9 item\n" * 200
+        state.write_text(body, encoding="utf-8")
+        ctx = self.context(self.payload())
+        self.assertIn("Running state written before the compaction, the head of .workspace/local/session-state.md:", ctx)
+        head = ctx.split("session-state.md:\n", 1)[1]
+        self.assertTrue(head.startswith("# Goal\nport the login flow\n\n## Done\n- spec"), head[:60])
+        self.assertLessEqual(len(head.encode("utf-8")), 1500)
+        self.assertTrue(head.endswith("item"), repr(head[-20:]))   # cut at a line boundary, no split character
+        self.assertNotIn("\ufffd", head)
+        state.write_text("short\n", encoding="utf-8")
+        self.assertTrue(self.context(self.payload()).endswith("session-state.md:\nshort"))
+        empty = Path(self._tmp.name) / "only-state"
+        (empty / ".workspace" / "local").mkdir(parents=True)
+        (empty / ".workspace" / "local" / "session-state.md").write_text("alone\n", encoding="utf-8")
+        self.assertIn("alone", self.context(self.payload(), cwd=empty))   # the state alone is worth restating
+
     def test_text_is_factual(self) -> None:
         self.make_repo()
+        state = self.repo / ".workspace" / "local" / "session-state.md"
+        state.parent.mkdir(parents=True)
+        state.write_text("x\n", encoding="utf-8")
         ctx = self.context(self.payload())
-        # commit subjects are data; check the hook's own lines
-        own = [l for l in ctx.splitlines() if not l.startswith("- ")]
+        # commit subjects and the state file are data; check the hook's own lines
+        own = [l for l in ctx.split("session-state.md:\n")[0].splitlines() if not l.startswith("- ")]
         for line in own:
             m = IMPERATIVE.search(line)
             self.assertIsNone(m, f"steering phrase {m and m.group(0)!r} in {line!r}")
@@ -237,10 +260,16 @@ class CompactContextTests(unittest.TestCase):
         self.assertNotRegex(code, r"(?m)(?:^|[;&|])\s*\.\s+\S")
         self.assertNotRegex(code, r"(?m)^\s*set\s+(?:-[a-z]*[eu]|-o\s+pipefail)")
 
-    def test_wiring_replaces_the_precompact_capsule(self) -> None:
-        self.assertFalse((ROOT / "scripts" / "pre-compact.sh").exists())
+    def test_wiring_is_a_precompact_reminder_and_a_postcompact_restatement(self) -> None:
+        """The 4.15 PreCompact capsule (which stored conversation text) stays gone: the 5.0
+        PreCompact hook only asks for the session-state file to be written and reads no transcript."""
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-        self.assertNotIn("PreCompact", hooks)
+        pre = hooks["PreCompact"]
+        self.assertEqual([(g.get("matcher"), [h["command"] for h in g["hooks"]]) for g in pre],
+                         [("auto|manual", ['"${CLAUDE_PLUGIN_ROOT}"/scripts/pre-compact.sh'])])
+        pre_text = (ROOT / "scripts" / "pre-compact.sh").read_text(encoding="utf-8")
+        for needle in ("transcript_path", "capsule", "CLAUDE_ENV_FILE", "PLUGIN_ROOT"):
+            self.assertNotIn(needle, pre_text)
         groups = [g for g in hooks.get("SessionStart", []) if g.get("matcher") == "compact"]
         self.assertEqual(len(groups), 1)
         self.assertEqual([h.get("command") for h in groups[0]["hooks"]],

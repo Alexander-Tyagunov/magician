@@ -1,6 +1,6 @@
 ---
 name: inscribe
-description: Creates a new reusable project skill from a workflow worth capturing, written to .claude/skills/NAME/SKILL.md in the current repo. Use to scaffold a new SKILL.md.
+description: Turns a workflow into a reusable project skill (.claude/skills/NAME/SKILL.md). Use to scaffold a new SKILL.md.
 allowed-tools: Read, Glob, AskUserQuestion, Edit(./.claude/skills/**), Bash(git commit -m *)
 disable-model-invocation: true
 argument-hint: "[skill-name or pattern description]"
@@ -74,6 +74,24 @@ git commit -m "feat: add /<name> skill"
 
 8. Say: "Skill /<name> created in .claude/skills/<name>/. If /<name> does not show up yet, restart Claude Code."
 
+## If the skill needs an MCP tool
+
+Prefer a bundled CLI or an existing tool. Each MCP tool definition costs context on every turn, and tool choice degrades above about 30–50 tools ([tool budget](../../lore/skill-authoring.md#tool-budget)). When the user still wants an MCP server, draft its tools to this shape:
+
+```json
+{
+  "name": "orders_refund",
+  "description": "Refund one order. Use when the user asks to refund or cancel a paid order. Not for partial refunds.",
+  "inputSchema": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]},
+  "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true}
+}
+```
+
+- One tool per user intent, not one per API endpoint. Group the lookups behind one read tool and each change behind its own write tool.
+- Set `readOnlyHint: true` on every tool that changes nothing, so a client can allow it without a prompt. Set `destructiveHint` on a tool that deletes or overwrites.
+- Check preconditions inside the tool (the order exists, is paid, is not refunded yet) and return a clear error. A precondition written only in the skill is advisory.
+- Suggest deferred loading (ToolSearch) when the server is needed only now and then.
+
 ## Skill Quality Checklist
 
 - [ ] Frontmatter uses only valid fields (description, name, allowed-tools, disable-model-invocation, argument-hint, context), parses as strict YAML, and has a specific description
@@ -84,6 +102,8 @@ git commit -m "feat: add /<name> skill"
 - [ ] Process steps are concrete and actionable (not vague)
 - [ ] Does not duplicate an existing skill
 - [ ] Name is memorable and matches the behavior
+- [ ] A rule that must hold every time is a hook, not only skill text: a skill is advisory ([advisory vs enforced](../../lore/skill-authoring.md#advisory-vs-enforced))
+- [ ] Any MCP tool has one intent, a `readOnlyHint`, and its preconditions checked in the tool
 
 ## Obstacles
 

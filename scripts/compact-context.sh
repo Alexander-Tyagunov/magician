@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # SessionStart hook (matcher "compact"): after a compaction, restates working-state pointers taken
 # from git and the .workspace/shared artifact folders: branch, uncommitted files, this session's
-# commits and shared artifacts. It reads nothing from the conversation (no transcript, prompt or
-# summary) and writes nothing. Plain bash 3.2 + git; no `set -e`/`-u`; always exits 0.
+# commits and shared artifacts, plus the head (at most 1,500 characters) of the running state file
+# .workspace/local/session-state.md when the project has one. It reads nothing from the
+# conversation (no transcript, prompt or summary) and writes nothing. Plain bash 3.2 + git; no
+# `set -e`/`-u`; always exits 0.
 export LC_ALL=C
 
 BUDGET=9500   # additionalContext cap (Claude Code truncates past 10,000 characters)
@@ -69,11 +71,26 @@ ARTS=$(for _d in specs plans research diffs decisions; do
   done
 done | _bullets 20)
 
-[ -z "$GIT_PART" ] && [ -z "$ARTS" ] && exit 0
+STATE_FILE="$ROOT/.workspace/local/session-state.md"
+STATE=""
+if [ -f "$STATE_FILE" ]; then
+  STATE=$(head -c1500 "$STATE_FILE" 2>/dev/null | tr -d '\000')
+  [ "$(head -c1501 "$STATE_FILE" 2>/dev/null | wc -c | tr -d ' ')" -gt 1500 ] && STATE=$(printf '%s' "$STATE" | sed '$d')
+  case $STATE in   # never end inside a UTF-8 sequence
+    *[$'\xc0'-$'\xff']) STATE=${STATE%?} ;;
+    *[$'\xe0'-$'\xff'][$'\x80'-$'\xbf']) STATE=${STATE%??} ;;
+    *[$'\xf0'-$'\xff'][$'\x80'-$'\xbf'][$'\x80'-$'\xbf']) STATE=${STATE%???} ;;
+  esac
+fi
+
+[ -z "$GIT_PART" ] && [ -z "$ARTS" ] && [ -z "$STATE" ] && exit 0
 
 CONTEXT="Context was compacted. Working-state pointers for this directory, read from git and .workspace/shared (for reference):${GIT_PART}"
 [ -n "$ARTS" ] && CONTEXT="${CONTEXT}
 Shared artifacts in .workspace/shared:${ARTS}"
+[ -n "$STATE" ] && CONTEXT="${CONTEXT}
+Running state written before the compaction, the head of .workspace/local/session-state.md:
+${STATE}"
 if [ ${#CONTEXT} -gt "$BUDGET" ]; then   # cut at a line boundary so no UTF-8 sequence is split
   CONTEXT=$(printf '%s' "$CONTEXT" | head -c"$BUDGET" | sed '$d')
 fi
