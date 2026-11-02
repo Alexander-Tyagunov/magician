@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Security scan — OWASP Top 10, secrets, injection surfaces, dependency audit, git-history secrets, auth spot-check. Never modifies code; severity-ranked report. Use to audit a codebase for vulnerabilities.
+description: Security scan — OWASP Top 10, secrets, injection, dependencies, git history, auth. Read-only, severity-ranked report. Use to audit a codebase for vulnerabilities.
 effort: high
 allowed-tools: Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), Bash(mkdir -p .workspace/local), Bash(touch .workspace/local/security-scan.active), Bash(magician-scan *), Bash(npm audit), Bash(npm audit --json), Bash(pip-audit), Bash(pip-audit -f json), Bash(safety check), Bash(govulncheck ./...), Bash(cargo audit)
 context: fork
@@ -15,6 +15,10 @@ argument-hint: "[path]"
 Run a comprehensive security scan of the codebase. Available as CLI: `magician-scan` (plugin-provided; on PATH when the plugin is enabled).
 
 For very large repos, raise /effort so the analysis stays thorough across the codebase (`xhigh`; `max` only as an opt-in for a frontier problem). See [lore/models.md](../../lore/models.md).
+
+## When to use
+
+To audit a codebase for vulnerabilities: OWASP Top 10, credential and secret detection, injection surfaces, a dependency audit, a git-history secret scan and an auth spot-check. It never modifies code and ends with a severity-ranked report. Trigger phrases: "run a security scan", "audit for vulnerabilities", "check for leaked secrets". Not for fixing findings (`/scrutinize`) or a general code review (`/divine`).
 
 ## The scan can change models under you
 

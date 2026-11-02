@@ -31,9 +31,14 @@ gemini_generated.png
 # The token-budget baseline is tracked: scripts/gate.sh compares each run against it
 evals/results/*
 !evals/results/budget.json
+# The per-case eval baseline is tracked too: scripts/gate.sh --evals fails on a pass-to-fail flip against it
+!evals/results/last.json
 
 __pycache__/
 *.pyc
 
 # The Codex package is generated and committed on the `codex-plugin` branch only
 /plugins/
+
+# Codex package built by scripts/build-codex.sh (default output dist/codex/)
+/dist/

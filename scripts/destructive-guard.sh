@@ -26,7 +26,38 @@ block() {  # the hard gate: one plain-words reason on stderr, exit 2 (never echo
 }
 
 soft_block() {  # permission-style verdict on stdout, exit 0
+  if [ "$ALL_SOFT" = 1 ] && [ "$1" != "$TOO_LONG" ]; then
+    add_soft "$1"
+    return 0
+  fi
+  if [ "$ALL_SOFT" = 1 ]; then
+    add_soft "$1"
+    emit_all_soft
+  fi
   printf '{"decision": "block", "reason": "%s"}\n' "$1"
+  exit 0
+}
+
+# All-soft mode, opt-in through MAGICIAN_GUARD_ALL_SOFT=1, which only the magician mod
+# (mods/register.js) sets, in the env of its own $.process.run of this script. The hard checks
+# run first and exit 2 exactly as always; the soft stage then evaluates EVERY soft check instead of
+# stopping at the first, and prints one verdict naming all of them:
+#   {"decision": "block", "reasons": ["<r1>", "<r2>"], "reason": "<r1>"}   (exit 0)
+# so the mod can tell a pure blast-radius command from one that also reads credentials. It only
+# ever reports more; it never turns a block into a pass. With the variable unset the output is
+# byte-identical to the single-reason verdict above.
+ALL_SOFT=0
+[ "${MAGICIAN_GUARD_ALL_SOFT:-}" = 1 ] && ALL_SOFT=1
+SOFT_REASONS=()
+add_soft() {  # append a reason once
+  local _r
+  for _r in "${SOFT_REASONS[@]}"; do [ "$_r" = "$1" ] && return 0; done
+  SOFT_REASONS+=("$1")
+}
+emit_all_soft() {  # print the all-soft verdict and exit 0 (only called with >= 1 reason)
+  local _r _list=""
+  for _r in "${SOFT_REASONS[@]}"; do _list="$_list, \"$_r\""; done
+  printf '{"decision": "block", "reasons": [%s], "reason": "%s"}\n' "${_list#, }" "${SOFT_REASONS[0]}"
   exit 0
 }
 
@@ -781,7 +812,9 @@ CWD_WIDE_RM=0      # rm -rf on the whole working directory (. ./ ./* *)
 XARGS_RM=0         # rm -rf with no path, fed by xargs
 CWD_WIDE_FIND=0    # find -delete over the working tree with no name filter
 TRUNC_OUTSIDE=0    # truncate of a file outside the working directory
-GIT_SOFT=""        # git push --force / git reset --hard, with its reason
+GIT_SOFT=""        # git push --force / git reset --hard, with its reason (the last one found)
+GIT_SOFT_ALL=""    # every one found, a line each (read only in all-soft mode)
+git_soft() { GIT_SOFT=$1; GIT_SOFT_ALL="$GIT_SOFT_ALL$1"$'\n'; }
 
 for seg in "${FSEGS[@]}"; do
   resolve_head "$seg"
@@ -1003,14 +1036,14 @@ for seg in "${FSEGS[@]}"; do
         if [ "$_gforce" = 1 ] && [ "$_glease" = 0 ]; then
           case " $_gargs " in
             *' main '*|*' master '*|*':main '*|*':master '*|*'/main '*|*'/master '*)
-              GIT_SOFT="git push --force to main or master without --force-with-lease" ;;
-            *) GIT_SOFT="git push --force without --force-with-lease, which overwrites the remote branch blindly" ;;
+              git_soft "git push --force to main or master without --force-with-lease" ;;
+            *) git_soft "git push --force without --force-with-lease, which overwrites the remote branch blindly" ;;
           esac
         fi
       elif [ "$_gsub" = reset ]; then
         shift
         case " $* " in
-          *' --hard '*) GIT_SOFT="git reset --hard, which discards every uncommitted change in the working tree" ;;
+          *' --hard '*) git_soft "git reset --hard, which discards every uncommitted change in the working tree" ;;
         esac
         set --
       fi
@@ -1355,6 +1388,11 @@ done
 [ "$XARGS_RM" = 1 ] && soft_block "rm -rf with no path, deleting whatever xargs feeds it; needs manual review"
 [ "$CWD_WIDE_FIND" = 1 ] && soft_block "find -delete over the whole working tree with no name or path filter; needs manual review"
 [ "$TRUNC_OUTSIDE" = 1 ] && soft_block "truncate of a file outside the working directory; needs manual review"
+if [ "$ALL_SOFT" = 1 ]; then
+  while IFS= read -r _gs; do [ -n "$_gs" ] && soft_block "$_gs"; done <<EOF_GS
+$GIT_SOFT_ALL
+EOF_GS
+fi
 [ -n "$GIT_SOFT" ] && soft_block "$GIT_SOFT"
 
 _priv=0
@@ -1373,4 +1411,5 @@ if [ "$_priv" = 1 ] && [ "$_net" = 1 ] && [ "$_exec" = 1 ]; then
   soft_block "private data, network access and execution together (a lethal trifecta); needs manual review"
 fi
 
+[ "$ALL_SOFT" = 1 ] && [ "${#SOFT_REASONS[@]}" -gt 0 ] && emit_all_soft
 exit 0

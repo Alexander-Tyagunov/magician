@@ -105,7 +105,9 @@ class HookWiringTests(unittest.TestCase):
                     yield event, group, hook
 
     def test_hooks_file_is_well_formed(self) -> None:
-        self.assertEqual(set(self.config), {"hooks"})
+        # `modules` (the experimental mods hooks module, tests/claude/test_mods.py) is the one other key.
+        self.assertLessEqual(set(self.config), {"hooks", "modules"})
+        self.assertIn("hooks", self.config)
         self.assertIsInstance(self.config["hooks"], dict)
         self.assertTrue(self.config["hooks"], "no hooks declared")
 

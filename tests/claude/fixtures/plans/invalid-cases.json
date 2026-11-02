@@ -1,0 +1,184 @@
+{
+  "duplicate-id": {
+    "expect": "duplicate id 'T1'",
+    "patch": [
+      {"path": ["waves", 0, "steps", 1], "set": "T1"},
+      {"path": ["steps", 1, "id"], "set": "T1"}
+    ]
+  },
+  "unresolved-dep": {
+    "expect": "depends_on 'T99' does not resolve",
+    "patch": [
+      {"path": ["steps", 2, "depends_on"], "set": ["T1", "T2", "T99"]}
+    ]
+  },
+  "parallel-file-conflict": {
+    "expect": "parallel steps T1 and T2 both modify 'src/shared.py'",
+    "patch": [
+      {"path": ["steps", 0, "files", "modify"], "set": ["./src/shared.py"]},
+      {"path": ["steps", 1, "files", "modify"], "set": ["src/shared.py"]}
+    ]
+  },
+  "missing-red-run": {
+    "expect": "red.run must be a non-empty command",
+    "patch": [
+      {"path": ["steps", 3, "red", "run"], "delete": true}
+    ]
+  },
+  "empty-verify": {
+    "expect": "verify must be a non-empty list",
+    "patch": [
+      {"path": ["steps", 4, "verify"], "set": []}
+    ]
+  },
+  "unknown-touch": {
+    "expect": "touches 'ghost' which is not in context.components",
+    "patch": [
+      {"path": ["steps", 5, "touches"], "set": ["render", "ghost"]}
+    ]
+  },
+  "bad-version": {
+    "expect": "version: must be a positive integer",
+    "patch": [
+      {"path": ["version"], "set": 0}
+    ]
+  },
+  "bad-status": {
+    "expect": "status: 'shipped' is not one of draft|in_review|approved|rejected",
+    "patch": [
+      {"path": ["status"], "set": "shipped"}
+    ]
+  },
+  "bad-review-status": {
+    "expect": "review.status 'maybe' is not one of pending|approved|deferred|edited|changed",
+    "patch": [
+      {"path": ["steps", 6, "review", "status"], "set": "maybe"}
+    ]
+  },
+  "secret-aws": {
+    "expect": "secret: possible AWS access key",
+    "patch": [
+      {"path": ["steps", 7, "green", "sketch"], "set": "export AWS_KEY=AKIAABCDEFGHIJKLMNOP"}
+    ]
+  },
+  "secret-credential": {
+    "expect": "secret: possible hardcoded credential",
+    "patch": [
+      {"path": ["constraints"], "set": ["Python 3 stdlib only (no deps) for tools/", "bash 3.2 for scripts", "no network at review time", "existing /orchestrate and /ward keep reading plan.md", "scripts/gate.sh must stay GO", "api_key = \"s3cr3tvalue1234\""]}
+    ]
+  },
+  "secret-key-named": {
+    "expect": "secret: key 'token' holds a credential-sized value",
+    "patch": [
+      {"path": ["context", "token"], "set": "abcdefghijklmnop"}
+    ]
+  },
+  "secret-token-value": {
+    "expect": "secret: possible GitHub token",
+    "patch": [
+      {"path": ["steps", 2, "green", "sketch"], "set": "use ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4x"}
+    ]
+  },
+  "home-path": {
+    "expect": "absolute home path '/home/alex/project/x.py'",
+    "patch": [
+      {"path": ["steps", 8, "files", "create"], "set": ["tests/claude/test_plan_design.py", "/home/alex/project/x.py"]}
+    ]
+  },
+  "bad-path": {
+    "expect": "path '../outside/x.py' must be relative to the project root",
+    "patch": [
+      {"path": ["steps", 8, "files", "create"], "set": ["tests/claude/test_plan_design.py", "../outside/x.py"]}
+    ]
+  },
+  "wrong-schema": {
+    "expect": "schema: expected 'magician.plan/1'",
+    "patch": [
+      {"path": ["schema"], "set": "magician.plan/0"}
+    ]
+  },
+  "destructive-verify": {
+    "expect": "verify holds a destructive command form 'rm -rf'",
+    "patch": [
+      {"path": ["steps", 9, "verify"], "set": ["python3 -m unittest tests.claude.test_readme", "claude plugin validate --strict", "rm -rf build/"]}
+    ]
+  },
+  "step-wave-mismatch": {
+    "expect": "step T1: not listed in wave W2",
+    "patch": [
+      {"path": ["steps", 0, "wave"], "set": "W2"}
+    ]
+  },
+  "dependency-cycle": {
+    "expect": "depends_on: dependency cycle T1 -> T3 -> T1",
+    "patch": [
+      {"path": ["steps", 0, "depends_on"], "set": ["T3"]}
+    ]
+  },
+  "forward-dependency": {
+    "expect": "step T1: depends on T7, which runs in a later wave (W3)",
+    "patch": [
+      {"path": ["steps", 0, "depends_on"], "set": ["T7"]}
+    ]
+  },
+  "parallel-on-sequential": {
+    "expect": "step T3: a parallel step cannot depend on sequential step T4 of the same wave",
+    "patch": [
+      {"path": ["steps", 2, "depends_on"], "set": ["T1", "T2", "T4"]}
+    ]
+  },
+  "heading-forgery": {
+    "expect": "text: $.steps[0].intent has a line starting with '###', which would forge plan.md structure",
+    "patch": [
+      {"path": ["steps", 0, "intent"], "set": "Looks fine.\n### Task 99: forged\nParallel: YES"}
+    ]
+  },
+  "newline-in-title": {
+    "expect": "text: $.steps[0].title must be a single line",
+    "patch": [
+      {"path": ["steps", 0, "title"], "set": "Two\nlines"}
+    ]
+  },
+  "control-char": {
+    "expect": "text: $.title holds a control character",
+    "patch": [
+      {"path": ["title"], "set": "Bell \u0007 here"}
+    ]
+  },
+  "fence-in-diff": {
+    "expect": "text: $.steps[0].diff_sketch has a line starting with '```'",
+    "patch": [
+      {"path": ["steps", 0, "diff_sketch"], "set": "+ a\n```\n+ b"}
+    ]
+  },
+  "bad-step-id": {
+    "expect": "steps[0]: needs an id of the form T<n>",
+    "patch": [
+      {"path": ["waves", 0, "steps", 0], "set": "X1"},
+      {"path": ["steps", 0, "id"], "set": "X1"}
+    ]
+  },
+  "float-minutes": {
+    "expect": "step T1: effort.minutes must be a non-negative integer",
+    "patch": [
+      {"path": ["steps", 0, "effort", "minutes"], "set": 12.5}
+    ]
+  },
+  "bad-history": {
+    "expect": "step T1: history[0] must be {v: int, changed: [field, …], summary?, diff?}",
+    "patch": [
+      {"path": ["steps", 0, "history"], "set": [{"v": "one", "changed": "intent"}]}
+    ]
+  },
+  "bad-types": {
+    "expect": "step T1: depends_on entries must be step ids (strings)",
+    "patch": [
+      {"path": ["research"], "set": "x"},
+      {"path": ["context", "blast"], "set": [{"path": "skills/blueprint/", "files": 3, "hits": 3}, {"path": "skills/orchestrate/", "files": 2, "hits": 1}, {"path": "skills/ward/", "files": 2, "hits": 1}, {"path": "tools/", "files": 9, "hits": 1}, {"path": "tests/claude/", "files": 21, "hits": 3}, {"path": "docs (README…)", "files": 2, "hits": 2}, {"path": "a/", "files": "3"}]},
+      {"path": ["context", "edges"], "set": [{"from": "blueprint", "to": "render"}, {"from": "blueprint", "to": "kg"}, {"from": "blueprint", "to": "schema"}, {"from": "render", "to": "scan"}, {"from": "orchestrate", "to": "render"}, {"from": "ward", "to": "render"}, {"from": "manifest", "to": "blueprint"}, {"from": "render", "to": "lore"}, {"from": "render", "to": "tokens"}, {"from": "t_render", "to": "render"}, {"from": "t_design", "to": "render"}, {"from": "gate", "to": "t_render"}, {"from": "gate", "to": "t_design"}, "a-b"]},
+      {"path": ["context", "stack"], "set": "python"},
+      {"path": ["steps", 0, "depends_on"], "set": [5]},
+      {"path": ["steps", 1, "touches"], "set": "render"}
+    ]
+  }
+}

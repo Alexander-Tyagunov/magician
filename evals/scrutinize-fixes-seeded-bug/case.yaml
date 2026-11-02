@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.1",
+  "name": "scrutinize-fixes-seeded-bug",
+  "context": {
+    "scaffold_script": "scaffold.sh"
+  },
+  "graders": [
+    {
+      "name": "reviewer-off-by-one-removed",
+      "type": "regex",
+      "target": {
+        "source": "file",
+        "path": "pagination.py"
+      },
+      "pattern": "//\\s*size\\s*\\+\\s*1\\b",
+      "match": "not_contains"
+    },
+    {
+      "name": "reviewer-fix-is-correct",
+      "type": "llm",
+      "focus": {
+        "source": "file",
+        "path": "pagination.py"
+      },
+      "criteria": "This is `pagination.py` after a review-and-fix pass. It must hold a corrected `page_count(total, size)`.\n\nPASS only if ALL of these hold:\n1. `page_count` returns the number of pages needed, the ceiling of `total / size`: 10 items at 5 per page give 2, 11 give 3, 1 gives 1, 0 gives 0.\n2. `page_count` still raises `ValueError` when `size` is 0 or negative.\n3. `page(items, number, size)` still returns the items of the 1-based page `number`.\n\nWork each example through the code. FAIL if any example gives another value, or if the file no longer defines both functions."
+    },
+    {
+      "name": "regression-test-created",
+      "type": "file_exists",
+      "path": "test_pagination.py"
+    },
+    {
+      "name": "verifier-test-pins-the-boundary",
+      "type": "llm",
+      "focus": {
+        "source": "file",
+        "path": "test_pagination.py"
+      },
+      "criteria": "This is the regression test file written for an off-by-one bug. The bug: `page_count(total, size)` returned `total // size + 1`, so an exact multiple (10 items at 5 per page) gave 3 pages instead of 2, and 0 items gave 1 page.\n\nPASS only if ALL of these hold:\n1. The file is a runnable `unittest` (or pytest) test module that imports `page_count` from `pagination`.\n2. At least one assertion uses an exact multiple (such as `page_count(10, 5) == 2`) or zero items (`page_count(0, 5) == 0`), so it fails against `total // size + 1`.\n3. Every assertion states an exact expected value; none is a bare call or `assertTrue(result)`.\n\nFAIL if no assertion would fail against the original code."
+    }
+  ]
+}

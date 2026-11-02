@@ -1,13 +1,13 @@
 {
-  "recorded_at": "2026-11-02T00:02:45Z",
-  "offline_always_on_tokens": 1607,
+  "recorded_at": "2026-11-02T02:05:43Z",
+  "offline_always_on_tokens": 1522,
   "offline_skill_body_tokens": {
     "accelerate": 1291,
-    "almanac": 2052,
+    "almanac": 2358,
     "autopsy": 1277,
     "blueprint": 1858,
     "certify": 1510,
-    "chronicle": 1870,
+    "chronicle": 1949,
     "confluence": 1431,
     "conjure": 1871,
     "deploy": 1443,
@@ -21,19 +21,19 @@
     "portal": 729,
     "scrutinize": 2733,
     "seal": 1781,
-    "sentinel": 2080,
-    "statusline": 2254,
+    "sentinel": 2188,
+    "statusline": 2313,
     "transmute": 1854,
     "unravel": 1573,
     "ward": 1845,
     "weave": 2918
   },
-  "cli_always_on_tokens": 1495,
+  "cli_always_on_tokens": 1411,
   "cli_on_invoke_tokens": {
     "manifest": 2200,
     "knowledge-graph": 1500,
     "scrutinize": 2700,
-    "statusline": 2200,
+    "statusline": 2300,
     "magic": 1800,
     "divine": 1800,
     "jira": 2200,
@@ -46,7 +46,7 @@
     "conjure": 1900,
     "confluence": 1400,
     "unravel": 1600,
-    "almanac": 2000,
+    "almanac": 2300,
     "chronicle": 1900,
     "certify": 1500,
     "blueprint": 1800,
@@ -62,5 +62,5 @@
     "agent:simplifier": 1000,
     "agent:gatekeeper": 990
   },
-  "ste_findings": 3211
+  "ste_findings": 3231
 }

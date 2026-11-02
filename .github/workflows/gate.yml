@@ -26,3 +26,18 @@ jobs:
           python-version: "3.12"
       - name: Run offline gates
         run: bash scripts/gate.sh
+
+  # Builds the Codex / ChatGPT package from this tree and validates it (frontmatter keys, description
+  # length, links, plugin variables, JSON; `codex plugin validate` when the CLI is present). Nothing
+  # is published.
+  codex-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and validate the Codex package
+        run: bash scripts/build-codex.sh --out "$RUNNER_TEMP/codex/magician"
+      - name: Run the Codex build tests
+        run: python3 -m unittest discover -s tests/claude -p 'test_codex_build.py'

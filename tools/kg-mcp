@@ -1,0 +1,655 @@
+#!/usr/bin/env python3
+"""magician kg-mcp — read-only MCP server over the local knowledge-graph index (stdio, stdlib only).
+
+Serves the index that `kg init` builds to any MCP client, such as Claude Code, Codex or the ChatGPT
+desktop app. It is opt-in: magician does not register it. See
+skills/knowledge-graph/references/mcp-server.md for the `claude mcp add` and `.mcp.json` snippets.
+
+Usage:
+  kg-mcp [--repo DIR]      serve MCP over stdin/stdout (newline-delimited JSON-RPC 2.0)
+  kg-mcp --version
+  kg-mcp -h | --help
+
+Repository: --repo DIR, else $CLAUDE_PROJECT_DIR, else the current folder. The index location is
+the one `kg` uses (${MAGICIAN_HOME:-$HOME/.claude/magician}/knowledge-graph/).
+
+Protocol: dual-era. A request whose params._meta holds io.modelcontextprotocol/protocolVersion gets
+stateless 2026-07-28 behaviour (server/discover, resultType, per-request version check). Any other
+request gets legacy behaviour (initialize, notifications/initialized, ping), for 2025-11-25 and
+earlier clients. Tools: kg_query, kg_blast, kg_neighbors, kg_status. No resources, prompts, roots,
+sampling or logging.
+
+Guarantees: no network; never writes the repository or the index. The graph DB is opened with
+SQLite `mode=ro` and `PRAGMA query_only`. SQLite can create its `-wal`/`-shm` side files next to
+graph.db when they are missing, as `kg` itself does. Paging state is in an opaque cursor that the
+client sends back, never in server memory. Diagnostics go to stderr only.
+"""
+import base64
+import json
+import os
+import sqlite3
+import sys
+import time
+
+sys.dont_write_bytecode = True   # loading tools/kg must not drop a __pycache__ into the plugin folder
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+ENGINE_PATH = os.path.join(HERE, "kg")
+PLUGIN_JSON = os.path.join(os.path.dirname(HERE), ".claude-plugin", "plugin.json")
+
+MODERN_VERSIONS = ["2026-07-28"]
+LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
+STRUCTURED_SINCE = "2025-06-18"   # outputSchema / structuredContent exist from this revision on
+META_VERSION = "io.modelcontextprotocol/protocolVersion"
+META_CAPS = "io.modelcontextprotocol/clientCapabilities"
+META_SERVER = "io.modelcontextprotocol/serverInfo"
+
+PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL = -32700, -32600, -32601, -32602, -32603
+UNSUPPORTED_VERSION = -32022
+MAX_LINE = 1 << 20          # 1 MiB per message
+MAX_STR = 200               # chars kept in any returned string
+LIST_TTL_MS = 3_600_000
+
+INSTRUCTIONS = (
+    "Read-only code index of one local repository. kg_query finds code by description or symbol "
+    "name and returns ranked file:line results. kg_blast lists the files that depend on a file or "
+    "symbol. kg_neighbors lists related files. kg_status reports the index state. If a tool reports "
+    "that there is no index, run `kg init` in the repository.")
+
+
+def _version():
+    try:
+        with open(PLUGIN_JSON, encoding="utf-8") as f:
+            return str(json.load(f).get("version", "0"))
+    except Exception:
+        return "0"
+
+
+SERVER_INFO = {"name": "magician-kg", "title": "magician knowledge graph", "version": _version()}
+
+
+def clip(s, n=MAX_STR):
+    s = "" if s is None else str(s)
+    s = s.replace("\r", " ").replace("\n", " ")
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+# ─────────────────────────── read-only engine access ───────────────────────
+def ro_connect(db_path):
+    """Open the graph DB read-only: the URI mode refuses writes and query_only refuses them again."""
+    uri = "file:" + db_path.replace("?", "%3f").replace("#", "%23") + "?mode=ro"
+    cx = sqlite3.connect(uri, uri=True, timeout=15)
+    cx.execute("PRAGMA query_only=ON")
+    return cx
+
+
+class Engine:
+    """Loads tools/kg as a module and swaps its connect() for the read-only one.
+
+    Only pure read paths of the engine are called: query, neighbors, blast, status_data and
+    stale_files. The result cache (which writes) and the index builder are never used."""
+
+    def __init__(self, repo):
+        self.repo = os.path.realpath(repo)
+        self.mod = None
+        self.ix = None
+        self.ix_key = None
+
+    def load(self):
+        if self.mod is None:
+            from importlib.machinery import SourceFileLoader
+            import importlib.util
+            prev = os.getcwd()
+            os.chdir(self.repo)                    # kg derives the repo root from the cwd at import
+            try:
+                loader = SourceFileLoader("magician_kg_engine", ENGINE_PATH)
+                spec = importlib.util.spec_from_loader("magician_kg_engine", loader)
+                mod = importlib.util.module_from_spec(spec)
+                loader.exec_module(mod)
+            finally:
+                os.chdir(prev)
+            mod.connect = lambda: ro_connect(mod.DB_PATH)
+            self.mod = mod
+        return self.mod
+
+    def indexed(self):
+        return os.path.exists(self.load().DB_PATH)
+
+    def root(self):
+        return self.load().ROOT
+
+    def index(self):
+        m = self.load()
+        st = os.stat(m.DB_PATH)
+        key = (m.load_meta().get("index_version"), st.st_mtime_ns)
+        if self.ix is None or self.ix_key != key:
+            if self.ix is not None:
+                try:
+                    self.ix.cx.close()
+                except Exception:
+                    pass
+            self.ix, self.ix_key = m.Index(), key
+        return self.ix
+
+    def index_version(self):
+        return self.load().load_meta().get("index_version")
+
+
+# ─────────────────────────── tools ─────────────────────────────────────────
+class ToolError(Exception):
+    """A tool-level failure: returned as an isError result whose text tells the model what to do."""
+
+
+ANNOTATIONS = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True,
+               "openWorldHint": False}
+
+TOOLS = [
+    {
+        "name": "kg_query",
+        "title": "Find code",
+        "description": ("Find code in the indexed repository by a description or a symbol name. "
+                        "Returns ranked file:line results with the symbol and a short snippet. "
+                        "Use nextCursor with the same query to get the next page."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 1, "maxLength": 500,
+                          "description": "Words or a symbol name, for example 'retry backoff' or 'parse_config'."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20,
+                          "description": "Results per page."},
+                "cursor": {"type": "string", "maxLength": 2000,
+                           "description": "nextCursor from an earlier kg_query call with the same query."},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "results": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}, "line": {"type": "integer"},
+                                   "end_line": {"type": "integer"}, "symbol": {"type": "string"},
+                                   "kind": {"type": "string"}, "score": {"type": "number"},
+                                   "snippet": {"type": "string"}},
+                    "required": ["path", "line", "symbol", "score"]}},
+                "nextCursor": {"type": "string"},
+                "stale": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["results", "stale"],
+        },
+    },
+    {
+        "name": "kg_blast",
+        "title": "Blast radius",
+        "description": ("List the files that depend on a file or symbol, directly (depth 1) or "
+                        "through other files, ranked by centrality. Use it before you change a file."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "minLength": 1, "maxLength": 300,
+                           "description": "A repository-relative file path or a symbol name."},
+                "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 2},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+            },
+            "required": ["target"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string"},
+                "impacted": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}, "depth": {"type": "integer"},
+                                   "pagerank": {"type": "number"}},
+                    "required": ["path", "depth"]}},
+                "truncated": {"type": "boolean"},
+            },
+            "required": ["target", "impacted", "truncated"],
+        },
+    },
+    {
+        "name": "kg_neighbors",
+        "title": "Related files",
+        "description": ("List the files linked to a file or symbol by imports or references, in "
+                        "both directions, with their first symbols."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "minLength": 1, "maxLength": 300,
+                           "description": "A repository-relative file path or a symbol name."},
+                "depth": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 25, "default": 20},
+            },
+            "required": ["target"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string"},
+                "neighbors": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"},
+                                   "symbols": {"type": "array", "items": {"type": "string"}}},
+                    "required": ["path", "symbols"]}},
+                "truncated": {"type": "boolean"},
+            },
+            "required": ["target", "neighbors", "truncated"],
+        },
+    },
+    {
+        "name": "kg_status",
+        "title": "Index status",
+        "description": ("Report whether the repository has an index, when it was built, its size "
+                        "and how many files changed since then."),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "indexed": {"type": "boolean"}, "root": {"type": "string"},
+                "last_index": {"type": ["string", "null"]}, "index_version": {"type": ["integer", "null"]},
+                "files": {"type": ["integer", "null"]}, "symbols": {"type": ["integer", "null"]},
+                "edges": {"type": ["integer", "null"]}, "stale": {"type": "integer"},
+                "parser": {"type": ["string", "null"]}, "instruction": {"type": "string"},
+            },
+            "required": ["indexed", "root"],
+        },
+    },
+]
+for _t in TOOLS:
+    _t["annotations"] = dict(ANNOTATIONS, title=_t["title"])
+TOOL_BY_NAME = {t["name"]: t for t in TOOLS}
+
+
+def validate_args(tool, args):
+    """Check arguments against the tool's flat inputSchema; fill defaults. Raises ToolError."""
+    schema = tool["inputSchema"]
+    props = schema["properties"]
+    if not isinstance(args, dict):
+        raise ToolError("arguments must be a JSON object.")
+    extra = sorted(set(args) - set(props))
+    if extra:
+        raise ToolError(f"unknown argument(s) {', '.join(extra)}; allowed: {', '.join(props) or 'none'}.")
+    for name in schema.get("required", []):
+        if name not in args:
+            raise ToolError(f"missing required argument '{name}'.")
+    out = {}
+    for name, p in props.items():
+        if name not in args:
+            if "default" in p:
+                out[name] = p["default"]
+            continue
+        v = args[name]
+        if p["type"] == "string":
+            if not isinstance(v, str):
+                raise ToolError(f"'{name}' must be a string.")
+            if len(v.strip()) < p.get("minLength", 0) or len(v) > p.get("maxLength", 10 ** 6):
+                raise ToolError(f"'{name}' must be {p.get('minLength', 0)} to {p.get('maxLength')} characters.")
+        elif p["type"] == "integer":
+            if isinstance(v, bool) or not isinstance(v, int):
+                raise ToolError(f"'{name}' must be an integer.")
+            if not p["minimum"] <= v <= p["maximum"]:
+                raise ToolError(f"'{name}' must be from {p['minimum']} to {p['maximum']}.")
+        out[name] = v
+    return out
+
+
+def no_index_text(root):
+    return (f"No knowledge-graph index for {root}. Run `kg init` in that repository (the "
+            "/knowledge-graph skill does this), then call the tool again.")
+
+
+def need_index(eng):
+    if not eng.indexed():
+        raise ToolError(no_index_text(eng.root()))
+    return eng.index()
+
+
+def encode_cursor(d):
+    raw = json.dumps(d, separators=(",", ":"), sort_keys=True).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def decode_cursor(c):
+    try:
+        raw = base64.urlsafe_b64decode(c + "=" * (-len(c) % 4))
+        d = json.loads(raw.decode())
+        if isinstance(d, dict) and d.get("t") == "kg_query" and isinstance(d.get("o"), int) \
+                and isinstance(d.get("q"), str) and d["o"] >= 0:
+            return d
+    except Exception:
+        pass
+    raise ToolError("cursor is not valid; call kg_query again without a cursor.")
+
+
+def tool_query(eng, a):
+    ix = need_index(eng)
+    m = eng.load()
+    q, limit, offset = a["query"], a["limit"], 0
+    iv = eng.index_version()
+    if a.get("cursor"):
+        c = decode_cursor(a["cursor"])
+        if c["q"] != q:
+            raise ToolError("cursor belongs to a different query; pass the same query, or call kg_query again without a cursor.")
+        if c.get("iv") != iv:
+            raise ToolError("the index was rebuilt after this cursor was made; call kg_query again without a cursor.")
+        offset = c["o"]
+    allres = m.query(q, k=offset + limit + 1, ix=ix)["results"]
+    page = allres[offset:offset + limit]
+    results = []
+    for r in page:
+        item = {"path": clip(r["file"], 300), "line": int(r["line_start"] or 0),
+                "end_line": int(r["line_end"] or r["line_start"] or 0), "symbol": clip(r["name"], 120),
+                "kind": clip(r["kind"], 40), "score": float(r["score"])}
+        if r.get("sig"):
+            item["snippet"] = clip(r["sig"], 160)
+        results.append(item)
+    out = {"results": results,
+           "stale": [clip(s, 300) for s in m.stale_files([r["file"] for r in page])][:20]}
+    if len(allres) > offset + limit:
+        out["nextCursor"] = encode_cursor({"t": "kg_query", "q": q, "o": offset + limit, "iv": iv})
+    if results:
+        lines = [f"{len(results)} result(s) for '{clip(q, 80)}'" + (f" from #{offset + 1}" if offset else "") + ":"]
+        for r in results:
+            span = f"-{r['end_line']}" if r["end_line"] > r["line"] else ""
+            lines.append(f"  {r['path']}:{r['line']}{span}  {r['kind']} {r['symbol']}  ({r['score']})")
+        if "nextCursor" in out:
+            lines.append("  more: call again with nextCursor")
+        if out["stale"]:
+            lines.append(f"  stale (changed since the index): {', '.join(out['stale'][:5])}; run `kg refresh`")
+        text = "\n".join(lines)
+    else:
+        text = (f"No matches for '{clip(q, 80)}'. Try other words or a symbol name"
+                + (", or call kg_status to check the index." if offset == 0 else "."))
+    return out, text
+
+
+def resolve_or_fail(eng, ix, target):
+    if not eng.load()._resolve_target(ix, target):
+        raise ToolError(f"No file or symbol named '{clip(target, 80)}' is in the index. Call kg_query "
+                        "with a description to find the file, then pass its repository-relative path.")
+
+
+def tool_blast(eng, a):
+    ix = need_index(eng)
+    resolve_or_fail(eng, ix, a["target"])
+    res = eng.load().blast(a["target"], a["depth"], ix=ix)
+    imp = res["impacted"]
+    items = [{"path": clip(x["file"], 300), "depth": int(x["depth"]), "pagerank": float(x["pagerank"])}
+             for x in imp[:a["limit"]]]
+    out = {"target": clip(res["target"], 300), "impacted": items,
+           "truncated": len(imp) > a["limit"] or len(imp) >= 40}
+    if items:
+        text = "\n".join([f"{len(items)} file(s) depend on {out['target']}"
+                          + (" (more not shown)" if out["truncated"] else "") + ":"]
+                         + [f"  d{x['depth']}  {x['path']}" for x in items])
+    else:
+        text = f"No indexed file depends on {out['target']}."
+    return out, text
+
+
+def tool_neighbors(eng, a):
+    ix = need_index(eng)
+    resolve_or_fail(eng, ix, a["target"])
+    res = eng.load().neighbors(a["target"], a["depth"], ix=ix)
+    nb = res["neighbors"]
+    items = [{"path": clip(n["file"], 300), "symbols": [clip(s, 80) for s in n["symbols"][:3]]}
+             for n in nb[:a["limit"]]]
+    out = {"target": clip(res["target"], 300), "neighbors": items,
+           "truncated": len(nb) > a["limit"] or len(nb) >= 25}
+    if items:
+        text = "\n".join([f"{len(items)} file(s) related to {out['target']}:"]
+                         + [f"  {n['path']}  [{', '.join(n['symbols'])}]" for n in items])
+    else:
+        text = f"No indexed file is linked to {out['target']}."
+    return out, text
+
+
+def tool_status(eng, a):
+    m = eng.load()
+    if not eng.indexed():
+        out = {"indexed": False, "root": clip(m.ROOT, 300), "stale": 0, "instruction": no_index_text(m.ROOT)}
+        raise _StatusMissing(out)
+    d = m.status_data()
+    li = d.get("last_index")
+    out = {"indexed": True, "root": clip(d.get("root"), 300),
+           "last_index": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(li)) if li else None,
+           "index_version": d.get("index_version"), "files": d.get("files"),
+           "symbols": d.get("nodes"), "edges": d.get("edges"), "stale": int(d.get("stale") or 0),
+           "parser": d.get("parser")}
+    text = (f"Index for {out['root']}: {out['files']} files, {out['symbols']} symbols, {out['edges']} edges; "
+            f"built {out['last_index']} (version {out['index_version']}, parser {out['parser']}).")
+    if out["stale"]:
+        out["instruction"] = f"{out['stale']} file(s) changed since the last index; run `kg refresh`."
+        text += " " + out["instruction"]
+    return out, text
+
+
+class _StatusMissing(Exception):
+    def __init__(self, out):
+        super().__init__(out["instruction"])
+        self.out = out
+
+
+HANDLERS = {"kg_query": tool_query, "kg_blast": tool_blast, "kg_neighbors": tool_neighbors,
+            "kg_status": tool_status}
+
+
+# ─────────────────────────── protocol ──────────────────────────────────────
+class RpcError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code, self.message, self.data = code, message, data
+
+
+class Server:
+    def __init__(self, repo):
+        self.engine = Engine(repo)
+        self.legacy_version = None     # set by a legacy `initialize`; never read by modern requests
+
+    # era of one request: modern iff its own _meta names a protocol version
+    @staticmethod
+    def modern_meta(params):
+        meta = params.get("_meta") if isinstance(params, dict) else None
+        if isinstance(meta, dict) and META_VERSION in meta:
+            return meta
+        return None
+
+    def structured(self, modern):
+        if modern:
+            return True
+        v = self.legacy_version or LEGACY_VERSIONS[0]
+        return v >= STRUCTURED_SINCE
+
+    def tool_list(self, modern):
+        if self.structured(modern):
+            return TOOLS
+        return [{k: v for k, v in t.items() if k != "outputSchema"} for t in TOOLS]
+
+    def call_tool(self, params, modern):
+        name = params.get("name")
+        if not isinstance(name, str) or name not in TOOL_BY_NAME:
+            raise RpcError(INVALID_PARAMS, f"unknown tool '{clip(name, 60)}'; tools: {', '.join(TOOL_BY_NAME)}")
+        try:
+            args = validate_args(TOOL_BY_NAME[name], params.get("arguments") or {})
+            out, text = HANDLERS[name](self.engine, args)
+            res = {"content": [{"type": "text", "text": text}], "isError": False}
+            if self.structured(modern):
+                res["structuredContent"] = out
+            return res
+        except _StatusMissing as e:
+            res = {"content": [{"type": "text", "text": e.out["instruction"]}], "isError": True}
+            if self.structured(modern):
+                res["structuredContent"] = e.out
+            return res
+        except ToolError as e:
+            return {"content": [{"type": "text", "text": str(e)}], "isError": True}
+        except sqlite3.Error as e:
+            return {"content": [{"type": "text", "text":
+                    f"The index could not be read ({clip(e, 120)}). Run `kg status` in the repository; "
+                    "if it reports a problem, run `kg reset` and then `kg init`."}], "isError": True}
+        except Exception as e:  # keep the server alive; tell the model what to do
+            print(f"kg-mcp: {name} failed: {e!r}", file=sys.stderr)
+            return {"content": [{"type": "text", "text":
+                    f"{name} failed ({clip(type(e).__name__, 60)}). Run `kg status` in the repository "
+                    "to check the index, then try again."}], "isError": True}
+
+    def handle(self, msg):
+        """Return a response dict, or None for notifications."""
+        if not isinstance(msg, dict):
+            return err(None, INVALID_REQUEST, "Invalid Request: expected one JSON-RPC object (batches are not supported)")
+        is_note = "id" not in msg
+        rid = msg.get("id")
+        method = msg.get("method")
+        if msg.get("jsonrpc") != "2.0" or not isinstance(method, str):
+            if is_note and "method" not in msg:
+                return None                # a stray response from the client: nothing to answer
+            return err(None if is_note else _safe_id(rid), INVALID_REQUEST, "Invalid Request: need jsonrpc '2.0' and a method")
+        if is_note:
+            return None                    # notifications/initialized, notifications/cancelled, others
+        if isinstance(rid, bool) or not isinstance(rid, (str, int)):
+            return err(None, INVALID_REQUEST, "Invalid Request: id must be a string or an integer")
+        params = msg.get("params", {})
+        if not isinstance(params, dict):
+            return err(rid, INVALID_PARAMS, "params must be an object")
+        try:
+            return {"jsonrpc": "2.0", "id": rid, "result": self.dispatch(method, params)}
+        except RpcError as e:
+            return err(rid, e.code, e.message, e.data)
+        except Exception as e:
+            print(f"kg-mcp: internal error in {method}: {e!r}", file=sys.stderr)
+            return err(rid, INTERNAL, "internal error")
+
+    def dispatch(self, method, params):
+        meta = self.modern_meta(params)
+        if meta is not None:
+            return self.dispatch_modern(method, params, meta)
+        if method == "server/discover":   # an era probe without _meta: answer it so the client sees a modern server
+            return self.discover()
+        return self.dispatch_legacy(method, params)
+
+    # ── modern (2026-07-28): stateless, every request self-contained
+    def discover(self):
+        return complete({"supportedVersions": MODERN_VERSIONS, "capabilities": {"tools": {}},
+                         "instructions": INSTRUCTIONS, "ttlMs": LIST_TTL_MS, "cacheScope": "public"})
+
+    def dispatch_modern(self, method, params, meta):
+        ver = meta.get(META_VERSION)
+        if ver not in MODERN_VERSIONS:
+            raise RpcError(UNSUPPORTED_VERSION, "Unsupported protocol version",
+                           {"supported": MODERN_VERSIONS, "requested": ver})
+        if method == "server/discover":
+            return self.discover()
+        if not isinstance(meta.get(META_CAPS), dict):
+            raise RpcError(INVALID_PARAMS, f"_meta must include {META_CAPS}")
+        if method == "tools/list":
+            check_cursor(params)
+            return complete({"tools": self.tool_list(True), "ttlMs": LIST_TTL_MS, "cacheScope": "public"})
+        if method == "tools/call":
+            return complete(self.call_tool(params, True))
+        raise RpcError(METHOD_NOT_FOUND, f"Method not found: {clip(method, 80)}")
+
+    # ── legacy (2025-11-25 and earlier): initialize handshake
+    def dispatch_legacy(self, method, params):
+        if method == "initialize":
+            asked = params.get("protocolVersion")
+            self.legacy_version = asked if asked in LEGACY_VERSIONS else LEGACY_VERSIONS[0]
+            return {"protocolVersion": self.legacy_version, "capabilities": {"tools": {}},
+                    "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
+        if method == "ping":
+            return {}
+        if method == "tools/list":
+            check_cursor(params)
+            return {"tools": self.tool_list(False)}
+        if method == "tools/call":
+            return self.call_tool(params, False)
+        raise RpcError(METHOD_NOT_FOUND, f"Method not found: {clip(method, 80)}")
+
+
+def complete(result):
+    result = dict(result)
+    result["resultType"] = "complete"
+    result.setdefault("_meta", {})[META_SERVER] = SERVER_INFO
+    return result
+
+
+def check_cursor(params):
+    c = params.get("cursor")
+    if c not in (None, ""):
+        raise RpcError(INVALID_PARAMS, "invalid cursor: the tool list has one page")
+
+
+def _safe_id(rid):
+    return rid if (isinstance(rid, (str, int)) and not isinstance(rid, bool)) else None
+
+
+def err(rid, code, message, data=None):
+    e = {"code": code, "message": message}
+    if data is not None:
+        e["data"] = data
+    return {"jsonrpc": "2.0", "id": rid, "error": e}
+
+
+def write(out, obj):
+    out.write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n")
+    out.flush()
+
+
+def serve(repo, inp=None, out=None):
+    inp = inp or sys.stdin.buffer
+    out = out or sys.stdout.buffer
+    srv = Server(repo)
+    while True:
+        line = inp.readline(MAX_LINE + 1)
+        if not line:
+            return 0                                   # stdin EOF: the client closed the server
+        if len(line) > MAX_LINE:
+            while line and not line.endswith(b"\n"):   # drop the rest of the oversized message
+                line = inp.readline(MAX_LINE)
+            write(out, err(None, INVALID_REQUEST, "Invalid Request: message over 1 MiB"))
+            continue
+        if not line.strip():
+            continue
+        try:
+            msg = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            write(out, err(None, PARSE_ERROR, "Parse error: each line must be one JSON object"))
+            continue
+        res = srv.handle(msg)
+        if res is not None:
+            write(out, res)
+
+
+def main(argv):
+    repo = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        if a == "--version":
+            print(f"kg-mcp {SERVER_INFO['version']}")
+            return 0
+        if a == "--repo" and i + 1 < len(argv):
+            repo = argv[i + 1]
+            i += 2
+            continue
+        print(f"kg-mcp: unknown argument '{a}' (try --help)", file=sys.stderr)
+        return 2
+    repo = repo or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    if not os.path.isdir(repo):
+        print(f"kg-mcp: --repo {repo} is not a folder", file=sys.stderr)
+        return 2
+    try:
+        return serve(repo)
+    except KeyboardInterrupt:
+        return 0
+    except BrokenPipeError:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -21,14 +21,25 @@
 #   5. STE-lite (warn only): `tools/ste-lint --max 200` over skills/*/SKILL.md, README.md and lore/*.md;
 #      prints the finding count and the rules that fire most, records the count as `ste_findings` in
 #      evals/results/budget.json (merged into the file the token-budget tier wrote), and never fails.
-#   (The Codex package is built and gated on the `codex-plugin` branch.)
+#   (The Codex package is built and checked in tier 1: tests/claude/test_codex_build.py runs
+#   scripts/build-codex.sh twice into temporary folders, validates the output and diffs the builds.)
 #
 # The behavioral eval suite (claude plugin eval --trust-plugin) spends API budget and needs the
 # network, so it is OPT-IN and local-only: pass `--evals` (or set MAGICIAN_GATE_EVALS=1). CI never
-# runs it.
+# runs it. The tier runs both arms (--ablation with-without), runs case scaffolds (--scaffold), grants
+# the write tools the cases need (MAGICIAN_EVAL_ALLOW_TOOLS, default "Bash Edit Write"), stops at
+# MAGICIAN_EVAL_MAX_COST dollars (default 20) and writes .gate-evals.json. Then evals/flip.py compares
+# each case with evals/results/last.json: a case that passed every run there and fails a run now is
+# a FLIP and fails the tier whatever the aggregate says; a case below the threshold fails it too;
+# new and improved cases are only reported; cases tagged expected-fail are left out until they first
+# pass; a baseline case missing from the run fails it too, unless the run was filtered with
+# `--tag T` (repeatable, passed to claude plugin eval; the gate then sets MAGICIAN_EVAL_TAG_FILTERED=1
+# for flip.py). `--update-baseline` (or MAGICIAN_EVAL_UPDATE_BASELINE=1) rewrites last.json from this
+# run only when the tier passed; add `--force-baseline` to record a failed run anyway.
 #
 # Exit 0 only if every selected tier passes. Any failure → non-zero, and the gate stops reporting
 # GO. Usage:  scripts/gate.sh [--evals] [--threshold N] [--eval-model M] [--judge-model M]
+#                             [--tag T]... [--update-baseline [--force-baseline]]
 set -uo pipefail
 export LC_ALL=C
 
@@ -39,6 +50,9 @@ RUN_EVALS="${MAGICIAN_GATE_EVALS:-0}"
 THRESHOLD="0.8"
 EVAL_MODEL=""
 JUDGE_MODEL=""
+UPDATE_BASELINE="${MAGICIAN_EVAL_UPDATE_BASELINE:-0}"
+FORCE_BASELINE=0
+EVAL_TAGS=()
 
 MAX_FILES=512
 MAX_BYTES=262144   # 256 KiB; applies to every file that isn't an image
@@ -49,6 +63,9 @@ while [ $# -gt 0 ]; do
     --threshold) THRESHOLD="$2"; shift ;;
     --eval-model) EVAL_MODEL="$2"; shift ;;
     --judge-model) JUDGE_MODEL="$2"; shift ;;
+    --update-baseline) UPDATE_BASELINE=1 ;;
+    --force-baseline) FORCE_BASELINE=1 ;;
+    --tag) EVAL_TAGS+=("$2"); shift ;;
     -h|--help)
       grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "gate: unknown option '$1'" >&2; exit 64 ;;
@@ -71,14 +88,15 @@ run_tier() {
 }
 
 # Files that ship: tracked files still present in the working tree. Outside a git checkout
-# (e.g. an installed plugin copy) every regular file except .git/ and caches counts.
+# (e.g. an installed plugin copy) every regular file except .git/, caches and the generated Codex
+# package in dist/ (scripts/build-codex.sh) counts.
 list_files() {
   if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$ROOT" ls-files -z | while IFS= read -r -d '' f; do
       [ -f "$ROOT/$f" ] && printf '%s\n' "$f"
     done
   else
-    (cd "$ROOT" && find . -type f ! -path './.git/*' ! -path '*/__pycache__/*' | sed 's|^\./||')
+    (cd "$ROOT" && find . -type f ! -path './.git/*' ! -path '*/__pycache__/*' ! -path './dist/*' | sed 's|^\./||')
   fi
 }
 
@@ -326,12 +344,38 @@ check_ste_lite() {
 run_tier "STE-lite (warn)" check_ste_lite
 
 # ---- Tier 6: behavioral evals (opt-in, local only) ---------------------------------------------
+EVAL_JSON="$ROOT/.gate-evals.json"
+EVAL_BASELINE="$ROOT/evals/results/last.json"
+# check_evals: run the suite, then the flip check. The CLI exits 1 when any case is under the
+# threshold, expected-fail cases included, so its status goes to flip.py, which decides.
+check_evals() {
+  local rc allow flip_args
+  read -r -a allow <<< "${MAGICIAN_EVAL_ALLOW_TOOLS:-Bash Edit Write}"
+  eval_cmd=(claude plugin eval "$ROOT" --trust-plugin --json "$EVAL_JSON" --threshold "$THRESHOLD"
+            --no-publish --max-cost-usd "${MAGICIAN_EVAL_MAX_COST:-20}" --ablation with-without --scaffold)
+  [ -n "$EVAL_MODEL" ]  && eval_cmd+=(--model "$EVAL_MODEL")
+  [ -n "$JUDGE_MODEL" ] && eval_cmd+=(--judge-model "$JUDGE_MODEL")
+  [ "${#EVAL_TAGS[@]}" -gt 0 ] && eval_cmd+=(--tag "${EVAL_TAGS[@]}")
+  # --allow-tools takes a list, so it goes last.
+  [ "${#allow[@]}" -gt 0 ] && eval_cmd+=(--allow-tools "${allow[@]}")
+  rm -f "$EVAL_JSON"
+  "${eval_cmd[@]}"
+  rc=$?
+  echo
+  echo "flip check against ${EVAL_BASELINE#$ROOT/} (claude plugin eval exited ${rc}):"
+  flip_args=(compare --results "$EVAL_JSON" --baseline "$EVAL_BASELINE" --evals-dir "$ROOT/evals"
+             --threshold "$THRESHOLD" --exit-code "$rc")
+  [ "$UPDATE_BASELINE" = "1" ] && flip_args+=(--update-baseline)
+  [ "$FORCE_BASELINE" = "1" ] && flip_args+=(--force-baseline)
+  if [ "${#EVAL_TAGS[@]}" -gt 0 ]; then
+    MAGICIAN_EVAL_TAG_FILTERED=1 "$PY" "$ROOT/evals/flip.py" "${flip_args[@]}"
+  else
+    "$PY" "$ROOT/evals/flip.py" "${flip_args[@]}"
+  fi
+}
 if [ "$RUN_EVALS" = "1" ]; then
   if command -v claude >/dev/null 2>&1; then
-    eval_cmd=(claude plugin eval --trust-plugin "$ROOT" --threshold "$THRESHOLD" --json "$ROOT/.gate-evals.json")
-    [ -n "$EVAL_MODEL" ]  && eval_cmd+=(--model "$EVAL_MODEL")
-    [ -n "$JUDGE_MODEL" ] && eval_cmd+=(--judge-model "$JUDGE_MODEL")
-    run_tier "Behavioral evals (claude plugin eval)" "${eval_cmd[@]}"
+    run_tier "Behavioral evals (claude plugin eval, flip-aware)" check_evals
   else
     hr; echo "▶ Behavioral evals (claude plugin eval)"; hr
     echo "✘ 'claude' CLI not found — cannot run the eval tier."; fail=1; echo

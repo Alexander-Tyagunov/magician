@@ -1,6 +1,6 @@
 ---
 name: chronicle
-description: Memory and context steward — session history, the reference store (repos, projects, ideas), context size, learnings. Use to review past sessions, remember or recall a reference, or capture learnings.
+description: Memory and context steward — session history, references, context size, learnings. Use to review past sessions, remember or recall a reference, or capture learnings.
 allowed-tools: Read, Glob, AskUserQuestion, Bash(ctx pct *), Bash(ctx learn --add *), Bash(ctx consolidate), Edit(~/.claude/plugins/data/magician-*/references.md)
 argument-hint: "[status | learn <fact> [--global] | consolidate | last N | remember <fact> | references | forget <text> | clear N]"
 ---
@@ -14,6 +14,10 @@ Three stores, all global to this machine and kept in the magician plugin data fo
 - **Session history** — `${CLAUDE_PLUGIN_DATA}/chronicle/` — one small JSON record per session, written from git by the Stop hook (the newest 50 are kept). Turned off by the plugin's `session_history` option.
 - **Global references** — `${CLAUDE_PLUGIN_DATA}/references.md` — repos, projects, and ideas worth remembering. Session start adds it to context.
 - **Project learnings** — `${CLAUDE_PLUGIN_DATA}/projects/<project-hash>/learnings.jsonl`, managed by the bundled **`ctx`** CLI. The internals and honest limits are in [`references/context-mgmt.md`](references/context-mgmt.md).
+
+## When to use
+
+To review past sessions, remember, recall or forget a reference (repos, projects, ideas), check how full the context is, or record and consolidate project learnings. Trigger phrases: "what did we do last session", "remember this repo", "how full is the context". Not for workspace setup (`/almanac`).
 
 ## Context size & learnings (`ctx`)
 

@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
 (`evals/results/budget.json`) is reset by this release.
 
+### Batch 5 — ecosystem: Codex package, eval suite, mods, KG MCP server
+
+**Added**
+- Codex package: `scripts/build-codex.sh` builds `dist/codex/magician` (AAIF frontmatter, agents as
+  `-lens` skills, marketplace file, `$schema` first). Claude-only text is rewritten or noted, and the
+  build fails on any leftover `${CLAUDE_*}` in Markdown or any claim that hooks ship. The statusline
+  and `magician-ui` are excluded. CI runs the build. Mapping table in `lore/skill-authoring.md`.
+- `/almanac` can write an `AGENTS.md` from a template.
+- Behavioral evals: 14 golden cases under `evals/`, `evals/flip.py` (flip inspection, missing-case
+  detection, refuses to baseline a failed run unless `--force-baseline`), and the opt-in gate tier
+  `scripts/gate.sh --evals` (cost cap `MAGICIAN_EVAL_MAX_COST`, default $20; `--tag`,
+  `--update-baseline`). `evals/lens-ab/run.sh` compares lens models (for example Haiku vs Sonnet).
+- Mods (experimental, `MAGICIAN_MODS=1`): `mods/register.js` turns a destructive-guard deny into a
+  person-decided ask only when every guard reason is confirmable and the deny is the guard's own;
+  credential and trifecta reasons stay denied.
+- Guard: `MAGICIAN_GUARD_ALL_SOFT=1` reports every soft reason in one JSON line. Default output is
+  byte-identical.
+- `tools/kg-mcp`: read-only, opt-in MCP server for the knowledge graph (`kg_query`, `kg_blast`,
+  `kg_neighbors`, `kg_status`; both MCP eras; stateless cursors). Not registered by default.
+
+**Changed**
+- Always-on token cost ~1,498 → ~1,411 (shorter skill descriptions; detail moved into bodies).
+- Invalid plan fixtures collapsed into `tests/claude/fixtures/plans/invalid-cases.json` (29 files
+  fewer). Seven test modules now also import as `tests.claude.*`.
+
 ### Batch 4 — `/design`-first conjure, review dialect, lazy lore, skill routers
 
 **Added**

@@ -23,6 +23,8 @@ from pathlib import Path
 import re
 import unittest
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))  # importable as tests.claude.test_skill_quality
 from _frontmatter import read_frontmatter
 
 

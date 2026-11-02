@@ -1,13 +1,17 @@
 ---
 name: almanac
-description: One-time workspace setup — .workspace/, .gitignore, a lean CLAUDE.md, optional REVIEW.md and verify/simplify skills, MCP and permission suggestions; writes no settings. Run once per project.
-allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(./REVIEW.md), Edit(./.claude/skills/verify/SKILL.md), Edit(./.claude/skills/simplify/SKILL.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git add REVIEW.md), Bash(git add .claude/skills/verify/SKILL.md), Bash(git add .claude/skills/simplify/SKILL.md), Bash(git commit -m *)
+description: One-time workspace setup — .workspace/, .gitignore, a lean CLAUDE.md, optional AGENTS.md and REVIEW.md; writes no settings. Run once per project.
+allowed-tools: Read, AskUserQuestion, Bash(mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans .workspace/shared/research .workspace/shared/postmortems), Bash(mkdir -p .workspace/local), Edit(./.workspace/**), Edit(./.gitignore), Edit(./CLAUDE.md), Edit(./AGENTS.md), Edit(./REVIEW.md), Edit(./.claude/skills/verify/SKILL.md), Edit(./.claude/skills/simplify/SKILL.md), Edit(~/.claude/plugins/data/magician-*/workspace-strategy.json), Bash(git add .workspace/shared/ CLAUDE.md .gitignore), Bash(git add AGENTS.md), Bash(git add REVIEW.md), Bash(git add .claude/skills/verify/SKILL.md), Bash(git add .claude/skills/simplify/SKILL.md), Bash(git commit -m *)
 disable-model-invocation: true
 ---
 
 # /almanac — Workspace Initialization
 
 Set up the magician workspace for this project. Run once per project.
+
+## When to use
+
+Once per project, on request: create `.workspace/`, update `.gitignore`, write a lean `CLAUDE.md`, and optionally `AGENTS.md`, `REVIEW.md` and project verify/simplify skills, with MCP and permission suggestions only (it writes no settings). Not for a project that already has a `.workspace/`.
 
 ## What Gets Created
 
@@ -24,7 +28,7 @@ Set up the magician workspace for this project. Run once per project.
     └── session.md    last session state
 ```
 
-Almanac never edits Claude Code settings files (`.claude/settings*.json` or `~/.claude/settings.json`) and never changes the permission mode. Permission rules are only suggested in chat (step 7) for the user to add with `/permissions`. Step 6 can add three more files: `REVIEW.md` and two short project skills under `.claude/skills/`.
+Almanac never edits Claude Code settings files (`.claude/settings*.json` or `~/.claude/settings.json`) and never changes the permission mode. Permission rules are only suggested in chat (step 7) for the user to add with `/permissions`. Step 5 can add `AGENTS.md`. Step 6 can add three more files: `REVIEW.md` and two short project skills under `.claude/skills/`.
 
 ## Process
 
@@ -89,7 +93,10 @@ disableGit: false
 # Set disableGit: true to skip worktrees and PR flow
 ```
 
-### 5. Minimal CLAUDE.md
+### 5. Minimal CLAUDE.md (and optional AGENTS.md)
+
+Use the `AskUserQuestion` tool with the **Instructions file** configuration in [`references/setup-questions.md`](references/setup-questions.md) — do not write any text before calling it. Wait for the reply.
+
 If no `CLAUDE.md` exists, create a lean one:
 ```markdown
 # Project Rules
@@ -97,6 +104,10 @@ If no `CLAUDE.md` exists, create a lean one:
 (Add earned rules here — only what Claude consistently gets wrong.)
 ```
 Do not write generic best practices. `CLAUDE.md` should only contain rules specific to this project.
+
+Codex and other agents read `AGENTS.md`. Claude Code reads it through the `@AGENTS.md` import, so the commands are in one file. If the reply is **`AGENTS.md` + `CLAUDE.md` import**:
+- If `AGENTS.md` does not exist, write it from [`references/agents-md-template.md`](references/agents-md-template.md) (everything below its marker line, 40 lines or fewer). Fill the commands from the detected stack. If `AGENTS.md` exists, never overwrite it.
+- Make `@AGENTS.md` the first line of `CLAUDE.md`, above `# Project Rules`. If `CLAUDE.md` exists and has no `@AGENTS.md` line, add only that line at the top and change nothing else.
 
 ### 6. Review setup (REVIEW.md and pre-commit skills)
 
@@ -164,12 +175,13 @@ Record the workspace mode chosen in step 1 in `${CLAUDE_PLUGIN_DATA}/workspace-s
 ### 10. Commit (if shared mode)
 ```bash
 git add .workspace/shared/ CLAUDE.md .gitignore
+git add AGENTS.md
 git add REVIEW.md
 git add .claude/skills/verify/SKILL.md
 git add .claude/skills/simplify/SKILL.md
 git commit -m "chore: initialize magician workspace"
 ```
-Run only the `git add` lines for files step 6 wrote. Each is a separate exact command, so a skipped file never breaks the staging.
+Run only the `git add` lines for files steps 5 and 6 wrote. Each is a separate exact command, so a skipped file never breaks the staging.
 
 ## Obstacles
 
