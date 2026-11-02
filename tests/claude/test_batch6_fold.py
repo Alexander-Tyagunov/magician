@@ -310,3 +310,15 @@ class CountLineRuleTests(unittest.TestCase):
         self.assertIn("carries exactly one **tag**", fmt)
         self.assertIn("its numbers match the findings listed under each tag",
                       (root / "lore/review.md").read_text(encoding="utf-8"))
+
+
+class CountLineFirstTests(unittest.TestCase):
+    def test_the_count_line_opens_the_report(self) -> None:
+        # review-uses-tags-and-count-line, 2026-11-02 rerun: counts matched, but the count line only
+        # appeared in the closing "Divine complete." signal, and a coverage gap cited a whole file.
+        root = Path(__file__).resolve().parents[2]
+        self.assertIn("the count line as the report's first line (the closing signal repeats it, never replaces it)",
+                      (root / "skills/divine/SKILL.md").read_text(encoding="utf-8"))
+        fmt = (root / "skills/divine/references/report-format.md").read_text(encoding="utf-8")
+        self.assertIn("The Completion Signal at the end repeats it; it never replaces it.", fmt)
+        self.assertIn("never a whole file or nothing", fmt)

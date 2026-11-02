@@ -42,7 +42,7 @@ Read [`references/change-context.md`](references/change-context.md). Resolve the
 Ask how deep the review goes with `AskUserQuestion`, never in prose. Skip the gate only when the user named a depth ("quick review", "deep review of …").
 </HARD-GATE>
 
-Four depths: **Quick**, **Standard** (default), **Deep**, **Exhaustive**. The matrix (lenses, `/effort`, grounding, verification) is in [`references/depth-and-research.md`](references/depth-and-research.md). A High-tier change per `REVIEW.md` gets Deep at least. At Deep or Exhaustive, or on unfamiliar ground, invoke `/magic` first for external truth. Prefer the latest coding model. Suggest an upgrade, do not switch silently ([`lore/models.md`](../../lore/models.md)).
+Four depths: **Quick**, **Standard** (default), **Deep**, **Exhaustive**. The matrix is in [`references/depth-and-research.md`](references/depth-and-research.md). A High-tier change per `REVIEW.md` gets Deep at least. At Deep or Exhaustive, or on unfamiliar ground, invoke `/magic` first for external truth. Prefer the latest coding model. Suggest an upgrade, do not switch silently ([`lore/models.md`](../../lore/models.md)).
 
 ## Autonomy
 
@@ -66,7 +66,7 @@ Try to refute every Critical and High finding against the code and the intent, i
 
 ## Phase 4 — Report
 
-Deduplicate, rank, tag, and present in the format of [`references/report-format.md`](references/report-format.md). Order: the count line, the Overall verdict, merge gates, then Critical, High, Medium, Low, then the dropped candidates. Each finding has `file:line`, impact, fix, tag and traceability.
+Deduplicate, rank, tag, and present in the format of [`references/report-format.md`](references/report-format.md). Order: the count line as the report's first line (the closing signal repeats it, never replaces it), the verdict, merge gates, findings by severity, dropped candidates. Each finding has `file:line`, impact, fix, tag and traceability.
 
 ## Phase 5 — Deliver and post
 

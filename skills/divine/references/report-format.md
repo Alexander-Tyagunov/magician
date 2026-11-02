@@ -52,8 +52,8 @@ N. **<title>** — `file:line` — Important
 ```
 
 Rules:
-- The **count line** is the first line of the report summary, directly under the heading. The verdict and the findings follow it. Before remediation the second half reads `0 fixed, 0 closed with reason`. Fill it in last: after deduplication and verification, count the findings you actually list under each tag, and make every number match that list. A candidate the verification stage dropped is not counted.
-- Every listed finding, each Nit and Low one-liner included, carries exactly one **tag** (Important / Nit / Pre-existing) per [`lore/review.md`](../../../lore/review.md). A finding without `file:line` is dropped.
+- The **count line** is the first line of the report, directly under the heading and before the verdict. The Completion Signal at the end repeats it; it never replaces it. The verdict and the findings follow it. Before remediation the second half reads `0 fixed, 0 closed with reason`. Fill it in last: after deduplication and verification, count the findings you actually list under each tag, and make every number match that list. A candidate the verification stage dropped is not counted.
+- Every listed finding, each Nit and Low one-liner included, carries exactly one **tag** (Important / Nit / Pre-existing) per [`lore/review.md`](../../../lore/review.md). A finding without `file:line` is dropped. A coverage gap cites the lines of the untested code (`client/fetch.py:17-24`), never a whole file or nothing.
 - **Number** Critical/High/Medium findings continuously so they are easy to reference in discussion and PR comments.
 - Every finding states **impact**, not just the defect — *why it matters* is what makes a review actionable.
 - Cite **`file:line`** precisely, and link to the requirement (PRD §, AC, DoD line, story key) when one exists.
