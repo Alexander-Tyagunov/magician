@@ -32,7 +32,7 @@ If `REVIEW.md` exists at the repository root, Read it first. Its values override
 
 ## Phase 0 — Change context
 
-**Monitor mode:** when `$ARGUMENTS` starts with `monitor` (`/loop 1h /divine monitor <owner/repo>`: unattended, never fixes), skip the interactive phases and follow [`references/monitor-mode.md`](references/monitor-mode.md).
+**Monitor mode:** when `$ARGUMENTS` starts with `monitor` (`/loop 1h /divine monitor <repo>`: unattended, no fixes), skip the interactive phases and follow [`references/monitor-mode.md`](references/monitor-mode.md).
 
 Read [`references/change-context.md`](references/change-context.md). Resolve the target from `$ARGUMENTS` (a PR/MR URL, a branch, or "working tree"). Gather the diff and changed files, the base ref, the PR/MR description and tickets, CI status, and in-repo grounding. Drop the `REVIEW.md` skip paths. Summarize the change and its scale in two sentences, silently.
 
@@ -42,7 +42,7 @@ Read [`references/change-context.md`](references/change-context.md). Resolve the
 Ask how deep the review goes with `AskUserQuestion`, never in prose. Skip the gate only when the user named a depth ("quick review", "deep review of …").
 </HARD-GATE>
 
-Four depths: **Quick**, **Standard** (default), **Deep**, **Exhaustive**. The matrix is in [`references/depth-and-research.md`](references/depth-and-research.md). A High-tier change per `REVIEW.md` gets Deep at least. At Deep or Exhaustive, or on unfamiliar ground, invoke `/magic` first for external truth. Prefer the latest coding model. Suggest an upgrade, do not switch silently ([`lore/models.md`](../../lore/models.md)).
+Four depths: **Quick**, **Standard** (default), **Deep**, **Exhaustive**. The matrix is in [`references/depth-and-research.md`](references/depth-and-research.md). A High-tier change per `REVIEW.md` gets Deep at least. At Deep or Exhaustive, or on unfamiliar ground, invoke `/magic` first for external truth. Prefer the latest coding model; suggest it, never switch silently ([`lore/models.md`](../../lore/models.md)).
 
 ## Autonomy
 
@@ -68,7 +68,7 @@ Try to refute every Critical and High finding against the code and the intent, i
 
 Deduplicate and rank, then read [`references/report-format.md`](references/report-format.md) and follow its template. The contract:
 - The first line under the heading is the count line, plain, in this order: `N Important, N Nit, N Pre-existing; N fixed, N closed with reason.` Count it from the list you write.
-- Every finding line starts with its tag (`**[Important]**`, `**[Nit]**`, `**[Pre-existing]**`) and cites `file:line`, with impact and fix.
+- Every finding line starts with its tag (`**[Important]**`, `**[Nit]**`, `**[Pre-existing]**`) and cites `file:line`, never a bare file, with impact and fix.
 - A refuted candidate goes only under Dropped. The closing signal repeats the count line; it never replaces it.
 
 ## Phase 5 — Deliver and post

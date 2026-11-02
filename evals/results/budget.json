@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-02T14:22:00Z",
+  "recorded_at": "2026-11-02T14:45:30Z",
   "offline_always_on_tokens": 1285,
   "offline_skill_body_tokens": {
     "accelerate": 1405,
@@ -62,5 +62,5 @@
     "agent:simplifier": 1000,
     "agent:gatekeeper": 990
   },
-  "ste_findings": 3258
+  "ste_findings": 3259
 }

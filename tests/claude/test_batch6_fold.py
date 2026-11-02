@@ -322,6 +322,9 @@ class CountLineFirstTests(unittest.TestCase):
         self.assertIn("The closing signal repeats the count line; it never replaces it.", skill)
         self.assertIn("Every finding line starts with its tag", skill)
         self.assertIn("A refuted candidate goes only under Dropped.", skill)
+        self.assertIn("never a bare file", skill)
+        self.assertIn("cites line 1 or the nearest relevant line",
+                      (root / "skills/divine/references/report-format.md").read_text(encoding="utf-8"))
         fmt = (root / "skills/divine/references/report-format.md").read_text(encoding="utf-8")
         self.assertIn("The Completion Signal at the end repeats it; it never replaces it.", fmt)
         self.assertIn("never a whole file or nothing", fmt)
