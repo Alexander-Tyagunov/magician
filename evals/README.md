@@ -36,6 +36,10 @@ The offline gate (`tests/claude/test_evals.py`) checks the shape of every case o
 
 `session-state-before-wave` grades the order with an `llm` rubric over the trace, not with `tool_order`. A `tool_order` grader can only name one `after` tool. Before batch 6 the first wave goes to an `Agent` call, after it a two-task wave may run inline with `Write` and `Edit`, and one grader cannot cover both paths.
 
+### Sign-in for eval runs
+
+`claude plugin eval` starts a separate `claude` process for every run. That process must be able to sign in on its own. If the report says `partial: true` with `partialReason: auth_failed` and the run error is `Not logged in · Please run /login`, the judge still ran, because it runs in your main process, but the case did not run. `flip.py` and `lens-ab/summarize.py` report such a result as partial and fail. Check that a fresh non-interactive process can sign in from the same shell: `claude -p "reply ok" --model haiku`. If that also fails, fix the sign-in first.
+
 ## Layout and format
 
 Each case is one folder:

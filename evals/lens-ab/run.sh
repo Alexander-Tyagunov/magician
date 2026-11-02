@@ -92,6 +92,12 @@ for model in $MODELS; do
   rc=$?
   [ "$rc" -le 1 ] || { echo "lens-ab: eval for $model exited $rc (partial or interrupted)"; status=1; }
   [ -f "$OUT/$model.json" ] && reports="$reports $OUT/$model.json"
+  # A sign-in failure fails every arm the same way, so stop before paying the judge again.
+  if [ -f "$OUT/$model.json" ] && "$PY" -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("partialReason") == "auth_failed" else 1)' "$OUT/$model.json" 2>/dev/null; then
+    echo "lens-ab: the eval's child claude is not signed in (partialReason auth_failed); stopping." >&2
+    echo "lens-ab: see 'Sign-in for eval runs' in evals/README.md." >&2
+    break
+  fi
 done
 
 [ "$DRY" = 1 ] && exit 0

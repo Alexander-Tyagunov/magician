@@ -13,12 +13,17 @@ other case, so drop the tag once that happens.
 
 Result shapes read (the per-case shape of `--json` is not in the public docs, so this is defensive):
 
-  A. What Claude Code 2.1.3xx writes (read from its `--json` output):
-       {"cases": [{"name": "...", "score": 0.67, "pass_rate": 0.33,
-                   "runs": [{"score": 1.0, "graders": [...], "error": null}, ...],
-                   "runs_without": [...]}], ...}
-     A run passes when its `score` is 1 (every scored grader passed) and it has no `error`.
-     A run with only `passed: true|false` is read as that.
+  A. What Claude Code 2.1.316 writes with `--json` (schemaVersion 1, seen in a real run):
+       {"schemaVersion": 1, "costUsd": 0.4, "partial": false, "partialReason": "...",
+        "cases": [{"name": "...", "aggregates": {"score": 0.67, "passRate": 0.33},
+                   "arms": {"with": [{"score": 1.0, "passed": true, "costUsd": 0.1,
+                                      "error": null, "graders": [...]}, ...],
+                            "without": [...]}}], ...}
+     Only the `with` arm is graded here. Older or other builds may put the runs in `runs` and
+     the case scores in `score` / `pass_rate`; those are read too. A run passes when its `score`
+     is 1 (every scored grader passed) and it has no `error`. A run with only `passed` is read as
+     that. A `partial` result (the runner stopped early, for example `auth_failed` or the cost
+     ceiling) fails the tier and is never written as a baseline.
   B. A flat shape: {"results": [{"case": "...", "score": 0.67}]}. Without runs, the case passed
      every run only when `score` is 1.
 
@@ -75,6 +80,23 @@ def _summary_from_runs(runs: list) -> dict:
     return {"runs": n, "passed": passed, "pass_rate": (passed / n) if n else 0.0, "score": score}
 
 
+def case_runs(case: dict, arm: str = "with") -> list:
+    """The runs of one arm: `arms.<arm>` (2.1.316), else `runs` / `runs_without`."""
+    arms = case.get("arms")
+    if isinstance(arms, dict) and isinstance(arms.get(arm), list):
+        return arms[arm]
+    runs = case.get("runs" if arm == "with" else "runs_without")
+    return runs if isinstance(runs, list) else []
+
+
+def case_number(case: dict, camel: str, snake: str):
+    agg = case.get("aggregates")
+    if isinstance(agg, dict) and isinstance(agg.get(camel), (int, float)):
+        return float(agg[camel])
+    value = case.get(snake)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
 def parse_results(doc) -> dict[str, dict]:
     """Return {case name: {"runs", "passed", "pass_rate", "score"}} from either result shape."""
     out: dict[str, dict] = {}
@@ -87,15 +109,16 @@ def parse_results(doc) -> dict[str, dict]:
             name = case.get("name") or case.get("case")
             if not name:
                 continue
-            runs = case.get("runs")
-            if isinstance(runs, list) and runs:
+            runs = case_runs(case)
+            score = case_number(case, "score", "score")
+            if runs:
                 summary = _summary_from_runs(runs)
-                if isinstance(case.get("score"), (int, float)):
-                    summary["score"] = float(case["score"])
+                if score is not None:
+                    summary["score"] = score
             else:
-                score = float(case.get("score", 0.0) or 0.0)
-                rate = case.get("pass_rate")
-                rate = float(rate) if isinstance(rate, (int, float)) else (1.0 if score >= 1.0 else 0.0)
+                score = score or 0.0
+                rate = case_number(case, "passRate", "pass_rate")
+                rate = rate if rate is not None else (1.0 if score >= 1.0 else 0.0)
                 summary = {"runs": 0, "passed": 0, "pass_rate": rate, "score": score}
             out[str(name)] = summary
         return out
@@ -121,6 +144,8 @@ def load_errors(doc) -> list[str]:
     """Load failures and runs the harness could not grade; any of them fails the tier."""
     problems: list[str] = []
     if isinstance(doc, dict):
+        if doc.get("partial"):
+            problems.append("partial run: the runner stopped early (%s)" % (doc.get("partialReason") or "no reason given"))
         for err in doc.get("errors") or []:
             if isinstance(err, dict):
                 problems.append("load error: %s: %s" % (err.get("file", "?"), err.get("error", "?")))
@@ -129,7 +154,7 @@ def load_errors(doc) -> list[str]:
         for case in doc.get("cases") or []:
             if not isinstance(case, dict):
                 continue
-            for run in (case.get("runs") or []) + (case.get("runs_without") or []):
+            for run in case_runs(case, "with") + case_runs(case, "without"):
                 if isinstance(run, dict) and run.get("ended_on_api_error"):
                     problems.append("API error run: %s" % case.get("name", "?"))
                     break

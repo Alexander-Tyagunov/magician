@@ -6,11 +6,15 @@ named after the lens that should catch the planted defect: `reviewer-…`, `sent
 `simplifier-…`, `verifier-…`. Recall for a lens is the share of graded runs in which its graders
 passed. Graders with other names (the dialect checks) are reported as `other`.
 
-Report shape read (Claude Code 2.1.3xx `--json`):
-  {"cases": [{"name": "...", "runs": [{"score": 1.0, "cost_usd": 0.4, "error": null,
-               "graders": [{"name": "simplifier-finds-needless-factory", "passed": true,
-                            "scored": true}]}]}]}
-A run with an `error` and no graders counts as an errored run, not as a miss.
+Report shape read (Claude Code 2.1.316 `--json`, schemaVersion 1, seen in a real run):
+  {"costUsd": 0.4, "partial": false, "partialReason": "...",
+   "cases": [{"name": "...", "aggregates": {"score": 1.0},
+              "arms": {"with": [{"score": 1.0, "costUsd": 0.4, "error": null,
+                                 "graders": [{"name": "simplifier-finds-needless-factory",
+                                              "passed": true, "scored": true}]}]}}]}
+Older or other builds may use `runs` and `cost_usd`; those are read too. A run with an `error`
+counts as errored, not as a miss, even when the runner still scored its graders. A `partial`
+report (the runner stopped early) is flagged and makes the exit code 1.
 
 Usage: summarize.py <model>.json [<model>.json ...]
 """
@@ -31,21 +35,24 @@ def lens_of(grader_name: str) -> str:
 def summarize(reports: dict[str, dict]) -> dict:
     """{label: report} -> {"models": [...], "lenses": {lens: {label: [passed, total]}},
     "errored": {label: n}, "cost": {label: usd}, "cases": {label: {case: score}}}."""
-    out = {"models": list(reports), "lenses": {}, "errored": {}, "cost": {}, "cases": {}}
+    out = {"models": list(reports), "lenses": {}, "errored": {}, "cost": {}, "cases": {}, "partial": {}}
     for label, doc in reports.items():
+        doc = doc or {}
         errored, cost, scores = 0, 0.0, {}
-        for case in (doc or {}).get("cases") or []:
+        for case in doc.get("cases") or []:
             if not isinstance(case, dict):
                 continue
-            runs = case.get("runs") or []
-            if isinstance(case.get("score"), (int, float)):
-                scores[case.get("name", "?")] = float(case["score"])
+            arms = case.get("arms")
+            runs = arms.get("with") if isinstance(arms, dict) and isinstance(arms.get("with"), list) else case.get("runs") or []
+            agg = case.get("aggregates") if isinstance(case.get("aggregates"), dict) else case
+            if isinstance(agg.get("score"), (int, float)):
+                scores[case.get("name", "?")] = float(agg["score"])
             for run in runs:
                 if not isinstance(run, dict):
                     continue
-                cost += float(run.get("cost_usd") or 0.0)
+                cost += float(run.get("costUsd", run.get("cost_usd")) or 0.0)
                 graders = run.get("graders") or []
-                if run.get("error") and not graders:
+                if run.get("error"):
                     errored += 1
                     continue
                 for g in graders:
@@ -55,6 +62,10 @@ def summarize(reports: dict[str, dict]) -> dict:
                     cell[1] += 1
                     if g.get("passed"):
                         cell[0] += 1
+        if isinstance(doc.get("costUsd"), (int, float)):
+            cost = float(doc["costUsd"])
+        if doc.get("partial"):
+            out["partial"][label] = str(doc.get("partialReason") or "no reason given")
         out["errored"][label], out["cost"][label], out["cases"][label] = errored, cost, scores
     return out
 
@@ -84,6 +95,11 @@ def render(summary: dict) -> str:
             ra, rb = recall(summary["lenses"][lens].get(a)), recall(summary["lenses"][lens].get(b))
             if ra is not None and rb is not None:
                 lines.append("%s: %s minus %s = %+.0f points" % (lens, a, b, 100 * (ra - rb)))
+    for m in models:
+        reason = summary.get("partial", {}).get(m)
+        if reason:
+            hint = " (the eval's child claude is not signed in; see evals/README.md)" if reason == "auth_failed" else ""
+            lines.append("%s: PARTIAL, the runner stopped early: %s%s" % (m, reason, hint))
     return "\n".join(lines)
 
 
@@ -99,8 +115,9 @@ def main(argv: list[str]) -> int:
         except (OSError, ValueError) as exc:
             print("cannot read %s: %s" % (arg, exc), file=sys.stderr)
             return 2
-    print(render(summarize(reports)))
-    return 0
+    summary = summarize(reports)
+    print(render(summary))
+    return 1 if summary["partial"] else 0
 
 
 if __name__ == "__main__":

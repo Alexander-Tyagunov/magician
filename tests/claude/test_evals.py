@@ -448,6 +448,23 @@ def _shape_b(cases: dict[str, float]) -> dict:
 
 
 class FlipParserTests(unittest.TestCase):
+    def test_parses_the_2_1_316_arms_shape(self) -> None:
+        doc = {"schemaVersion": 1, "partial": False, "cases": [
+            {"name": "a", "aggregates": {"score": 0.5, "passRate": 0.5},
+             "arms": {"with": [{"score": 1.0, "passed": True, "error": None},
+                               {"score": 0.0, "passed": False, "error": None}],
+                      "without": [{"score": 0.0, "passed": False}]}}]}
+        got = flip.parse_results(doc)["a"]
+        self.assertEqual((got["runs"], got["passed"]), (2, 1))
+        self.assertAlmostEqual(got["score"], 0.5)
+        self.assertEqual(flip.load_errors(doc), [])
+
+    def test_a_partial_2_1_316_result_is_a_load_error(self) -> None:
+        doc = {"schemaVersion": 1, "partial": True, "partialReason": "auth_failed", "cases": []}
+        problems = flip.load_errors(doc)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("auth_failed", problems[0])
+
     def test_parses_cases_and_runs_shape(self) -> None:
         got = flip.parse_results(_shape_a({"a": [1.0, 1.0, 1.0], "b": [1.0, 0.5, 1.0]}))
         self.assertEqual(got["a"]["passed"], 3)
@@ -655,6 +672,28 @@ def _lens_report(passes: dict[str, list[bool]], cost: float = 0.25) -> dict:
 
 
 class LensSummaryTests(unittest.TestCase):
+    def test_reads_the_2_1_316_shape_and_flags_partial(self) -> None:
+        g = lambda name, ok: {"name": name, "passed": ok, "scored": True, "weight": 1}
+        doc = {"schemaVersion": 1, "costUsd": 0.75, "partial": True, "partialReason": "auth_failed",
+               "cases": [{"name": "review-uses-tags-and-count-line", "aggregates": {"score": 0.5},
+                          "arms": {"with": [
+                              {"score": 1, "costUsd": 0.5, "error": None,
+                               "graders": [g("simplifier-a", True), g("verifier-b", False)]},
+                              {"score": 0, "costUsd": 0.25, "error": "exit 1: Not logged in",
+                               "graders": [g("simplifier-a", False), g("verifier-b", False)]}]}}]}
+        s = summarize.summarize({"haiku": doc})
+        self.assertEqual(s["lenses"]["simplifier"]["haiku"], [1, 1])
+        self.assertEqual(s["lenses"]["verifier"]["haiku"], [0, 1])
+        self.assertEqual(s["errored"]["haiku"], 1)
+        self.assertAlmostEqual(s["cost"]["haiku"], 0.75)
+        self.assertEqual(s["partial"]["haiku"], "auth_failed")
+        self.assertIn("PARTIAL", summarize.render(s))
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "haiku.json").write_text(json.dumps(doc))
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(summarize.main([str(tmp / "haiku.json")]), 1)
+
     def test_recall_per_lens_per_model(self) -> None:
         reports = {
             "haiku": _lens_report({"simplifier-finds-needless-factory": [True, False, True],
@@ -677,7 +716,8 @@ class LensSummaryTests(unittest.TestCase):
 
     def test_errored_and_unscored_runs_are_not_misses(self) -> None:
         doc = _lens_report({"verifier-x": [True, True]})
-        doc["cases"][0]["runs"].append({"score": 0, "cost_usd": 0, "error": "run could not start", "graders": []})
+        doc["cases"][0]["runs"].append({"score": 0, "cost_usd": 0, "error": "run could not start",
+                                         "graders": [{"name": "verifier-x", "passed": False, "scored": True}]})
         doc["cases"][0]["runs"][0]["graders"].append({"name": "reviewer-y", "passed": False, "scored": False})
         s = summarize.summarize({"haiku": doc})
         self.assertEqual(s["errored"]["haiku"], 1)
