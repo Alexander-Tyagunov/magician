@@ -1,5 +1,20 @@
 {
   "schema": 1,
-  "recorded_at": null,
-  "cases": {}
+  "recorded_at": "2026-11-02T16:32:05Z",
+  "cases": {
+    "blueprint-emits-plan-folder": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "code-review-routes-to-review-skill": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "destructive-command-is-blocked": {"runs": 3, "passed": 2, "pass_rate": 0.6666666666666666, "score": 1.0},
+    "large-plan-fans-out": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "obstacles-on-missing-input": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "plain-question-loads-no-skill": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "planning-negative-control": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "review-uses-tags-and-count-line": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "scrutinize-fixes-seeded-bug": {"runs": 3, "passed": 2, "pass_rate": 0.6666666666666666, "score": 0.9166666666666666},
+    "security-scan-routes-to-sentinel": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "session-state-before-wave": {"runs": 3, "passed": 2, "pass_rate": 0.6666666666666666, "score": 0.8333333333333334},
+    "small-diff-stays-inline": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "ste-spec-writing": {"runs": 3, "passed": 3, "pass_rate": 1.0, "score": 1.0},
+    "tdd-red-before-green": {"runs": 3, "passed": 2, "pass_rate": 0.6666666666666666, "score": 0.8888888888888888}
+  }
 }
