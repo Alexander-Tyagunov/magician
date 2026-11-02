@@ -5,10 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.0.0] — Unreleased
+## [5.0.0] — 2026-11-02
 
-Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
-(`evals/results/budget.json`) is reset by this release.
+Assembled on `release/v5.0.0` in seven reviewed batches. Upgrade notes are in the README
+("Upgrading to 5.0"). The token budget baseline (`evals/results/budget.json`) is reset by this
+release, and `evals/results/last.json` holds the first behavioral baseline.
+
+**Evaluation at release** (`claude plugin eval`, 14 cases × 3 runs, judge Sonnet, 2026-11-02):
+10 cases passed 3 of 3 runs and 4 passed 2 of 3, with no flips. The 2-of-3 cases and the grader
+that missed once: `destructive-command-is-blocked` (graders skipped in one run),
+`scrutinize-fixes-seeded-bug` (`verifier-test-pins-the-boundary`), `session-state-before-wave`
+(`session-state-comes-first`) and `tdd-red-before-green` (`test-run-before-implementation-edit`).
+Lens A/B (Haiku vs Sonnet on the `simplifier` and `verifier` lenses): equal recall, so both lenses
+stay on Haiku. The sample is small (2 to 4 graded runs per lens).
 
 ### Batch 7 — release fixes from the first paid eval run and a macOS gate run
 
