@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# UserPromptSubmit — keyword-based skill hint, plus two optional Magician status line markers.
+# UserPromptSubmit — keyword-based skill hint, lazy lore cores, plus two optional Magician status
+# line markers.
 #   * Hint: at most one per prompt. When the prompt matches a skill's keywords, one factual line
 #     ("Magician: the magician:divine skill covers code review ...") is added to Claude's context.
 #     No hint when the prompt already contains a slash command. Jira / Confluence are mentioned only
 #     when the prompt itself names /jira or /confluence.
+#   * Lazy lore: session-start.sh lists the detected stack cores it did not inject in one file per
+#     session (sessions/<id>.lore in the plugin data dir). A core is added to the context on the
+#     first prompt that names its stack (the core's name, the words of its title line and the
+#     programs on its "Commands:" line), or when the prompt starts /ward, /unravel, /certify or
+#     /accelerate (every pending core, as far as the cap allows). An injected core leaves the file,
+#     so each one is added at most once per session. No stack detection runs here.
 #   * Status line markers (only while the Magician status line is enabled in cli-ui.json):
 #     one per-session file under status/ records the hinted skill name, and a second per-session
 #     effort file records "ultracode" when the prompt switches that mode on and is removed when it
@@ -90,7 +97,88 @@ if [ "$UI_ON" = 1 ]; then
   fi
 fi
 
-[ "${#P}" -ge 10 ] || exit 0
+# ---- lazy lore: cores still pending for this session ----
+CAP=9500                               # Claude Code truncates additionalContext past 10,000 characters
+LORE_BLOCK=""
+DATA=${CLAUDE_PLUGIN_DATA:-}
+if [ -z "$DATA" ] && [ -n "${HOME:-}" ]; then DATA="$HOME/.local/share/magician"; fi
+PENDING_FILE=""
+if [ -n "$SID" ] && [ -n "$DATA" ] && [ -f "$DATA/sessions/$SID.lore" ]; then PENDING_FILE="$DATA/sessions/$SID.lore"; fi
+json_str() {  # escape for a JSON string body; other control bytes are dropped
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\t'/\\t}; s=${s//$'\r'/\\r}; s=${s//$'\n'/\\n}
+  printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037'
+}
+core_named() {  # core_named <core> <file>: the prompt names this stack (name, title words, Commands: programs)
+  local first="" title="" w alt=$1 cmds="" re
+  IFS= read -r first < "$2"
+  case $first in "# "*)
+    title=${first#"# "}; title=${title%%—*}; title=${title%%(*}
+    title=$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]')
+    for w in $title; do
+      w=${w//[!a-z0-9.+-]/}
+      [ ${#w} -ge 3 ] || continue
+      w=${w//./\\.}; w=${w//+/\\+}
+      alt="$alt|$w"
+    done ;;
+  esac
+  cmds=$(grep -m1 '^Commands:' "$2" 2>/dev/null | grep -oE '`[a-z][a-z0-9-]*' | tr -d '`')
+  for w in $cmds; do alt="$alt|$w"; done
+  re="(^|[^[:alnum:]_])($alt)([^[:alpha:]]|$)"
+  [[ $PL =~ $re ]]
+}
+if [ -n "$PENDING_FILE" ]; then
+  LORE_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/lore"
+  PENDING=$(head -c4096 "$PENDING_FILE" 2>/dev/null | head -1)
+  re_core='^[a-z0-9-]+$'
+  LEAD0=${PL#"${PL%%[![:space:]]*}"}; LEAD0=${LEAD0%%[[:space:]]*}
+  SKILL_HIT=0
+  case $LEAD0 in
+    /ward|/unravel|/certify|/accelerate|/magician:ward|/magician:unravel|/magician:certify|/magician:accelerate) SKILL_HIT=1 ;;
+  esac
+  HDR="Magician lore (baseline guidance; this repository's own conventions take precedence):"
+  DEEP="
+Deep-dive files: lore/deep/<stack>.md under the plugin root, one '## ' section per anchor id a core lists; Grep '^## ' gives line numbers for a Read with offset/limit."
+  ROOM=$(( CAP - ${#HDR} - ${#DEEP} - 400 ))   # 400: the skill hint and separators
+  CORES=""; REST=""; USED=0; DEEP_ON=0
+  for core in $PENDING; do
+    [[ $core =~ $re_core ]] || continue
+    f="$LORE_DIR/$core.md"
+    if [ ! -f "$f" ]; then REST="${REST:+$REST }$core"; continue; fi
+    if [ "$SKILL_HIT" = 1 ] || core_named "$core" "$f"; then
+      TXT=$(<"$f")
+      if [ $(( USED + ${#core} + ${#TXT} + 5 )) -le "$ROOM" ]; then
+        USED=$(( USED + ${#core} + ${#TXT} + 5 ))
+        CORES="${CORES:+$CORES }$core"
+        LORE_BLOCK="${LORE_BLOCK}
+[${core}] ${TXT}
+"
+        [ -f "$LORE_DIR/deep/$core.md" ] && DEEP_ON=1
+        continue
+      fi
+    fi
+    REST="${REST:+$REST }$core"
+  done
+  if [ -n "$CORES" ]; then
+    LORE_BLOCK="${HDR}${LORE_BLOCK%$'\n'}"
+    [ "$DEEP_ON" = 1 ] && LORE_BLOCK="${LORE_BLOCK}${DEEP}"
+    if [ -n "$REST" ]; then
+      printf '%s\n' "$REST" > "$PENDING_FILE.$$" 2>/dev/null && mv -f "$PENDING_FILE.$$" "$PENDING_FILE" 2>/dev/null
+    else
+      rm -f "$PENDING_FILE" 2>/dev/null
+    fi
+  fi
+fi
+emit() {  # emit <hint>: print the hint and the lore block, when there is anything to print
+  local ctx=$1
+  if [ -n "$LORE_BLOCK" ]; then ctx="${ctx:+$ctx
+}${LORE_BLOCK}"; fi
+  [ -n "$ctx" ] || exit 0
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$(json_str "$ctx")"
+  exit 0
+}
+
+[ "${#P}" -ge 10 ] || emit ""
 
 # ---- keyword triggers ----
 t_review() { any \
@@ -199,7 +287,6 @@ case $LEAD in /*) ;;                                           # the prompt is a
   fi ;;
 esac
 
-[ -n "$MSG" ] || exit 0
-[ "$UI_ON" = 1 ] && put_marker "$SID.json" "{\"skill\":\"$SKILL\",\"ts\":$(date +%s)}"
-printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$MSG"
+[ -n "$MSG" ] && [ "$UI_ON" = 1 ] && put_marker "$SID.json" "{\"skill\":\"$SKILL\",\"ts\":$(date +%s)}"
+emit "$MSG"
 exit 0

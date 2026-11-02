@@ -26,7 +26,41 @@ Exact `AskUserQuestion` tool configurations for the run-once setup flow. Do not 
 }
 ```
 
-## Permission suggestions (step 6)
+## Review setup (step 6)
+
+```json
+{
+  "questions": [
+    {
+      "question": "Scaffold the review contract and the pre-commit skills? REVIEW.md tells /divine and /scrutinize what failure means here; the verify and simplify skills run before each commit.",
+      "header": "Review",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "REVIEW.md + verify + simplify (Recommended)",
+          "description": "Write REVIEW.md from magician's template, and two 10-line project skills: verify (runs /certify before each commit) and simplify (runs the simplification lens before each commit)."
+        },
+        {
+          "label": "REVIEW.md + verify",
+          "description": "Write REVIEW.md and the verify skill only. No simplify pass before commits."
+        },
+        {
+          "label": "REVIEW.md only",
+          "description": "Write the review contract only. Nothing runs before commits."
+        },
+        {
+          "label": "Skip",
+          "description": "Write none of these. /divine and /scrutinize use magician's default review rules."
+        }
+      ]
+    }
+  ]
+}
+```
+
+A file that exists is never overwritten. In Shared mode, step 10 commits the written files.
+
+## Permission suggestions (step 7)
 
 ```json
 {

@@ -10,6 +10,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Assembled on `release/v5.0.0` in batches; each batch is a reviewed PR. The token budget baseline
 (`evals/results/budget.json`) is reset by this release.
 
+### Batch 4 — `/design`-first conjure, review dialect, lazy lore, skill routers
+
+**Added**
+- `/conjure` surfaces: `/design` artboards (bundled skill, research preview; used when the session
+  has the Artifact tool), the local companion as the offline/CI fallback, or text. The four GATE 0
+  options keep their meaning; Design Only is a flag on either visual surface. In every mode the
+  approaches, architecture and directions are written to disk as Mermaid + HTML, so they outlive
+  the surface that showed them. Architecture is code (`architecture.mmd`, rendered only when `mmdc`
+  is already installed). After the design gate, `/design-sync` is offered once, never run unasked.
+- Screenshot evidence shared by `/conjure`, `/certify` and `/transmute`
+  (`skills/conjure/references/capture.md`): per theme and viewport under
+  `.workspace/local/screens/`, and `skills/conjure/scripts/screen-diff.cjs` compares v<n> with
+  v<n+1> using Playwright's own comparator (diff image written) or a stdlib pixel count.
+- Review dialect: `REVIEW.md` template (`/almanac` scaffolds it on request); `/divine` and
+  `/scrutinize` read it first, tag every finding Important / Nit / Pre-existing with file:line,
+  cap remediation at three rounds, re-review only the diff, keep a round ledger under
+  `.workspace/shared/diffs/` so a closed finding is never repeated, and lead the summary with the
+  count line. Lenses run as forks when the diff is already in context and fresh otherwise; the
+  verification stage is always fresh. Rules in `lore/review.md`.
+- `/almanac` can write project `verify` and `simplify` skills (short delegators to `/certify` and
+  the simplifier lens) that Claude Code runs before commits; `/seal` relies on them when present.
+- Reviewer memory: `reviewer`, `sentinel` and `simplifier` keep `memory: project` (a finding class
+  is recorded only after it recurs twice; findings stay observations); `/chronicle consolidate`
+  reads it. The fixer runs in a worktree only when `/scrutinize` fixes two or more independent
+  Important findings at once.
+- Tests: router byte cap, `test_screen_diff.py`, review-dialect and lazy-lore tests.
+
+**Changed**
+- Lazy lore: session start injects the security core and one line naming the detected stack's lore;
+  each stack core is injected the first time a prompt names that stack, or when `/ward`,
+  `/unravel`, `/certify` or `/accelerate` starts. On a five-stack sample the session-start
+  injection fell from 9,423 to 2,469 characters. `MAGICIAN_LORE=eager` restores the old behaviour.
+- `/conjure`, `/magic`, `/transmute` and `/divine` are routers of at most 8 KB with the procedures
+  in `references/` (21 KB → 8 KB, 18 KB → 8 KB, 18 KB → 8 KB, 14 KB → 8 KB); gates, grants and
+  completion signals are unchanged.
+
 ### Batch 3 — live plan review, Artifact mode, plan → workflow
 
 **Added**

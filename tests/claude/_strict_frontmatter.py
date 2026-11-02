@@ -21,6 +21,10 @@ SKILL_KEYS = {
     "model", "effort", "context", "agent", "background", "hooks", "paths", "shell",
     "metadata", "license", "compatibility",
 }
+# `memory` (user|project|local) and `isolation` (worktree) are documented plugin-agent fields:
+# code.claude.com/docs/en/sub-agents "Supported frontmatter fields" (memory: `.claude/agent-memory/
+# <agent>/` for project scope; isolation: temp worktree from the default branch, removed if unchanged)
+# and the plugins reference's supported-fields list for `agents/*.md`.
 AGENT_KEYS = {
     "name", "description", "tools", "disallowedTools", "model", "color", "effort",
     "permissionMode", "maxTurns", "skills", "mcpServers", "hooks", "memory",

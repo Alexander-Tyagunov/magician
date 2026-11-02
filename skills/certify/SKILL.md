@@ -55,6 +55,7 @@ After all checks pass, write a brief evidence summary:
 ✅ Types: clean
 ✅ Lint: clean
 ✅ Build: success
+✅ UI: golden path ok; screenshots: .workspace/local/screens/<feature>/v<n>/light-desktop.png, … (or "no UI")
 ```
 
 ## For UI Projects
@@ -66,6 +67,7 @@ If the project has a UI:
    - [ ] Edge cases handled gracefully
    - [ ] No console errors
    - [ ] If a `/transmute` parity contract exists (`.workspace/shared/research/<feature>-parity.md`), the **behavioral golden fixtures pass** (behavioral parity — the G1 gateway), not just the generic golden path
+4. **Evidence screenshots.** With Playwright available, capture the golden path per theme and per viewport into `.workspace/local/screens/<feature>/v<n>/<theme>-<viewport>.png` as [conjure's capture.md](../conjure/references/capture.md) describes, and list the paths in the evidence summary. When an approved `/conjure` mockup exists (`.workspace/shared/designs/<date>-<feature>/screens/v<n>/`), diff the new capture against the design's screenshots with `node ${CLAUDE_PLUGIN_ROOT}/skills/conjure/scripts/screen-diff.cjs <design-screens> <build-screens>` (prompts; nothing is installed) and treat an unexplained change as a failing check under a STRICT spec, a note under a REFERENCE one. Without Playwright, write "no screenshot (Playwright unavailable)" in the summary rather than skipping the line.
 
 While you check, re-read the background dev server's output (and the browser console, via Playwright if available) so a runtime error that appears mid-check is not missed on a one-shot glance.
 

@@ -139,6 +139,8 @@ class SkillDefinitionTests(unittest.TestCase):
             "almanac": ["mkdir -p .workspace/shared/decisions .workspace/shared/specs .workspace/shared/plans"
                         " .workspace/shared/research .workspace/shared/postmortems",
                         "mkdir -p .workspace/local", "git add .workspace/shared/ CLAUDE.md .gitignore",
+                        "git add REVIEW.md", "git add .claude/skills/verify/SKILL.md",
+                        "git add .claude/skills/simplify/SKILL.md",
                         'git commit -m "chore: initialize magician workspace"'],
             "autopsy": ["gh run list --limit 5", 'git commit -m "docs: add post-mortem for outage"'],
             "blueprint": [*SEARCH, "kg blast src/reports/",
@@ -205,7 +207,8 @@ class SkillDefinitionTests(unittest.TestCase):
             "autopsy": ["git add .workspace/shared/postmortems/", "git add .workspace/shared/postmortems/x -f .env"],
             "magic": ["git add .workspace/shared/research/", "git add .workspace/shared/research/x -f .env"],
             "inscribe": ["git add .claude/skills/x -f .env"],
-            "almanac": ["mkdir -p .workspace/../../outside", "git add .workspace/shared/ CLAUDE.md .gitignore -f .env"],
+            "almanac": ["mkdir -p .workspace/../../outside", "git add .workspace/shared/ CLAUDE.md .gitignore -f .env",
+                        "git add REVIEW.md -f .env", "git add .claude/skills/", "git add .claude/skills/verify/SKILL.md .env"],
             "portal": ["mkdir -p .features/../../outside"],
             # The Monitor runs `tail` itself; the skill never pre-approves it, nor the browser opener.
             "blueprint": ["tail -n0 -F .workspace/local/plans/x/state/events.jsonl",

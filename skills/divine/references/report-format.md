@@ -1,18 +1,20 @@
 # Report format
 
-Mirror the structure of a strong human review: a clear verdict, merge gates first, then findings by severity — each with location, **impact**, **fix**, and **traceability** to the requirement it touches — and an honest list of candidates you dropped.
+Mirror the structure of a strong human review. First the count line, then a clear verdict, then merge gates, then findings by severity, and last an honest list of candidates you dropped. Each finding has a location, an **impact**, a **fix**, and **traceability** to the requirement it touches.
 
 ## In-chat report template
 
 ```
 ## Review — <change title> (<depth> review)
 
+N Important, N Nit, N Pre-existing; N fixed, N closed with reason.
+
 Reviewed the <areas> against <grounding: PRD/spec/stories/docs, or "the diff + repo conventions">.
 Findings were cross-checked before reporting; dropped candidates are listed at the end.
 
 **Overall:** <1–3 sentence verdict — is it sound? what's the headline? is it mergeable after fixes?>
 
-Scope: <N files, +adds/−dels, base ← head>
+Scope: <N files, +adds/−dels, base ← head; skipped per REVIEW.md: <paths or none>>
 
 ---
 
@@ -20,7 +22,7 @@ Scope: <N files, +adds/−dels, base ← head>
 <failing required checks. For each: what fails, whether it's a real blocker or an infra flake, what unblocks it. Omit the section if CI is green.>
 
 ### 🔴 Critical
-N. **<title>** — `file:line`
+N. **<title>** — `file:line` — Important
    <what's wrong>. Impact: <consequence / requirement violated>.
    Fix: <concrete remediation>.
 
@@ -31,7 +33,11 @@ N. **<title>** — `file:line`
 …
 
 ### 🟢 Low / nits
-- `file:line` — <one-liner>
+- `file:line` — Nit — <one-liner>
+<at most the REVIEW.md nit cap; then "N more nits withheld">
+
+### Pre-existing
+- `file:line` — <one-liner; code the change did not touch, reported once, not counted against the author>
 
 ### ✅ Dropped (false positives)
 <candidates considered and refuted in verification, one line each + why — e.g. "X looked unguarded but the caller validates at Y.">
@@ -46,17 +52,19 @@ N. **<title>** — `file:line`
 ```
 
 Rules:
-- **Number** Critical/High/Medium findings continuously so they're easy to reference in discussion and PR comments.
+- The **count line** is the first line of the report summary, directly under the heading. The verdict and the findings follow it. Before remediation the second half reads `0 fixed, 0 closed with reason`.
+- Every finding carries its **tag** (Important / Nit / Pre-existing) per [`lore/review.md`](../../../lore/review.md). A finding without `file:line` is dropped.
+- **Number** Critical/High/Medium findings continuously so they are easy to reference in discussion and PR comments.
 - Every finding states **impact**, not just the defect — *why it matters* is what makes a review actionable.
-- Cite **`file:line`** precisely; link to the requirement (PRD §, AC, DoD line, story key) when one exists.
-- Keep Low as terse one-liners; don't pad the report.
+- Cite **`file:line`** precisely, and link to the requirement (PRD §, AC, DoD line, story key) when one exists.
+- Keep Low as terse one-liners. Do not pad the report.
 - If you capped coverage (large-PR partition, sampling), say so explicitly under Overall.
 
 ## Posting to the PR
 
 Only after the explicit Phase 5 gate (publishing on the user's behalf).
 
-**Step 0 — verify the account before any write** (mirror change-context.md): check the active `gh`/`glab` account against the repo's org, switch if it's wrong (e.g. the work account for a work-org repo), and restore afterward. The write commands below assume this check has passed — do not skip it just because you jumped to the snippet.
+**Step 0 — verify the account before any write** (mirror `change-context.md`): check the active `gh`/`glab` account against the repo's org. Switch if it is wrong (for example the work account for a work-org repo), and restore afterward. The write commands below assume this check passed. Do not skip it because you jumped to the snippet.
 
 **Summary review (body only):** write the report to `.workspace/local/divine-review.md` (gitignored scratch space), then:
 ```bash
@@ -80,4 +88,6 @@ Show the user the exact body / comment set before sending. Default to a single `
 
 After posting, report the review URL.
 
-For a large review the user will want to circulate, you can also publish the severity-ranked report as a Claude Code **Artifact** — a live page on claude.ai that updates in place as findings are remediated and that the team can **co-edit together** (multiplayer, Team/Enterprise plans). Offer it; don't create it unprompted. Publishing to a **public** link (anyone with the URL can view it) is an outward, sharing action — **confirm it explicitly, keep the report account-private by default, and never expose a review that quotes proprietary/internal code, secrets, or unremediated vulnerability detail to a public link.**
+For a large review the user will want to circulate, you can also publish the severity-ranked report as a Claude Code **Artifact**. That is a live page on claude.ai. It updates in place as findings are remediated, and the team can **co-edit together** (multiplayer, Team/Enterprise plans). Offer it, and do not create it unprompted.
+
+A **public** link (anyone with the URL can view it) is an outward sharing action. **Confirm it explicitly, and keep the report account-private by default. Never expose a review that quotes proprietary code, secrets, or unremediated vulnerability detail to a public link.**
