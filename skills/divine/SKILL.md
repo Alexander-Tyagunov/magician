@@ -21,18 +21,18 @@ Remove the scan marker (`rm -f .workspace/local/security-scan.active`), then clo
 
 Trigger phrases: "do a code review", "review this PR/MR", "review my changes/diff/branch", "audit this MR". Not for the review that remediates (`/scrutinize`) or a security-only scan (`/sentinel`). `/transmute` invokes `/divine` as its G7 gateway, checked against `.workspace/shared/research/<feature>-parity.md`.
 
-On review intent, magician's `UserPromptSubmit` hook notes that this skill covers code review. Then announce:
+On review intent, announce:
 > "Auto-activating /divine for a structured code review. I will establish the change context, then confirm how deep to go."
 
 ## Dialect
 
-The review speaks the dialect in [`lore/review.md`](../../lore/review.md). Every finding has a tag (`Important`, `Nit`, `Pre-existing`) and `file:line`. Nits are capped. Remediation runs at most three rounds, diff-only after the first, with a round ledger. The count line comes first, then the findings.
+The review speaks the dialect in [`lore/review.md`](../../lore/review.md). Nits are capped. Remediation runs at most three rounds, diff-only after the first, with a round ledger. The report contract is in Phase 4.
 
 If `REVIEW.md` exists at the repository root, Read it first. Its values override the defaults, and its text goes into every lens prompt. Platform alternatives (`/code-review`, `claude ultrareview --trust-workspace`, the `@claude review` GitHub flow) are in [`lore/deep/review.md#platform-surfaces`](../../lore/deep/review.md#platform-surfaces). Recommend one when it fits better.
 
 ## Phase 0 — Change context
 
-**Monitor mode:** `/loop 1h /divine monitor <owner/repo>` reviews new PRs/MRs unattended and never implements fixes. If `$ARGUMENTS` starts with `monitor`, skip the interactive phases and follow [`references/monitor-mode.md`](references/monitor-mode.md).
+**Monitor mode:** when `$ARGUMENTS` starts with `monitor` (`/loop 1h /divine monitor <owner/repo>`: unattended, never fixes), skip the interactive phases and follow [`references/monitor-mode.md`](references/monitor-mode.md).
 
 Read [`references/change-context.md`](references/change-context.md). Resolve the target from `$ARGUMENTS` (a PR/MR URL, a branch, or "working tree"). Gather the diff and changed files, the base ref, the PR/MR description and tickets, CI status, and in-repo grounding. Drop the `REVIEW.md` skip paths. Summarize the change and its scale in two sentences, silently.
 
@@ -66,7 +66,10 @@ Try to refute every Critical and High finding against the code and the intent, i
 
 ## Phase 4 — Report
 
-Deduplicate, rank, tag, and present in the format of [`references/report-format.md`](references/report-format.md). Order: the count line as the report's first line (the closing signal repeats it, never replaces it), the verdict, merge gates, findings by severity, dropped candidates. Each finding has `file:line`, impact, fix, tag and traceability.
+Deduplicate and rank, then read [`references/report-format.md`](references/report-format.md) and follow its template. The contract:
+- The first line under the heading is the count line, plain, in this order: `N Important, N Nit, N Pre-existing; N fixed, N closed with reason.` Count it from the list you write.
+- Every finding line starts with its tag (`**[Important]**`, `**[Nit]**`, `**[Pre-existing]**`) and cites `file:line`, with impact and fix.
+- A refuted candidate goes only under Dropped. The closing signal repeats the count line; it never replaces it.
 
 ## Phase 5 — Deliver and post
 

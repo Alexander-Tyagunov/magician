@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-02T14:02:22Z",
+  "recorded_at": "2026-11-02T14:22:00Z",
   "offline_always_on_tokens": 1285,
   "offline_skill_body_tokens": {
     "accelerate": 1405,
@@ -11,7 +11,7 @@
     "confluence": 1543,
     "conjure": 1805,
     "deploy": 1805,
-    "divine": 1816,
+    "divine": 1819,
     "inscribe": 1424,
     "jira": 1880,
     "knowledge-graph": 1486,

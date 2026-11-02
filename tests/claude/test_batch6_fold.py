@@ -317,8 +317,11 @@ class CountLineFirstTests(unittest.TestCase):
         # review-uses-tags-and-count-line, 2026-11-02 rerun: counts matched, but the count line only
         # appeared in the closing "Divine complete." signal, and a coverage gap cited a whole file.
         root = Path(__file__).resolve().parents[2]
-        self.assertIn("the count line as the report's first line (the closing signal repeats it, never replaces it)",
-                      (root / "skills/divine/SKILL.md").read_text(encoding="utf-8"))
+        skill = (root / "skills/divine/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("The first line under the heading is the count line", skill)
+        self.assertIn("The closing signal repeats the count line; it never replaces it.", skill)
+        self.assertIn("Every finding line starts with its tag", skill)
+        self.assertIn("A refuted candidate goes only under Dropped.", skill)
         fmt = (root / "skills/divine/references/report-format.md").read_text(encoding="utf-8")
         self.assertIn("The Completion Signal at the end repeats it; it never replaces it.", fmt)
         self.assertIn("never a whole file or nothing", fmt)
