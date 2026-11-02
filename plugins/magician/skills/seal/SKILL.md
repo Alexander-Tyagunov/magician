@@ -1,16 +1,131 @@
 ---
-name: seal
-description: Ships a feature — simplify pass, certify, commit, PR, CI monitoring, review loop, merge. Use when a feature branch is verified and ready to ship.
+name: "seal"
+description: "Ships a feature; simplify, certify, commit, PR, CI, review loop, merge. Use when a feature branch is verified and ready to ship."
+license: "MIT"
+allowed-tools: "Read, Task, AskUserQuestion, Edit(./CLAUDE.md), Edit(./README.md), Bash(git add -A), Bash(git commit -m *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh pr checks *), Bash(gh pr view *), Bash(gh pr merge --squash --delete-branch), Bash(gh run view *), Bash(gh run list *)"
+metadata: {"claude-code.argument-hint": "[pr-title]"}
 ---
 
-# $seal — Codex Adapter
+# /seal — Ship to Production
 
-Read `../../references/codex-adapter.md`, then read `../../source-skills/seal/SKILL.md` and follow the source skill through that Codex adapter. Keep the source skill's gates, safety checks, and completion criteria.
+Take a certified feature branch through to a merged PR. This skill performs irreversible actions (push, PR, merge). It presents one consolidated ship summary and waits before the first outward command (`git push`).
 
-Codex safety overrides take precedence over source mechanics:
+## Completion Signal
 
-- Inspect `git status --short`, `git diff`, and `git diff --cached` before staging. Separate task-owned files from pre-existing or unrelated user changes. Never use `git add -A`, `git add .`, or an equivalent blanket stage; stage only explicitly enumerated task files.
-- Show the proposed file list and commit message before committing. If ownership is ambiguous, stop for user direction. A request to ship authorizes the normal source gates, not inclusion of unrelated work.
-- Detect the forge from configured remotes and available CLI (`gh` for GitHub, `glab` for GitLab). Do not assume GitHub. If no supported forge/account is confidently identified, complete local verification/commit only and report the limitation.
-- Push, PR/MR creation, review posting, merge, deployment, and branch deletion remain separate explicit approval gates. Do not widen a commit approval into network authorization.
-- Monitor CI through a running CLI process/session and polling (`exec_command` + `write_stdin`) or the forge's read-only status command. Use recurring automations only when the user explicitly requests scheduling.
+"Sealed. PR merged. Run /portal cleanup steps if applicable."
+
+## Pre-flight
+
+- Confirm that `/certify` ran and passed.
+- Confirm that the `/scrutinize` review and remediation cycle is complete, or that the user skipped it on purpose.
+- **Never ship on stale evidence.** `/certify` must pass in *this* session, with fresh output you read this turn, not a remembered run. See [`lore/verification.md`](../../lore/verification.md).
+
+## Autonomy — approve the plan, then run
+
+Once Pre-flight is confirmed, the ship sequence runs **autonomously**. The simplify pass, the final certify, the documentation update and the commit proceed without a question to the owner. The agent's built-in read-only commands, read-only git included, do not prompt. This skill pre-approves the exact commit, push, PR, CI-check and merge commands shown below, and edits to `CLAUDE.md` and `README.md`. Any other edit or command goes through the normal permission prompt unless the user runs in auto mode.
+
+Re-gate **only** on outward side effects (`git push`, `gh pr create`, `gh pr merge`), once, through the consolidated ship-summary gate below. Doctrine: [`lore/autonomy.md`](../../lore/autonomy.md).
+
+## Process
+
+### 1. Simplify pass
+
+Check for the project's pre-commit skills first: `.claude/skills/verify/SKILL.md` and `.claude/skills/simplify/SKILL.md`. Since Claude Code 2.1.286, a non-bundled skill named `verify` or `simplify` that Claude may invoke runs before every commit. `/almanac` writes both as short delegators to `/certify` and to `/scrutinize --lens simplifier`.
+
+- **Both skills present:** skip this step and step 2. The commit in step 4 runs them. Read their output when the commit returns, and fix any `Important` finding before the ship summary.
+- **Only `verify` present:** run the simplify pass below, and let the commit run `verify` in place of step 2.
+- **Neither present:** run the pass below and step 2 as written.
+
+The pass: dispatch `magician:simplifier` through `Task` for a final simplification sweep. Give it a self-contained prompt: the goal, the changed files with the diff, and the return format. See [`lore/subagent-context.md`](../../lore/subagent-context.md). Fix any `Important` finding. Skip a `Suggestion` unless it is trivial.
+
+The project skills are 10-line delegators, so they do not duplicate plugin behavior. A project can replace them with its own content. Then the project skill wins. This step still runs the plugin pass when that skill does not call `/scrutinize`.
+
+### 2. Final certify
+
+Run `/certify`. All checks must pass before you continue, style included, against the project's documented conventions ([`lore/code-standards.md`](../../lore/code-standards.md)). Then a review bounce on style does not reopen the ship loop.
+
+### 3. Update documentation
+
+Before the commit, update the docs that describe the shipped feature:
+- `CLAUDE.md`: add or update changed commands, environment variables, architecture notes, or setup steps.
+- `README.md`: update the feature list, screenshots, or usage examples if the change is visible to users.
+- Other docs that reference the changed code (API docs, architecture diagrams, and so on).
+
+Keep the updates small and accurate. Document what changed, not the implementation details.
+
+### 4. Commit
+```bash
+git add -A
+git commit -m "feat: <feature description>
+
+<bullet list of what was built>
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+When the project has a `verify` or `simplify` skill, Claude Code runs it as part of this commit. A finding from that run goes back to step 1.
+
+### Ship-summary gate — one outward approval
+
+Steps 1 to 4 ran autonomously. Before the first outward command (`git push`), present **one** consolidated ship summary. Then gate the outward push, PR and merge through **AskUserQuestion**: end your turn at the call and act on the choice. The summary covers:
+- **Changed files**: the diff going out (from step 4's `git add -A`).
+- **Commit message**: what step 4 committed.
+- **PR title and body**: the title plus the Summary, Intent, Risk tier, How to revert and Testing from step 6.
+- **Merge strategy**: for example `--squash --delete-branch` (step 9).
+
+Ask **"Ship this branch?"** with these options:
+- **Ship it**: run Push, Create PR, and Merge without a further question.
+- **Revise**: adjust the commit, PR, or scope first, then present the summary again.
+- **Cancel**: stop here. Do not push, open a PR, or merge.
+
+Treat a free-form "yes / approved / looks good" as **Ship it**. On **Ship it**, run Push (step 5), Create PR (step 6), and Merge (step 9) without a further question to the owner.
+
+### 5. Push
+```bash
+git push -u origin HEAD
+```
+
+### 6. Create PR
+
+Use the PR title and body approved at the ship-summary gate. Do not prompt for a title again. Run `gh pr create` with the body from [references/pr-body.md](references/pr-body.md). The body carries these lines:
+- **Intent** and **Links** (intent, spec and plan paths under `.workspace/shared/`).
+- **Risk tier** (Low / Medium / High, from the project's `REVIEW.md` tiers when present, else `lore/review.md`) and the human approvals it needs.
+- **How to revert** (the exact revert command, flag or down-migration).
+- **Testing.**
+
+### 7. Watch CI (evaluator-optimizer loop)
+
+Run `gh pr checks <pr> --watch` with the Bash tool's background option. On a failing check, read `gh run view <id> --log-failed`, fix, commit, push, and watch again until every check is green. Steps, `/goal` and `/loop` pairing, and the unattended rules ([lore/unattended.md](../../lore/unattended.md)): [references/ci-loop.md](references/ci-loop.md).
+
+### 8. Review comments
+
+If reviewers add comments: use `/scrutinize` to process and remediate them, then `/certify`, then `git push -u origin HEAD`. The `/scrutinize` round ledger keeps a finding closed in an earlier round from a repeat. The platform's own review (`/code-review`, the `@claude review` GitHub flow) is an alternative, described in [`lore/deep/review.md#platform-surfaces`](../../lore/deep/review.md#platform-surfaces).
+
+### 9. Merge (if auto-merge is not enabled)
+
+First run the approval check in [references/pr-body.md](references/pr-body.md#approval-check-before-the-merge-step-9). Merge only when the head commit has the human approvals the Risk tier needs. Otherwise stop and say what is missing.
+```bash
+gh pr merge --squash --delete-branch
+```
+
+### 10. Fix forward (offer)
+
+After the merge, offer a `/loop` on post-merge CI with `AskUserQuestion`. On a red run, open a small fix-forward PR through the ship-summary gate. Do not revert unless the fix is unclear. Ship a risky change behind a feature flag. Rules: [references/ci-loop.md](references/ci-loop.md#post-merge-fix-forward-after-step-9).
+
+## disableGit mode
+
+If `disableGit: true`: skip the push, PR and merge steps. Commit locally and report done.
+
+## Obstacles
+
+When this skill runs as a dispatched unit and something blocks the work, do not wait for a human. Nobody is there. Do not silently ship a degraded result. Return the Obstacles block from [`lore/obstacles.md`](../../lore/obstacles.md) with whatever you completed. The fields are STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT. Interactively, say the same in prose.
+
+## On Codex
+
+Read the Claude Code features this skill names as follows on Codex and ChatGPT (full table: [On Codex](../../lore/skill-authoring.md#on-codex)).
+
+- `/goal`: Codex has the same `/goal` command (outcome, constraints and how to verify); one goal per chat.
+- Subagents (`Task`/`Agent`): Codex subagents are `.codex/agents/*.toml` files (`name`, `description`, `developer_instructions`); the review lenses ship here as `*-lens` skills.
+- `AskUserQuestion`: Codex has no question form; ask the same question in prose, with the same options, and wait for the reply.
+- `CLAUDE.md`: Codex reads `AGENTS.md` (root to current folder, nearest wins).
+- Skill commands: `/<skill>` is `$<skill>` on Codex and `@<skill>` in ChatGPT.

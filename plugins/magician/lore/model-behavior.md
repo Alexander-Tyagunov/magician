@@ -1,66 +1,44 @@
-# Codex prompting guidance for GPT-5.6
+Model behavior — what the Claude 5 generation does differently, and what to stop telling it.
 
-This Codex-only guide overrides the provider-specific `lore/model-behavior.md` in the generated
-Codex package. Preserve the source skills' requirements, safety gates, test discipline, and output
-contracts, but translate provider-specific model claims through this file.
+Companion to [models.md](models.md), which covers *which* model and effort level. This file covers *how to prompt it*. Read it before writing or editing any skill prompt, agent definition, or spawn prompt.
 
-## Keep prompts lean
+The short version: Opus 5, Sonnet 5, and Fable 5 already do several things older models had to be told to do. Instructions that used to add quality now add cost, and a few of them actively subtract quality. Everything below is grounded in Anthropic's per-model prompting guides — re-check them when a new tier lands.
 
-- State each instruction once. Do not repeat the same approval, verification, or style rule in
-  several sections.
-- Expose only tools relevant to the task, with concise input, output, and error descriptions.
-- Keep examples that encode a product requirement or fix a measured failure. Remove decorative or
-  redundant examples one group at a time and rerun the same tests or evals.
-- Watch prompt growth in long workflows. Repeated instructions and tool descriptions compound over
-  time.
+## Anti-patterns — never reintroduce these
 
-Do not mechanically shorten a working skill. Simplify one behavior at a time and retain every human
-gate, safety boundary, completion criterion, and evidence requirement.
+**1. Self-verification reminders.** "Double-check your answer", "re-verify before responding", "include a final verification step for any non-trivial task", "use a subagent to verify your own work". Opus 5 and Fable 5 catch and fix their own mistakes without prompting; these compound with the model's own behavior and cause over-verification — real token cost, no quality gain.
 
-## Define authority once
+*This is not a rule against verification.* Magician's gates stay exactly as they are: [certify](../skills/certify/SKILL.md) demands evidence, [divine](../skills/divine/SKILL.md) and [scrutinize](../skills/scrutinize/SKILL.md) run a **fresh-context verifier subagent** against the findings, [ward](../skills/ward/SKILL.md) requires a red test before green. Those are independent checks with their own context, which Anthropic explicitly recommends over self-critique for long runs. The anti-pattern is telling *one* model to re-check *itself*.
 
-GPT-5.6 can continue multi-step work proactively. Give it one compact authorization policy:
+**2. Severity pre-filters in review prompts.** "Only report high-severity issues", "be conservative", "don't nitpick". Opus 5 and Sonnet 5 follow this literally: they investigate just as deeply, find the bugs, then decline to report them. Precision rises, recall falls, and the drop looks like a capability regression when it is a prompt problem. Ask the finder stage for **coverage** with confidence and severity attached, and filter in a separate pass.
 
-- Answer, explain, review, diagnose, and plan requests authorize inspection and reporting, not
-  implementation.
-- Change, build, and fix requests authorize in-scope local edits plus relevant non-destructive
-  validation.
-- External writes, destructive actions, purchases, and material scope expansion require
-  confirmation.
+**3. Reasoning-echo instructions.** Anything telling the model to echo, transcribe, reproduce, or explain its internal reasoning as response text. On Fable 5/5.1, Opus 5/5.5 and Sonnet 5.5 a two-stage classifier blocks reasoning extraction (`reasoning_extraction` refusal category) and can fall the session back to another model. If a workflow needs reasoning visibility, read the structured `thinking` blocks — and **never echo, move, edit or re-order thinking blocks or earlier assistant turns**: preserved thinking makes histories append-only for API accounts created on or after 2026-08-31 (Fable 5.1, Opus 5.5) and ties Sonnet 5.5 reasoning to the originating account, so a skill that rewrites assistant history (a "clean up the transcript" step, a compaction that re-emits thinking, an account switch mid-session) breaks the conversation. `compact-context.sh` and `/chronicle` restate pointers from git and `.workspace/`, never from the transcript, for exactly this reason.
 
-Do not scatter repeated "ask first" language through a skill; that can create needless pauses for
-safe local reads, edits, and tests. A single clear boundary plus the workflow's real side-effect
-gates is enough.
+**4. Forced interim-status scaffolding.** "After every 3 tool calls, summarize progress." Opus 5 and Sonnet 5 narrate progress well on their own — often more than wanted. Describe the cadence and shape you want instead of forcing a counter.
 
-## Ask for outcomes, constraints, and evidence
+**5. Surfacing a remaining-token countdown *to the model*.** Fable 5 responds to it by suggesting a new session, offering to hand off, or trimming its own work. Magician's status bar is safe — it renders locally and never enters the model's context. Anything that writes a context percentage *into a prompt* is not.
 
-Provide the goal, relevant context, hard constraints, success criteria, required evidence, and
-output shape. Do not add ritual instructions to "think harder" or narrate hidden reasoning. Increase
-the supported reasoning setting when the task actually warrants more depth.
+**6. Over-prescriptive skill bodies.** Skills written for the 4.x generation are often too prescriptive for Fable 5 and measurably degrade its output. When a skill enumerates behaviors the model now gets right by default, cut the enumeration and keep the intent.
 
-GPT-5.6 is concise by default. Avoid stacking broad brevity instructions. When output must be short,
-say which facts, decisions, caveats, evidence, and next actions must remain, then trim repetition and
-optional background first.
+## Behaviors that now need explicit steering
 
-## Verification remains external and observable
+**Length is prompted, not dialed.** On Opus 5, lowering effort reduces *thinking*, not the visible answer — and default responses run longer than on 4.8. Files written to disk (reports, plans, specs in `.workspace/`) run longer too. Where a skill produces a written deliverable, calibrate it: cover the substance, no filler sections, no redundant summaries. Magician's voice setting (`warrior`/`scribe`/`bard`, see [statusline) is the user-facing lever for the same thing.
 
-Do not replace runnable tests, type checks, linters, builds, browser checks, or fresh-context review
-with self-reassurance. Magician's verification gates are observable tool evidence, not repeated
-instructions for one model to praise or re-read its own answer.
+**Delegation needs a ceiling.** Opus 5 and Fable 5 dispatch subagents far more readily than earlier models. That pays off on genuinely independent, sizeable tracks and multiplies cost and wall-clock on small ones. Any skill that can fan out ([orchestrate](../skills/orchestrate/SKILL.md), [weave](../skills/weave/SKILL.md), [divine](../skills/divine/SKILL.md), [scrutinize](../skills/scrutinize/SKILL.md)) should state when delegation is warranted and cap the count — and never spawn an agent to double-check work the model just did itself. The ceiling is [fold-first.md](fold-first.md): four reasons for a subagent, and a size threshold (3 files or fewer, 300 changed lines or fewer) below which the work stays in the main loop.
 
-## Delegate only by task shape
+**Scope needs a boundary.** Opus 5 can widen a task, adding steps that weren't requested. Fable 5 at higher effort can tidy or refactor around the change. For narrow work, say so: deliver what was asked at the scope intended, make routine judgment calls, flag a better approach in a sentence and continue rather than quietly transforming the task.
 
-Use Ultra or explicit subagents only when the work has substantial, independent lanes that can run
-in parallel. Keep small or tightly coupled work in one context. Set a model or effort override only
-when the host exposes it and the source workflow explicitly calls for task-specific routing.
+**Sonnet 5 is literal.** It does not generalize an instruction from one item to the next and does not infer requests you didn't make. State the scope ("apply this to every section, not just the first"). Good for pipelines and structured extraction; a trap for loosely worded skill steps.
 
-## Provider override rule
+**Corrections get narrated.** Opus 5 announces its own corrections more than earlier models. Limit that to corrections that change the user's code, conclusions, or decisions; silent fixes for slips that change nothing.
 
-When an immutable source skill names provider-specific tiers, aliases, effort commands, safety
-fallbacks, or prompting behavior, translate the intent using this guide and `models.md`. Never carry
-those literal names or settings into Codex instructions, configuration, or spawned-agent prompts.
+## Long autonomous runs (Fable 5 especially)
 
-Official references:
+- **Turns run long.** A single request on a hard task can run many minutes; autonomous runs extend for hours. Prefer async check-ins (Monitor, background tasks, scheduled wake-ups) over blocking the turn.
+- **Ground every progress claim.** Before reporting progress, audit each claim against a tool result from *this session*. Report failures with the output; say plainly when a step was skipped. This is already magician doctrine in [verification.md](verification.md) — it matters more here because Fable 5 is trusted with longer unsupervised stretches.
+- **Don't end a turn on a promise.** Deep into a long session Fable 5 occasionally ends with "I'll now run X" and no tool call. If the last paragraph is a plan, a question, or a promise, do the work now.
+- **Give the reason, not only the request.** Fable 5 connects a task to relevant context when it knows why the task exists. Spawn prompts that carry intent outperform ones that carry only instructions — see [subagent-context.md](subagent-context.md).
 
-- https://developers.openai.com/api/docs/guides/latest-model
-- https://learn.chatgpt.com/docs/models
+## When the model is older
+
+Everything above is safe on Opus 4.8 and earlier: removing a self-recheck instruction doesn't disable a gate, capping delegation doesn't remove parallelism, and prompting for length works on every tier. Nothing in this file should be turned into a hard requirement on a Claude 5 feature. If a skill needs a genuinely new capability, feature-detect it and no-op when it's absent.

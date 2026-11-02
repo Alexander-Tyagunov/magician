@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Standalone sentinel CLI — scans project files for security issues.
+# Usage: magician-scan [path]   (defaults to current directory); -h/--help prints the usage text.
+# Exit code: 0 = clean, 1 = issues found, 2 = unknown option or missing path
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+magician-scan — local security scan of a folder (no network, nothing written).
+
+Usage: magician-scan [path]
+       magician-scan -h | --help
+
+Walks every file under path and reports each match of a fixed pattern list — hardcoded
+credentials, private keys, AWS keys, eval(), os.system(), subprocess shell=True, %-formatted
+SQL, innerHTML and dangerouslySetInnerHTML — with its file, line and a short snippet. In
+Dockerfiles and docker-compose files it also reports ENV/ARG and environment entries whose
+name looks like a key and whose value is a literal, in LiteLLM config files (litellm*.yaml,
+config.yaml) a literal api_key, and in unpacked mobile bundles (strings.xml, Info.plist) a
+key-named string with a literal value. Credential, key and private-key values are shown as
+<redacted>, never printed. Skips .git,
+node_modules, __pycache__, .venv, dist, build and vendor folders, and image, font,
+source-map and lock files.
+
+Arguments:
+  path          Folder to scan (default: the current directory).
+
+Options:
+  -h, --help    Show this text and exit.
+
+Exit codes:
+  0  no issues found
+  1  issues found
+  2  unknown option, or path does not exist
+EOF
+}
+
+TARGET="${1:-.}"
+
+case "$TARGET" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+if [ ! -e "$TARGET" ]; then
+  case "$TARGET" in
+    -*) echo "magician-scan: unknown option '$TARGET' (see magician-scan --help)" >&2 ;;
+    *)  echo "magician-scan: no such file or directory: $TARGET" >&2 ;;
+  esac
+  exit 2
+fi
+
+echo "magician-scan — security scan of: $TARGET"
+echo ""
+
+# Program via `-c` (not the `python3 -` program-on-stdin form). $TARGET is a path, kept as argv.
+PYCODE=""; IFS= read -r -d '' PYCODE <<'PYEOF' || true
+import os, re, sys
+
+target = sys.argv[1]
+issues = []
+
+PATTERNS = [
+    (r'(?i)(password|passwd|secret|api_key|apikey|access_token)\s*=\s*["\'][^"\']{8,}', "hardcoded credential"),
+    (r'(?i)-----BEGIN (RSA|EC|DSA|OPENSSH) PRIVATE KEY-----', "private key in file"),
+    (r'(?i)(aws_access_key_id|aws_secret_access_key)\s*=\s*\S+', "AWS credential"),
+    (r'eval\s*\(', "eval() call — review for injection risk"),
+    (r'os\.system\s*\(', "os.system() — prefer subprocess"),
+    (r'shell=True', "subprocess shell=True — injection risk"),
+    (r'(?i)sql\s*=\s*["\'].*%s', "possible SQL injection via % formatting"),
+    (r'innerHTML\s*=', "innerHTML assignment — XSS risk"),
+    (r'dangerouslySetInnerHTML', "dangerouslySetInnerHTML — XSS risk"),
+]
+
+# Credential sprawl in deployment and bundle files (keys harvested from Docker images, LiteLLM
+# deployments and unpacked mobile bundles). Each entry: (file name regex, pattern, label). A value
+# counts when it looks like a key (16+ characters of key alphabet) and is not a variable reference.
+NAMEISH = r'[A-Za-z0-9_.-]*(?i:key|token|secret|password|passwd|credential)[A-Za-z0-9_.-]*'
+KEYVAL = r'(?!\$\{|\$[A-Za-z_]|os\.environ|<|https?://)["\']?[A-Za-z0-9_\-./+=:]{16,}'
+FILE_PATTERNS = [
+    (r'(?i)^Dockerfile(\..*)?$|\.dockerfile$',
+     r'(?im)^\s*(?:ENV|ARG)\s+(' + NAMEISH + r')(?:=|\s+)' + KEYVAL, "key in Dockerfile ENV/ARG"),
+    (r'(?i)^(docker-)?compose(\..*)?\.ya?ml$',
+     r'(?im)^\s*-?\s*(' + NAMEISH + r')\s*[:=]\s*' + KEYVAL, "key in docker-compose environment"),
+    (r'(?i)^(litellm.*|config)\.ya?ml$',
+     r'(?im)^\s*(api_key)\s*:\s*' + KEYVAL, "key in LiteLLM config"),
+    (r'(?i)^strings\.xml$',
+     r'(?is)<string\s+name\s*=\s*"(' + NAMEISH + r')"\s*>\s*' + KEYVAL, "key in Android strings.xml"),
+    (r'(?i)^Info\.plist$',
+     r'(?is)<key>\s*(' + NAMEISH + r')\s*</key>\s*<string>\s*' + KEYVAL, "key in iOS Info.plist"),
+]
+
+REDACTED_LABELS = {"hardcoded credential", "private key in file", "AWS credential"} | {l for _, _, l in FILE_PATTERNS}
+
+SKIP_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg',
+                   '.woff', '.ttf', '.eot', '.map', '.lock', '.sum'}
+SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build', 'vendor'}
+SKIP_FILENAMES = {'magician-scan'}  # avoid self-scan false positives on pattern strings
+
+for root, dirs, files in os.walk(target):
+    dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+    for fname in files:
+        ext = os.path.splitext(fname)[1].lower()
+        if ext in SKIP_EXTENSIONS:
+            continue
+        if fname in SKIP_FILENAMES:
+            continue
+        fpath = os.path.join(root, fname)
+        try:
+            with open(fpath, 'r', errors='ignore') as f:
+                content = f.read()
+        except Exception:
+            continue
+        active = list(PATTERNS)
+        for name_re, pattern, label in FILE_PATTERNS:
+            if re.search(name_re, fname):
+                active.append((pattern, label))
+        for pattern, label in active:
+            for m in re.finditer(pattern, content):
+                line_no = content[:m.start()].count('\n') + 1
+                snippet = m.group(0)
+                if label in REDACTED_LABELS:
+                    # Never print the secret itself: keep the key name, drop the value.
+                    if m.groups() and m.group(1):
+                        snippet = m.group(1) + " = <redacted>"
+                    else:
+                        snippet = re.split(r'\s*=', snippet, maxsplit=1)[0] + " = <redacted>" if "=" in snippet else "<redacted>"
+                issues.append({
+                    "file": fpath,
+                    "line": line_no,
+                    "issue": label,
+                    "snippet": snippet[:80]
+                })
+
+if issues:
+    for i in issues:
+        print(f"  [{i['issue']}]")
+        print(f"  {i['file']}:{i['line']}")
+        print(f"  {i['snippet']}")
+        print()
+    print(f"Found {len(issues)} issue(s). Review and address before shipping.")
+    sys.exit(1)
+else:
+    print("No security issues found.")
+    sys.exit(0)
+PYEOF
+# Exit code is meaningful (0 = clean, 1 = issues) — do NOT swallow it.
+python3 -c "$PYCODE" "$TARGET"

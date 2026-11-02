@@ -1,0 +1,267 @@
+{
+  "schema": "magician.plan/1",
+  "feature": "csv-export",
+  "title": "CSV export on the reports page",
+  "version": 1,
+  "status": "in_review",
+  "spec": ".workspace/shared/specs/2026-11-01-csv-export.md",
+  "research": [".workspace/shared/research/2026-10-30-csv-streaming.md"],
+  "constraints": [
+    "Node 20+",
+    "No new runtime dependencies",
+    "Exports must not hold more than 1,000 rows in memory at once"
+  ],
+  "context": {
+    "summary": "The reports page lists filtered report rows from Postgres through the Reports API. Today there is no export: users copy the table by hand. The feature adds a streaming CSV endpoint and an Export button that downloads the current filter's rows.",
+    "stack": ["nextjs", "postgres"],
+    "archetype": "web",
+    "blast": [
+      {"path": "src/reports/", "files": 12, "hits": 4},
+      {"path": "src/app/reports/", "files": 5, "hits": 2}
+    ],
+    "components": [
+      {"id": "reports-page", "label": "Reports page", "layer": "ui", "exists": true},
+      {"id": "reports-api", "label": "Reports API", "layer": "api", "exists": true},
+      {"id": "report-query", "label": "Report query", "layer": "logic", "exists": true},
+      {"id": "csv-stream", "label": "CSV streamer", "layer": "logic", "exists": false},
+      {"id": "reports-table", "label": "reports table", "layer": "data", "exists": true},
+      {"id": "reports-tests", "label": "Reports tests", "layer": "tests", "exists": true}
+    ],
+    "edges": [
+      {"from": "reports-page", "to": "reports-api"},
+      {"from": "reports-api", "to": "report-query"},
+      {"from": "reports-api", "to": "csv-stream"},
+      {"from": "csv-stream", "to": "report-query"},
+      {"from": "report-query", "to": "reports-table"}
+    ]
+  },
+  "waves": [
+    {"id": "W1", "title": "Foundations", "steps": ["T1", "T2"]},
+    {"id": "W2", "title": "Core", "steps": ["T3", "T4"]},
+    {"id": "W3", "title": "Wire and verify", "steps": ["T5", "T6", "T7"]}
+  ],
+  "steps": [
+    {
+      "id": "T1",
+      "wave": "W1",
+      "kind": "change",
+      "layer": "logic",
+      "title": "CSV row formatter",
+      "intent": "A pure function that turns one report row into one RFC 4180 CSV line: quotes fields containing commas, quotes or newlines, doubles inner quotes, and renders null as an empty field. Everything downstream streams through it, so it is proven first and alone.",
+      "parallel": true,
+      "depends_on": [],
+      "files": {
+        "create": ["src/reports/csv/format.ts"],
+        "modify": [],
+        "test": ["tests/reports/csv/format.test.ts"]
+      },
+      "touches": ["csv-stream"],
+      "red": {
+        "test": "tests/reports/csv/format.test.ts::quotes_fields_with_commas_and_quotes",
+        "code": "import { formatRow } from '../../../src/reports/csv/format';\n\ntest('quotes_fields_with_commas_and_quotes', () => {\n  expect(formatRow(['a,b', 'say \"hi\"', null, 3])).toBe('\"a,b\",\"say \"\"hi\"\"\",,3');\n});",
+        "run": "npm test -- format"
+      },
+      "green": {
+        "sketch": "export function formatRow(fields: unknown[]): string {\n  return fields.map(f => f == null ? '' : /[\",\\n]/.test(String(f)) ? '\"' + String(f).replace(/\"/g, '\"\"') + '\"' : String(f)).join(',');\n}",
+        "run": "npm test -- format"
+      },
+      "verify": ["npm test -- format", "npm run lint"],
+      "risk": {"level": "low", "note": ""},
+      "effort": {"minutes": 20},
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    },
+    {
+      "id": "T2",
+      "wave": "W1",
+      "kind": "change",
+      "layer": "data",
+      "title": "Cursor-paged report query",
+      "intent": "Add a query that yields report rows for a filter in pages of at most 1,000, ordered by id, so the exporter can stream without loading the whole result. Reuses the existing filter-to-SQL builder.",
+      "parallel": true,
+      "depends_on": [],
+      "files": {
+        "create": [],
+        "modify": ["src/reports/query.ts"],
+        "test": ["tests/reports/query.pages.test.ts"]
+      },
+      "touches": ["report-query", "reports-table"],
+      "red": {
+        "test": "tests/reports/query.pages.test.ts::yields_pages_of_at_most_1000_rows",
+        "code": "import { pagedReportRows } from '../../src/reports/query';\n\ntest('yields_pages_of_at_most_1000_rows', async () => {\n  await seedReports(2500);\n  const sizes: number[] = [];\n  for await (const page of pagedReportRows({ status: 'open' })) sizes.push(page.length);\n  expect(sizes).toEqual([1000, 1000, 500]);\n});",
+        "run": "npm test -- query.pages"
+      },
+      "green": {
+        "sketch": "export async function* pagedReportRows(filter: ReportFilter) {\n  let after = 0;\n  for (;;) {\n    const rows = await db.query(buildSql(filter, { afterId: after, limit: 1000 }));\n    if (rows.length === 0) return;\n    yield rows;\n    after = rows[rows.length - 1].id;\n  }\n}",
+        "run": "npm test -- query.pages"
+      },
+      "verify": ["npm test -- query.pages", "npm run typecheck"],
+      "risk": {"level": "medium", "note": "ordering by id must match the index the page already uses or large exports slow down"},
+      "effort": {"minutes": 20},
+      "diff_sketch": "--- src/reports/query.ts\n+++ src/reports/query.ts\n+export async function* pagedReportRows(filter: ReportFilter) {\n+  let after = 0;\n+  for (;;) {\n+    const rows = await db.query(buildSql(filter, { afterId: after, limit: 1000 }));\n+    if (rows.length === 0) return;\n+    yield rows;\n+    after = rows[rows.length - 1].id;\n+  }\n+}",
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    },
+    {
+      "id": "T3",
+      "wave": "W2",
+      "kind": "change",
+      "layer": "logic",
+      "title": "CSV stream",
+      "intent": "Compose the formatter and the paged query into a readable stream: header line first, then one formatted line per row, page by page. Memory stays bounded by one page, which is the constraint the spec sets.",
+      "parallel": false,
+      "depends_on": ["T1", "T2"],
+      "files": {
+        "create": ["src/reports/csv/stream.ts"],
+        "modify": [],
+        "test": ["tests/reports/csv/stream.test.ts"]
+      },
+      "touches": ["csv-stream", "report-query"],
+      "red": {
+        "test": "tests/reports/csv/stream.test.ts::streams_header_then_all_rows",
+        "code": "import { csvStream } from '../../../src/reports/csv/stream';\n\ntest('streams_header_then_all_rows', async () => {\n  await seedReports(2500);\n  const lines = (await collect(csvStream({ status: 'open' }))).split('\\n');\n  expect(lines[0]).toBe('id,title,status,created_at');\n  expect(lines.length).toBe(2501);\n});",
+        "run": "npm test -- stream"
+      },
+      "green": {
+        "sketch": "export function csvStream(filter: ReportFilter): Readable {\n  return Readable.from((async function* () {\n    yield formatRow(COLUMNS) + '\\n';\n    for await (const page of pagedReportRows(filter)) for (const row of page) yield formatRow(COLUMNS.map(c => row[c])) + '\\n';\n  })());\n}",
+        "run": "npm test -- stream"
+      },
+      "verify": ["npm test -- stream", "npm run lint"],
+      "risk": {"level": "medium", "note": "backpressure: Readable.from honours it, a hand-rolled push stream would not"},
+      "effort": {"minutes": 25},
+      "diff_sketch": "- buffer all rows, then join\n+ Readable.from(async generator): header, then one line per row, one page in memory",
+      "infographic": {
+        "type": "bar",
+        "title": "Peak memory for a 50,000-row export (MB, from the streaming research)",
+        "data": [["buffered", 410], ["streamed", 12]]
+      },
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    },
+    {
+      "id": "T4",
+      "wave": "W2",
+      "kind": "change",
+      "layer": "ui",
+      "title": "Export button",
+      "intent": "Add an Export CSV button to the reports page toolbar, disabled while the table is empty, that opens the export URL for the current filter in a new tab. The URL builder is tested; the endpoint arrives in T5.",
+      "parallel": true,
+      "depends_on": [],
+      "files": {
+        "create": ["src/app/reports/ExportButton.tsx"],
+        "modify": ["src/app/reports/Toolbar.tsx"],
+        "test": ["tests/app/reports/ExportButton.test.tsx"]
+      },
+      "touches": ["reports-page"],
+      "red": {
+        "test": "tests/app/reports/ExportButton.test.tsx::links_to_export_url_for_current_filter",
+        "code": "import { render, screen } from '@testing-library/react';\nimport { ExportButton } from '../../../src/app/reports/ExportButton';\n\ntest('links_to_export_url_for_current_filter', () => {\n  render(<ExportButton filter={{ status: 'open' }} rowCount={3} />);\n  expect(screen.getByRole('link', { name: 'Export CSV' })).toHaveAttribute('href', '/api/reports/export?status=open');\n});",
+        "run": "npm test -- ExportButton"
+      },
+      "green": {
+        "sketch": "export function ExportButton({ filter, rowCount }: Props) {\n  const href = '/api/reports/export?' + new URLSearchParams(filter).toString();\n  return <a role=\"link\" aria-disabled={rowCount === 0} href={href} target=\"_blank\" rel=\"noopener\">Export CSV</a>;\n}",
+        "run": "npm test -- ExportButton"
+      },
+      "verify": ["npm test -- ExportButton", "npm run lint"],
+      "risk": {"level": "low", "note": ""},
+      "effort": {"minutes": 15},
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    },
+    {
+      "id": "T5",
+      "wave": "W3",
+      "kind": "change",
+      "layer": "api",
+      "title": "GET /api/reports/export",
+      "intent": "A route that validates the filter query, sets text/csv and a Content-Disposition attachment header, and pipes the CSV stream to the response. Reuses the existing filter parser and auth guard of the Reports API.",
+      "parallel": false,
+      "depends_on": ["T3"],
+      "files": {
+        "create": ["src/app/api/reports/export/route.ts"],
+        "modify": [],
+        "test": ["tests/api/reports/export.test.ts"]
+      },
+      "touches": ["reports-api", "csv-stream"],
+      "red": {
+        "test": "tests/api/reports/export.test.ts::returns_csv_attachment_for_valid_filter",
+        "code": "import { GET } from '../../../src/app/api/reports/export/route';\n\ntest('returns_csv_attachment_for_valid_filter', async () => {\n  await seedReports(3);\n  const res = await GET(new Request('http://test/api/reports/export?status=open'));\n  expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');\n  expect(res.headers.get('content-disposition')).toMatch(/attachment; filename=\"reports-.*\\.csv\"/);\n  expect((await res.text()).split('\\n').length).toBe(4);\n});",
+        "run": "npm test -- export"
+      },
+      "green": {
+        "sketch": "export async function GET(req: Request) {\n  const filter = parseFilter(new URL(req.url).searchParams);\n  return new Response(Readable.toWeb(csvStream(filter)), { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename=\"reports-${today()}.csv\"` } });\n}",
+        "run": "npm test -- export"
+      },
+      "verify": ["npm test -- export", "npm run typecheck", "npm run lint"],
+      "risk": {"level": "medium", "note": "an invalid filter must return 400, not an empty CSV; the parser already throws, the route must map it"},
+      "effort": {"minutes": 25},
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    },
+    {
+      "id": "T6",
+      "wave": "W3",
+      "kind": "change",
+      "layer": "ui",
+      "title": "Wire the button into the page",
+      "intent": "Render ExportButton in the reports toolbar with the live filter and row count, so the download reflects what the user sees. Integration step: it touches the page and depends on both the button and the endpoint.",
+      "parallel": false,
+      "depends_on": ["T4", "T5"],
+      "files": {
+        "create": [],
+        "modify": ["src/app/reports/page.tsx"],
+        "test": ["tests/app/reports/page.export.test.tsx"]
+      },
+      "touches": ["reports-page", "reports-api"],
+      "red": {
+        "test": "tests/app/reports/page.export.test.tsx::toolbar_shows_export_for_current_filter",
+        "code": "import { render, screen } from '@testing-library/react';\nimport ReportsPage from '../../../src/app/reports/page';\n\ntest('toolbar_shows_export_for_current_filter', async () => {\n  render(await ReportsPage({ searchParams: { status: 'open' } }));\n  expect(screen.getByRole('link', { name: 'Export CSV' })).toHaveAttribute('href', '/api/reports/export?status=open');\n});",
+        "run": "npm test -- page.export"
+      },
+      "green": {
+        "sketch": "<Toolbar>\n  ...existing controls\n  <ExportButton filter={filter} rowCount={rows.length} />\n</Toolbar>",
+        "run": "npm test -- page.export"
+      },
+      "verify": ["npm test -- page.export", "npm run lint"],
+      "risk": {"level": "low", "note": ""},
+      "effort": {"minutes": 15},
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    },
+    {
+      "id": "T7",
+      "wave": "W3",
+      "kind": "verify",
+      "layer": "tests",
+      "title": "Full verification",
+      "intent": "Run the whole suite, the type-check, lint and the build, and prove the memory constraint end to end with a 50,000-row export under the test harness's heap limit.",
+      "parallel": false,
+      "depends_on": ["T5", "T6"],
+      "files": {
+        "create": ["tests/reports/csv/export.memory.test.ts"],
+        "modify": [],
+        "test": ["tests/reports/csv/export.memory.test.ts"]
+      },
+      "touches": ["reports-tests"],
+      "red": {
+        "test": "tests/reports/csv/export.memory.test.ts::fifty_thousand_rows_stay_under_64mb_heap",
+        "code": "test('fifty_thousand_rows_stay_under_64mb_heap', async () => {\n  await seedReports(50000);\n  const before = process.memoryUsage().heapUsed;\n  await drain(csvStream({}));\n  expect(process.memoryUsage().heapUsed - before).toBeLessThan(64 * 1024 * 1024);\n});",
+        "run": "npm test -- export.memory"
+      },
+      "green": {
+        "sketch": "No production change expected; if the test fails, the page size in T2 or the generator in T3 is the fix.",
+        "run": "npm test -- export.memory"
+      },
+      "verify": ["npm test", "npm run typecheck", "npm run lint", "npm run build"],
+      "risk": {"level": "low", "note": ""},
+      "effort": {"minutes": 20},
+      "review": {"status": "pending", "note": "", "edited_text": ""}
+    }
+  ],
+  "metrics": {
+    "steps": 7,
+    "parallel": 3,
+    "sequential": 4,
+    "minutes": 140,
+    "by_layer": {"logic": 2, "data": 1, "ui": 2, "api": 1, "tests": 1}
+  },
+  "sources": [
+    {"id": "S1", "label": "spec §3 Export", "href": ".workspace/shared/specs/2026-11-01-csv-export.md"},
+    {"id": "S2", "label": "research: streaming benchmark", "href": ".workspace/shared/research/2026-10-30-csv-streaming.md"},
+    {"id": "S3", "label": "kg blast src/reports/", "href": ""}
+  ]
+}

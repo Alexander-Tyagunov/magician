@@ -1,6 +1,0 @@
-interface:
-  display_name: "Inscribe"
-  short_description: "Create a project-scoped Codex skill"
-  default_prompt: "Use $inscribe to create a Codex skill through $skill-creator."
-policy:
-  allow_implicit_invocation: false

@@ -1,10 +1,84 @@
 ---
-name: unravel
-description: Systematic debugging with a mandatory hypothesis preflight — no code changes before evidence; one change at a time, then a regression test. Use for any bug, test failure, or unexpected behavior.
+name: "unravel"
+description: "Hypothesis-first debugging; one change at a time, then a regression test. Use when a bug, error, regression, failing test, or outage is reported; not for features."
+license: "MIT"
+allowed-tools: "Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(kg check), Bash(kg query *), Bash(kg neighbors *), Bash(kg blast *)"
+metadata: {"claude-code.argument-hint": "<bug or error description>", "claude-code.effort": "high"}
 ---
 
-# $unravel — Codex Adapter
+# /unravel — Systematic Debugging
 
-Read `../../references/codex-adapter.md`, then read `../../source-skills/unravel/SKILL.md` and follow the source skill through that Codex adapter. Keep the source skill's gates, safety checks, and completion criteria.
+> **Bundled command:** if `kg` is not found, run it as `../../tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
 
-For reproductions or watchers that remain running, retain the `exec_command` session and poll with `write_stdin`; there is no separate `Monitor` tool. Stop a process only through its session and only when doing so is within the requested diagnostic scope.
+Debug systematically. No random changes in the hope something helps.
+
+Scale `/effort` to bug complexity — for deep, multi-layer root-cause hunts use `xhigh` (`max` only as an opt-in for a frontier problem; it is session-only). See [lore/models.md](../../lore/models.md).
+
+<HARD-GATE>
+State your hypothesis and evidence BEFORE reading any code or making any change. This prevents the most common AI debugging failure: making changes without understanding the cause.
+</HARD-GATE>
+
+## When to use
+
+Trigger phrases: "I have a bug / it's broken / not working / crashing", an error, exception, or stack trace, a regression, a test failure, a production issue or outage when the app is deployed. The investigation is grounded with `/magic` and the knowledge graph (`kg query` / `kg blast`) for root-cause research. Not for new features (`/conjure`, `/ward`) or performance tuning (`/accelerate`).
+
+## Process
+
+### Phase 1: Hypothesis Preflight
+1. **Describe the symptom** — exact error message, stack trace, reproduction steps
+2. **State what you believe is wrong** — one sentence: "I believe X is failing because Y"
+3. **State what evidence would confirm or refute it**
+4. **Hypothesis gate (AskUserQuestion).** Put the hypothesis to the user via **AskUserQuestion** (never bare prose) — "Does this hypothesis match what you're seeing?":
+   - **Matches — investigate** *(default)* — the hypothesis fits; proceed to Phase 2 and run Phases 2–4 autonomously.
+   - **Different theory** — you have another explanation; share it and I'll re-state the hypothesis before touching anything.
+
+   **End your turn at the tool call. Do not read any code or make any change until the user picks or redirects.** Treat a free-form "yes / matches / looks right" as **Matches — investigate**.
+
+### Autonomy — approve the plan, then run
+
+Once the hypothesis is agreed at the Phase 1 gate, run Phases 2–4 **autonomously**: don't stop to ask the owner before reading code, `grep`, `kg query`/`blast`/`neighbors`, adding targeted logging, running the failing case, or running the test suite. This skill pre-approves reads and the `kg` lookups only; reproduction commands, test runs, and edits go through Claude Code's normal permission prompt unless the user runs in auto mode or approves them. Re-gate **only** on the real side effect — the **commit** (`git add`/`commit`/`push`, per Phase 4). This does not weaken the Phase 1 HARD-GATE. See [lore/autonomy.md](../../lore/autonomy.md).
+
+### Phase 2: Evidence Gathering
+5. **Read relevant code** — only the code related to the hypothesis. If a knowledge-graph index exists, `kg query "<symptom/error/symbol>"` to jump straight to the relevant `file:line` (and `kg neighbors`/`kg blast` to see what interacts with it) instead of broad greps — then read just those ranges.
+   - **Read the error and stack trace in full first** — before opening any file. The trace usually names the failing `file:line` and often the fix itself; the top frame shows where it blew up, but the first frame in your own code is usually the real culprit. Feed that symbol straight into `kg query`.
+6. **Add targeted logging/assertions** if needed — not scattered throughout
+   - In a **multi-component system** (CI → build → sign, api → service → db), instrument each component boundary — log what enters and exits every hop — and run the reproduction **once** to locate exactly where the flow breaks before changing anything. Fix where it actually breaks, not the first place you suspect.
+7. **Run the failing case** — capture exact output
+   - **Reproduce it consistently before proposing a fix** — pin down the exact steps or inputs that trigger it every time. A bug you can't reproduce on demand isn't understood yet, and a fix for it is a guess you can't verify.
+   - For an intermittent or async bug, run the reproduction in the background with the Bash tool and read its output when you're notified it exits (or check it as it runs), so the failing event (a 5xx, a crash, a specific log line) is captured instead of tailed by hand.
+   - If the bug involves an unfamiliar error, library, or framework behavior, use `/magic` (context7 + web) to gather external evidence — known issues, version-specific bugs, correct API usage — and fold it into the hypothesis ranking in Phase 3.
+
+### Phase 3: Hypothesis Testing
+8. **Rank hypotheses** by likelihood based on evidence (most likely first)
+9. **Test the most likely hypothesis** — make one change, observe result
+10. If refuted, mark it off and test the next
+
+### Phase 4: Fix and Verify
+11. **Implement the fix** for the confirmed root cause
+    - **Re-run the ORIGINAL failing symptom** — the exact command or steps from Phase 1 — and confirm it no longer reproduces. A fix isn't done until the symptom you started with is re-run and gone; code changed is not the same as bug fixed. See [lore/verification.md](../../lore/verification.md).
+12. **Write a regression test** that would have caught this bug
+13. **Run full test suite** — no new failures
+14. **Commit** with message explaining root cause: `fix: <root cause>, not just symptom` — in auto mode, confirm with the user before committing (the commit is a side effect).
+
+## Anti-Patterns (Never Do These)
+- Making 3 changes at once to "see what helps"
+- Reading the entire codebase before forming a hypothesis
+- Fixing the symptom without understanding the cause
+- Skipping the regression test
+
+## Obstacles
+
+If this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
+
+## Completion Signal
+
+"Root cause confirmed: <explanation>. Fix applied and regression test added. Run /certify."
+
+## On Codex
+
+Read the Claude Code features this skill names as follows on Codex and ChatGPT (full table: [On Codex](../../lore/skill-authoring.md#on-codex)).
+
+- Subagents (`Task`/`Agent`): Codex subagents are `.codex/agents/*.toml` files (`name`, `description`, `developer_instructions`); the review lenses ship here as `*-lens` skills.
+- `AskUserQuestion`: Codex has no question form; ask the same question in prose, with the same options, and wait for the reply.
+- Skill commands: `/<skill>` is `$<skill>` on Codex and `@<skill>` in ChatGPT.
+- Paths such as `../../tools/kg` are relative to the folder of the file that names them; resolve them to an absolute path before you run them.

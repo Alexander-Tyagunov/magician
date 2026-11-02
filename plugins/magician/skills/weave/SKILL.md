@@ -1,15 +1,91 @@
 ---
-name: weave
-description: Compose and run a large delivery as ONE pipeline with magician's guardrails — for big multi-item work ("implement these N stories/tickets", "deliver the epic", "migrate X across the codebase", batch/sweep). Adaptive structure, but always TDD per unit, kg grounding, certify, multi-lens review + adversarial verify, write gates, no context loss. Use instead of hand-rolling many agents.
+name: "weave"
+description: "Runs a large multi-item delivery (N tickets, an epic, a codebase-wide migration, a sweep) as ONE native Workflow with TDD and review. Not for one task (/ward)."
+license: "MIT"
+allowed-tools: "Workflow, Task, Read, Grep, Glob, Bash(ugrep *), Bash(bfs *), Bash(rg *), Bash(grep *), Bash(find *), AskUserQuestion, Bash(kg check), Bash(kg refresh), Bash(kg query *), Bash(kg blast *), Bash(kg neighbors *), Edit(./.workspace/local/session-state.md)"
+metadata: {"claude-code.argument-hint": "[goal · \"implement these N tickets\" · \"migrate X across repo\" · blueprint path]"}
 ---
 
-# $weave — Codex Adapter
+# /weave — compose & run a delivery pipeline as one Workflow
 
-Read `../../references/codex-adapter.md`, then read `../../source-skills/weave/SKILL.md` and follow the source skill through that Codex adapter. Keep the source skill's gates and non-negotiables.
+> **Bundled command:** if `kg` is not found, run it as `../../tools/kg` and give subagents that full path. If that is missing too (Claude chat ships no plugin tools), skip the `kg` steps and search the code directly.
 
-Codex equivalents:
-- **Engine** — if agent tools are available, compose the delivery per `../../source-skills/weave/references/template.md`: sequential TDD per unit → `$certify` → parallel multi-lens review → adversarially refute every Critical/High → consolidate. Use generic agents with self-contained role prompts; `reviewer`, `security`, `simplification`, and `verification` are responsibilities, not `magician:*` profiles. Otherwise execute the same stages locally.
-- **Grounding** — `kg check`; if there is no index, offer `kg init` (in every repo the work touches) and run it only on the user's explicit yes, otherwise ground with targeted search/reads. Then `kg query`/`kg blast` to scope each unit; pass `file:line` pointers into worker prompts, never whole files.
-- **Write gates** — implement + test on a branch; never push, open/merge PRs, or do anything destructive without explicit approval. A unit commit requires authorization and must stage only enumerated task-owned files.
-- **No context loss** — every worker prompt self-contained (Goal/Scope/Inputs/Constraints/Return); workers return distilled summaries.
-- **Plan gate** — show units + structure + rough scale and get approval before running a large pipeline (use Codex's question/approval UI).
+When the task is "deliver many similar units" — N stories/tickets, a set of features/endpoints, a codebase-wide migration, a batch sweep — **don't hand-roll dozens of `Agent` calls.** Compose a single **native `Workflow`** that delivers all of them, and run it via the `Workflow` tool. The Workflow engine is the fast, deterministic fan-out (pipeline/parallel/orchestrator-worker) Claude reaches for anyway; this skill makes magician *own* it, with the guardrails baked in.
+
+`/transmute` is a common **upstream caller**: its Jira stories become `args.units` (id/goal/AC only; Phase 0 derives each unit's `kg` scope and blast). Its parity contract adds **evaluator criteria**: diff each build against the contract's *behavioral* golden, never the environmental baseline.
+
+The full, copy-and-adapt Workflow template (schemas, stages, kg grounding, the verify + remediate loop) is in **[references/template.md](references/template.md)**.
+
+## When to use
+
+Trigger phrases: "implement these N stories/tickets/tasks", "deliver the epic", "build out all these features/endpoints", "migrate X across the codebase", "do all of the following", any batch or sweep of similar units. Not for one task (`/ward`) or an existing blueprint (`/orchestrate`).
+
+## Phase 0 — scope, ground, and plan (gate before running)
+
+1. **Enumerate the units.** The N things to deliver (tickets, files, features). Pull ticket detail via `magician:jira` if relevant; read a blueprint from `.workspace/shared/plans/` if one exists.
+   **Fold first.** When all units together touch 3 files or fewer and about 300 changed lines or fewer, do not compose a Workflow: run them in order in the main loop, one `/ward` cycle each ([lore/fold-first.md](../../lore/fold-first.md)). The guardrails below still apply.
+2. **Ground in the codebase (kg, not grep).** `kg check`; if there is no index, offer to build one (`kg init`) and run it only on the user's explicit yes — a shared graph is what keeps every worker cheap and consistent. With that yes, **index every repo the work touches** (`kg init` in each repo — kg is per-repo; cross-repo parity/migration greps are the wrong tool, see [knowledge-graph/references/retrieval.md](../knowledge-graph/references/retrieval.md#multi-repo-cross-repo-work)); on a no, ground with targeted `Grep`/`Read` instead. For each unit, `kg query`/`kg blast` to scope the files it touches and its blast radius (pass these as `file:line` pointers into worker prompts; never paste whole files). A hand-rolled Workflow script must ground via kg too — don't fan out grep/whole-file-read loops.
+3. **Pick the structure** (adaptive — see below) and the per-stage model/effort.
+
+   **A plan folder as the composed workflow.** When `$ARGUMENTS` names a `/blueprint` folder that holds `plan.workflow.js` (rendered by `plan-render workflow` next to `plan.json`; one `phase()` per wave, one `agent()` with a `schema` per step, deferred steps omitted, literal `meta`), that file *is* the composition: skip the structure choice, read it, pass its contents as the `Workflow` script and run it under the same write gates — the plan's approved `verify` commands are each agent's definition of done. Re-render (`plan-render all`) rather than hand-editing it when the plan changes; a `meta.description` version that differs from `plan.json.version` is stale. For a batch of units that has no plan yet, compose as below and, when the units are large enough to deserve a reviewed plan each, emit a `plan.json` with one step per unit so the `/blueprint` page reviews the batch.
+4. **Show the plan and get a go.** A large Workflow spawns many agents and costs real tokens. Use **AskUserQuestion**: list the units, the structure, the guardrails, and the rough agent/token scale. **Wait for approval before running.** Once approved, run to completion **autonomously** — don't stop to ask the owner about individual reads; Claude Code's built-in read-only commands never prompt, and anything else prompts once unless the user runs in auto mode or approves it. Only the write gates below are yours to stop on ([lore/autonomy.md](../../lore/autonomy.md)). Gather → plan → memorize → execute.
+
+## Adaptive within guardrails
+
+Choose the shape that fits (Anthropic agent patterns), tuning depth, agent count, and model/effort to the task:
+
+- **Per-item `pipeline()`** *(default for N similar units)* — each unit flows implement → certify → review independently, no barrier; wall-clock = slowest single chain.
+- **`parallel()` barrier** — when a step needs *all* prior results (cross-unit dedup, a consolidation pass, "0 found → skip").
+- **Orchestrator-worker** — decompose first, then fan out workers over the decomposition.
+- **Evaluator-optimizer loop** *(built into the default template)* — review → remediate → re-certify → re-review until clean, bounded by a round cap + `budget.remaining()`. The pipeline ships a clean changeset, not a to-do list. For **parity/mirror** deliveries (units must mirror a gold 1:1), encode `single_purpose`/no-folding + `mirrors_gold` acceptance in the evaluator schema ([references/template.md](references/template.md) → *Adapting it*) — a generic review green-lights folding; for a full comprehend→parity job use `/transmute`.
+
+You **may deviate** from any single skill's canned steps to fit the task. You may **not** drop these non-negotiables, whatever shape you pick:
+
+<HARD-GATE>
+1. **TDD per unit** — a failing test first, then green, then refactor (the `/ward` discipline).
+2. **kg grounding** — workers locate code via `kg query`/`kg blast` and receive `file:line` pointers; no whole-file pastes.
+3. **certify before "done"** — tests + types + lint + build pass for each unit before it counts as delivered, and the code matches the project's conventions ([lore/code-standards.md](../../lore/code-standards.md)) — style the reviewer would flag (async/await vs `.then`, etc.) is caught here, not after review.
+4. **Review before ship, then remediate in-pipeline** — multi-lens (`magician:reviewer`/`sentinel`/`simplifier`/`verifier`) + adversarial verify on every Critical/High finding, then the bounded remediate loop (fix → re-certify → re-review) resolves confirmed findings before the pipeline reports done.
+5. **Write gates** — the Workflow may read, implement on a branch/worktree, and test; it must **not** push, open/merge PRs, or do anything destructive without explicit user confirmation. Keep commits one-per-unit and surface them.
+6. **No context loss** — every worker prompt is fully self-contained (Goal/Scope/Inputs/Constraints/Return per [lore/subagent-context.md](../../lore/subagent-context.md)); pass artifact **paths**, not dumps; workers return distilled summaries (~1–2k tokens), not raw output. Write a running `.workspace/local/session-state.md` (goal · done/remaining units · decisions · blockers · artifact paths) and have every worker read it first, so a compaction mid-run loses nothing.
+</HARD-GATE>
+
+## Run it
+
+Adapt the template into a `Workflow({script})` call. Keep the script's `meta` a pure literal; group stages with `phase()`; give every `agent()` a `schema` with bounded strings (summary ≤ 1200 chars, `files_changed[]`, `obstacles[]` — the template's `IMPL`/`CERT`/`FINDINGS`/`VERDICT`), a `label`, and a `stallMs`, so you receive distilled results, never raw logs. Siblings of a `parallel()` are held up to `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS` (default 5000) to reuse the first agent's cached prefix — put the shared prompt text first and the per-unit text last. Isolate file-mutating parallel workers with `isolation: 'worktree'` only when they'd otherwise collide. Read each phase's results before the next decision — you stay in the loop. A worker that needs a human decision puts the question in its `obstacles[].NEXT` and continues or stops; it never waits. After each phase, collect those questions, merge duplicates, and ask them in ONE `AskUserQuestion` ([lore/obstacles.md](../../lore/obstacles.md)).
+
+For very large or open-ended scope, run `/weave` in successive Workflows (one phase each) rather than one giant script, so you review between phases. For a long **unattended** delivery, pair with **`/goal`** so Claude keeps driving across turns until every unit is delivered + certified. Collect stage results as they land.
+
+When a unit lands something that breaks what another agent session is building on, and cross-session messaging is available, send that session one self-contained sentence with artifact **paths**. Feature-detect and skip silently; the pipeline never waits on a peer. See [lore/cross-session.md](../../lore/cross-session.md).
+
+## Effort & models
+
+Stages run on the latest code-optimal tier; narrow lenses on small diffs can take a cheaper tier. Effort: `medium` for implementation turns, `high` for certify/review/security turns; on Bedrock/Vertex/gateways hold one level (an effort change drops the cache there). The hardest units go to `xhigh`; `max` is session-only and an opt-in for frontier problems. Suggest a model upgrade rather than switching silently if the session is on an older one ([lore/models.md](../../lore/models.md)).
+
+**Size the fan-out to the units, not the appetite.** Current models spawn subagents readily; on small units that costs more than it returns. One stage agent per unit is the default — split a unit across agents only when its tracks are genuinely independent, and keep spawn counts low. The review lenses and the adversarial verify are the checks; don't add agents on top of them to re-check the same work. See [lore/model-behavior.md](../../lore/model-behavior.md).
+
+## Obstacles
+
+**As a consumer** — every dispatched unit returns an Obstacles block on a non-clean run. Roll them up into one report kept distinct from the deliverables (never let a blocked unit read as done), detect a pattern by a normalized BLOCKER + SCOPE signature, and memorize a confirmed pattern with `ctx learn --add "<signature -> workaround / next-action>"` written from your own signature — never verbatim worker text, never secrets or PII. Full consumer protocol: [lore/obstacles.md](../../lore/obstacles.md).
+
+**As a producer** — if this skill runs as a dispatched unit and hits something that blocks or degrades the work, do not wait for a human who is not there and do not silently ship a degraded result — return the Obstacles block from [lore/obstacles.md](../../lore/obstacles.md) (fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT) to the caller alongside whatever you completed; interactively, say the same in prose.
+
+## Completion Signal
+
+> "Weave complete: <N>/<N> units delivered (1 commit each), certified, reviewed (<C> criticals resolved over <R> remediation round(s)); cost ≈ $X (session delta). Branch <name> — ready for you to push/PR (write-gated)."
+
+Cost clause: only with a reading at start and end, from `~/.claude/magician/status/${MAGICIAN_SESSION_ID:-unknown}.cost` (status line) or the mods band's `$.session.usage()`. Report the difference. Omit the clause otherwise. Never estimate it.
+
+Grounding for a unit's domain → `/magic`. Reviewing the whole changeset afterward → `/divine`. Shipping → `/seal` (gated).
+
+## On Codex
+
+Read the Claude Code features this skill names as follows on Codex and ChatGPT (full table: [On Codex](../../lore/skill-authoring.md#on-codex)).
+
+- `/goal`: Codex has the same `/goal` command (outcome, constraints and how to verify); one goal per chat.
+- `Workflow` fan-out: run one `codex exec --worktree` per independent unit, or use `/worktree` for parallel chats.
+- Subagents (`Task`/`Agent`): Codex subagents are `.codex/agents/*.toml` files (`name`, `description`, `developer_instructions`); the review lenses ship here as `*-lens` skills.
+- `AskUserQuestion`: Codex has no question form; ask the same question in prose, with the same options, and wait for the reply.
+- `CLAUDE.md`: Codex reads `AGENTS.md` (root to current folder, nearest wins).
+- Skill commands: `/<skill>` is `$<skill>` on Codex and `@<skill>` in ChatGPT.
+- Paths such as `../../tools/kg` are relative to the folder of the file that names them; resolve them to an absolute path before you run them.

@@ -1,6 +1,6 @@
 Cross-session conversations — hand a finding to your other Claude Code sessions instead of re-explaining it.
 
-Magician runs work in parallel a lot: [/portal](../source-skills/portal/SKILL.md) worktrees, [/orchestrate](../source-skills/orchestrate/SKILL.md) waves, [/weave](../source-skills/weave/SKILL.md) pipelines, background agents. When those live in *separate sessions*, each one used to be an island — the owner became the message bus, copy-pasting between terminals. Claude Code's cross-session messaging removes that.
+Magician runs work in parallel a lot: [/portal](../skills/portal/SKILL.md) worktrees, [/orchestrate](../skills/orchestrate/SKILL.md) waves, [/weave](../skills/weave/SKILL.md) pipelines, background agents. When those live in *separate sessions*, each one used to be an island — the owner became the message bus, copy-pasting between terminals. Claude Code's cross-session messaging removes that.
 
 ## What it is
 

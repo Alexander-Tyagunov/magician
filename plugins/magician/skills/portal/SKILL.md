@@ -1,10 +1,73 @@
 ---
-name: portal
-description: Creates a git worktree for isolated feature work (and documents cleanup post-merge); respects the disableGit preference. Use to isolate a feature on its own branch/worktree.
+name: "portal"
+description: "Creates a git worktree for isolated feature work; respects disableGit. Use to isolate a feature on its own branch."
+license: "MIT"
+allowed-tools: "Read, Bash(git worktree add *)"
+metadata: {"claude-code.argument-hint": "[feature-name]"}
 ---
 
-# $portal — Codex Adapter
+# /portal — Git Worktree Isolation
 
-Read `../../references/codex-adapter.md`, then read `../../source-skills/portal/SKILL.md` and follow the source skill through that Codex adapter. Keep the source skill's gates, safety checks, and completion criteria.
+Create an isolated git worktree for feature development.
 
-Codex has no Magician `WorktreeCreate` hook in the shipped hook manifest. After creating a worktree, explicitly copy or summarize only the required task context into the dispatch prompt (Goal, Scope, approved plan/spec paths, constraints, verification, Return format), and point agents at repository `AGENTS.md` files. Do not copy Claude session state or claim automatic context propagation. Use a `codex/` branch prefix unless the user requests another name, and report the absolute worktree path and cleanup command without running cleanup.
+## Check disableGit Mode
+
+Read `.workspace/local/prefs.md` for `disableGit: true`. If set, skip all git operations and work in the current directory.
+
+## Process (git mode)
+
+1. **Get branch name** — if `$ARGUMENTS` is non-empty, use it as the feature name directly. Otherwise ask: "What's this feature called? (I'll use it as the branch/worktree name.)" **End your turn. Wait for their answer before creating anything.**
+2. **Create worktree** (one plain command, so it matches this skill's pre-approval):
+   ```bash
+   git worktree add ../<repo-name>-<name> -b feature/<name>
+   ```
+3. **Workspace files** — tracked files (`.workspace/shared/`) come with the branch; gitignored ones such as `.workspace/local/prefs.md` don't. Worktrees that Claude Code creates itself (`claude --worktree`, subagent worktree isolation) copy the gitignored files listed in a `.worktreeinclude` file at the repo root, so listing `.workspace/local/prefs.md` there is a useful tip for the user. For this plain `git worktree add`, copy any local file the new worktree needs (that copy goes through the normal permission prompt).
+4. **Confirm** the new worktree path to the user
+5. Say: "Worktree created at `../<path>`. Work there for isolation. Run /seal when ready to merge."
+
+## Alternatives at agent scale
+
+Pick the lightest isolation that fits. Feature-detect each one. Do not ask the user to check a version.
+
+- **`claude --worktree <name>`.** Use it when `claude --help` lists `--worktree`. It starts a new session in its own worktree and copies the files listed in `.worktreeinclude`. Tell the user the command. Do not run it from this session.
+- **Agent `isolation: worktree`.** Use it for a dispatched subagent that edits files in parallel with others. Set it in the agent's frontmatter or in the `Agent` call when the tool accepts it. Claude Code removes the worktree when the agent made no change.
+- **`git sparse-checkout` in a monorepo.** Use it when the repository has more than about 10,000 tracked files and the feature touches one or two packages. After step 2, run `git -C ../<repo-name>-<name> sparse-checkout set --cone <package-dirs>`. That command is not pre-approved, so it prompts. Add the shared config folders the build needs.
+- **Plain `git worktree add`.** Use it in every other case (the process above).
+
+Keep each change small and state its intent in the branch name and the first commit ([lore/git.md](../../lore/git.md)).
+
+## Process (disableGit mode)
+
+1. Create a feature directory: `mkdir -p .features/<name>`
+2. Note: no git isolation — be careful about conflicts with other in-progress work
+3. Say: "Working in .features/<name>/ (disableGit mode — no worktree created)."
+
+## Keep sibling worktrees in the loop
+
+Worktrees isolate the files, not the consequences: a rename, a signature change, or a shared-dependency bump made here breaks whatever a sibling session is building on. When Claude Code's cross-session messaging is available, tell the affected session yourself instead of letting it discover the breakage — `ListAgents` finds the sessions working the other worktrees, `SendMessage` delivers one self-contained sentence about what landed.
+
+Feature-detect it: no `ListAgents`, or no peer listed, means carry on exactly as before and note the change in your own summary. It isn't available in every environment, and a session inside a container can't see one on the host. See [lore/cross-session.md](../../lore/cross-session.md).
+
+## Cleanup After Merge
+
+After /seal completes and the PR merges:
+```bash
+git worktree remove ../<repo-name>-<name>
+git branch -d feature/<name>
+```
+
+## Obstacles
+
+This is a thin git-worktree utility. If a worktree cannot be created (branch already exists, dirty tree), report it in prose to the caller and stop; it emits no structured upward Obstacles block.
+
+See [lore/obstacles.md](../../lore/obstacles.md).
+
+## Completion Signal
+
+"Portal open. Worktree at `<path>`, branch `<branch>`. Start implementation or run /orchestrate."
+
+## On Codex
+
+Read the Claude Code features this skill names as follows on Codex and ChatGPT (full table: [On Codex](../../lore/skill-authoring.md#on-codex)).
+
+- Subagents (`Task`/`Agent`): Codex subagents are `.codex/agents/*.toml` files (`name`, `description`, `developer_instructions`); the review lenses ship here as `*-lens` skills.

@@ -4,7 +4,7 @@ Some users don't use a given integration (Jira, Confluence, …) and don't want 
 
 ## Store
 
-`integration-prefs.json` in magician's plugin data dir: `${CLAUDE_PLUGIN_DATA}` in hooks, exported to the
+`integration-prefs.json` in magician's plugin data dir: `${MAGICIAN_DATA:-$HOME/.local/share/magician}` in hooks, exported to the
 Bash tool as `$MAGICIAN_DATA` at session start (`~/.local/share/magician` only when neither is set).
 
 ```json
@@ -12,10 +12,10 @@ Bash tool as `$MAGICIAN_DATA` at session start (`~/.local/share/magician` only w
 ```
 A key set to `"disabled"` = the user opted out. Absent key = ask normally. The Jira/Confluence
 resolution memory (which names map to which projects, boards and spaces) is separate from this registry
-and lives in the same folder: `${CLAUDE_PLUGIN_DATA}/jira-memory.md` and `${CLAUDE_PLUGIN_DATA}/confluence-memory.md`.
+and lives in the same folder: `${MAGICIAN_DATA:-$HOME/.local/share/magician}/jira-memory.md` and `${MAGICIAN_DATA:-$HOME/.local/share/magician}/confluence-memory.md`.
 Read it:
 ```bash
-PREFS="${MAGICIAN_DATA:-${CLAUDE_PLUGIN_DATA:-$HOME/.local/share/magician}}/integration-prefs.json"
+PREFS="${MAGICIAN_DATA:-$HOME/.local/share/magician}/integration-prefs.json"
 state=$(jq -r '.jira // "ask"' "$PREFS" 2>/dev/null || echo ask)   # "disabled" | "ask"
 ```
 Write it (merge, don't clobber other keys):
@@ -43,3 +43,5 @@ this integration registry — if a user says the lore is interfering with their 
 
 When off, SessionStart injects no lore and the status bar (if the user enabled it) shows `📚 lore:off`. Deep-dive files (`lore/deep/*.md`)
 remain readable on demand regardless. Re-enable the same way, inverted.
+
+> On Codex: `magician-ui` and the status line are Claude Code only and do not ship here; turn STE-lite on with a `.magician/ste` file that holds `on`, or `MAGICIAN_STE=1`.

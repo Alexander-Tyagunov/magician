@@ -57,3 +57,5 @@ wait for the round-trip. If a documented convention isn't lint-enforced (it live
 
 Reuse over reinvention: run the repo's configured tools; never hand-roll a formatter or invent style
 rules the project doesn't use.
+
+> On Codex: `magician-ui` and the status line are Claude Code only and do not ship here; turn STE-lite on with a `.magician/ste` file that holds `on`, or `MAGICIAN_STE=1`.

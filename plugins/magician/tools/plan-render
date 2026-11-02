@@ -1,0 +1,2346 @@
+#!/usr/bin/env python3
+"""magician plan-render — one plan.json in, plan.md + plan.html out (no deps, no network).
+
+/blueprint writes plan.json (schema magician.plan/1) once; this tool validates it and renders the two
+documents every consumer reads, so a revision can never leave them out of sync:
+  plan.md    the task list /orchestrate and /ward execute (the Task Format of skills/blueprint),
+             with a `<!-- magician.plan/1 v<n> sha256:<canonical json> -->` trailer;
+  plan.html  a self-contained walkthrough a person reviews from file:// — player, wave timeline,
+             SVG architecture map, step detail, inline SVG infographics, per-step review toolbar and
+             the "plan document" dialog (plan.md pre-rendered to HTML here, the wave graph as SVG).
+
+Subcommands (one clean command per call, so one `Bash(plan-render *)` allow rule covers all):
+  plan-render check <plan.json>                      validate; exit 2 with one line per violation
+  plan-render md    <plan.json> [-o plan.md]         render plan.md (stdout without -o)
+  plan-render html  <plan.json> [-o plan.html] [--theme light|dark|auto] [--transport auto|local|artifact|static]
+                                                     [--static] [--mermaid]
+  plan-render workflow <plan.json> [-o plan.workflow.js]   a Claude Code Workflow script: one phase per
+                                                     wave, parallel() for the parallel steps, agent() per
+                                                     task with the bounded return schema (deferred omitted)
+  plan-render diff  <a.json> <b.json>                JSON summary: changed fields per step id,
+                                                     added / removed steps, changed plan fields
+  plan-render all   <plan.json>                      check, then plan.md + plan.html + plan.workflow.js
+                                                     next to the json and history/plan.v<version>.json
+
+Output is deterministic: the same JSON gives byte-identical plan.md, plan.html and plan.workflow.js
+(no timestamps). The page carries a Content-Security-Policy that forbids every remote load; nothing
+is fetched. `--transport` picks how the page's review toolbar reaches the session: `local` (the
+companion server injects window.__MAGICIAN_LIVE; events are POSTed, state polled and streamed),
+`artifact` (the page runs as a Claude Artifact and uses its `db` capability), `static` (every send
+composes a chat line) or `auto` (default: local when injected, else artifact when the host offers
+`claude.use`, else static). `--static` is `--transport static`.
+`--mermaid` draws the wave graph with `mmdc` when it is on PATH (opt-in; output then depends on it).
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import html
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+SCHEMA = "magician.plan/1"
+MAX_BYTES = 256 * 1024
+MAX_VERSION = 10000
+PLAN_STATUS = ("draft", "in_review", "approved", "rejected")
+REVIEW_STATUS = ("pending", "approved", "deferred", "edited", "changed")
+KINDS = ("context", "decision", "change", "verify", "rollout")
+RISK_LEVELS = ("low", "medium", "high")
+LAYER_PALETTE = 6  # --l-1 … --l-6 cycle over the layers in order of first appearance
+STEP_ID = re.compile(r"^T[1-9]\d*$")
+PLAIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+RESERVED_IDS = ("__proto__", "constructor", "prototype")
+# Fields that may hold line breaks (rendered as paragraphs, fences or blockquotes); every other string
+# is a single line. No string may hold another control character.
+MULTILINE = ("intent", "diff_sketch", "red.code", "green.sketch", "review.edited_text", "context.summary")
+CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+# Credential shapes the plan text must never carry (the page and plan.md are committed). The raw
+# JSON text is scanned (key-aware: a secret-looking key with a long value) and so is every decoded
+# string (JSON escaping hides quotes from the raw scan).
+LEAK_PATTERNS = (
+    ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY")),
+    ("hardcoded credential",
+     re.compile(r"""(?i)(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*['"][^'"]{8,}""")),
+    ("GitHub token", re.compile(r"\bgh[posru]_[A-Za-z0-9]{36,}")),
+    ("API key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
+    ("Slack token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
+    ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]{20,}\.eyJ")),
+    ("bearer token", re.compile(r"\bBearer\s+[A-Za-z0-9._-]{20,}")),
+)
+RAW_KEY_LEAK = re.compile(r'(?i)"(api[_-]?key|secret|password|passwd|token)"\s*:\s*"[^"]{8,}"')
+HOME_PATH = re.compile(r"(^|[\s\"'=:])(/Users/|/home/)")
+BAD_PATH = re.compile(r"(^|/)\.\.(/|$)|^~|^/|^[A-Za-z]:[\\/]|^\\\\|\\")
+# Command shapes that must never sit in red.run, green.run or verify (they are run by /orchestrate).
+DESTRUCTIVE = re.compile(
+    r"(?i)(\brm\s+(-[a-z]*[rf][a-z]*\s+|--recursive\s+|--force\s+)+|\bgit\s+(push\s+.*(--force|\s\+\S|-f\b)"
+    r"|reset\s+--hard|clean\s+-[a-z]*f|branch\s+-D\b|checkout\s+\.\s*$)|\bdrop\s+(table|database|schema)\b"
+    r"|\btruncate\s+table\b|\bmkfs\b|\bdd\s+if=|>\s*/dev/sd|\bchmod\s+-R\s+777\s+/|:\(\)\s*\{|\bshred\b"
+    r"|\bformat\s+[a-z]:|\bfind\b.*\s-delete\b|\b(curl|wget)\b.*\|\s*(sudo\s+)?(ba|z|k|da)?sh\b"
+    r"|\bterraform\s+destroy\b|\bkubectl\s+delete\b)")
+MAX_DIFF_LINES = 40
+MAX_INFOGRAPHIC_ROWS = 6
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"plan-render: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+# ───────────────────────────── loading / canonical form ─────────────────────────────
+def _no_constant(name: str):
+    raise ValueError(f"{name} is not valid JSON")
+
+
+def _no_duplicate_keys(pairs):
+    out = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError(f"duplicate key {k!r}")
+        out[k] = v
+    return out
+
+
+def parse_plan(raw: bytes) -> dict:
+    """Strict JSON: no NaN/Infinity, no duplicate keys (both would pass json.loads silently)."""
+    return json.loads(raw.decode("utf-8"), parse_constant=_no_constant, object_pairs_hook=_no_duplicate_keys)
+
+
+def load(path: str) -> tuple[dict, bytes]:
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError as e:
+        die(f"cannot read {path}: {e.strerror}")
+    try:
+        plan = parse_plan(raw)
+    except (UnicodeDecodeError, ValueError, RecursionError) as e:
+        die(f"{path}: not valid JSON ({e})", 2)
+    return plan, raw
+
+
+def canonical(plan: dict) -> bytes:
+    return json.dumps(plan, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def plan_hash(plan: dict) -> str:
+    return hashlib.sha256(canonical(plan)).hexdigest()
+
+
+def fmt_num(x) -> str:
+    if isinstance(x, bool):
+        return str(x)
+    if isinstance(x, int):
+        return str(x)
+    if isinstance(x, float):
+        return ("%.2f" % x).rstrip("0").rstrip(".")
+    return str(x)
+
+
+# ───────────────────────────────── validation ───────────────────────────────────
+def _is_str_list(v) -> bool:
+    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+
+
+def _is_int(v, lo: int = 0, hi: int | None = None) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= lo and (hi is None or v <= hi)
+
+
+def _strings(obj, path: str = "$"):
+    if isinstance(obj, str):
+        yield path, obj
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _strings(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _strings(v, f"{path}[{i}]")
+
+
+def _edge(e) -> tuple:
+    if isinstance(e, dict):
+        return e.get("from"), e.get("to")
+    if isinstance(e, (list, tuple)) and len(e) == 2:
+        return e[0], e[1]
+    return None, None
+
+
+def norm_path(p: str) -> str:
+    while p.startswith("./"):
+        p = p[2:]
+    return p
+
+
+def _check_text(plan, out: list[str]) -> None:
+    """Control characters never; line breaks only in the multi-line fields; no line in a multi-line
+    field may start like a heading, a fence or a task line (it would forge plan.md structure)."""
+    for path, value in _strings(plan):
+        if CONTROL.search(value):
+            out.append(f"text: {path} holds a control character")
+            continue
+        field = re.sub(r"\[\d+\]", "", path)
+        field = re.sub(r"^\$\.(steps\.)?", "", field)
+        if "\n" in value or "\r" in value:
+            if field not in MULTILINE:
+                out.append(f"text: {path} must be a single line (line breaks are allowed only in "
+                           f"{', '.join(MULTILINE)})")
+                continue
+            for line in value.splitlines():
+                st = line.lstrip()
+                if st.startswith("#") or st.startswith("```") or st.startswith("- [ ]") or st.startswith("- [x]"):
+                    out.append(f"text: {path} has a line starting with {st[:3]!r}, which would forge plan.md structure")
+                    break
+        elif field == "diff_sketch" or field == "red.code" or field == "green.sketch":
+            if value.lstrip().startswith("```"):
+                out.append(f"text: {path} must not open a code fence")
+
+
+def check(plan, raw: bytes) -> list[str]:
+    """Every violation as one line; an empty list means the plan is valid."""
+    out: list[str] = []
+    if len(raw) > MAX_BYTES:
+        out.append(f"size: plan.json is {len(raw)} bytes; the limit is {MAX_BYTES} (256 KiB)")
+    text = raw.decode("utf-8", "replace")
+    found: set[str] = set()
+    for label, pat in LEAK_PATTERNS:
+        m = pat.search(text)
+        if m:
+            line = text.count("\n", 0, m.start()) + 1
+            out.append(f"secret: possible {label} on line {line}")
+            found.add(label)
+    m = RAW_KEY_LEAK.search(text)
+    if m:
+        out.append(f"secret: key {m.group(1)!r} holds a credential-sized value on line {text.count(chr(10), 0, m.start()) + 1}")
+    for path, value in _strings(plan):
+        for label, pat in LEAK_PATTERNS:
+            if label not in found and pat.search(value):
+                out.append(f"secret: possible {label} in {path}")
+                found.add(label)
+    if not isinstance(plan, dict):
+        return out + ["root: plan.json must be a JSON object"]
+    _check_text(plan, out)
+    if plan.get("schema") != SCHEMA:
+        out.append(f"schema: expected {SCHEMA!r}, got {plan.get('schema')!r}")
+    for key in ("feature", "title"):
+        if not isinstance(plan.get(key), str) or not plan.get(key).strip():
+            out.append(f"{key}: must be a non-empty string")
+    v = plan.get("version")
+    if not _is_int(v, 1, MAX_VERSION):
+        out.append(f"version: must be a positive integer up to {MAX_VERSION}, got {v!r}")
+    if plan.get("status") not in PLAN_STATUS:
+        out.append(f"status: {plan.get('status')!r} is not one of {'|'.join(PLAN_STATUS)}")
+    for key in ("constraints", "research"):
+        if key in plan and not _is_str_list(plan[key]):
+            out.append(f"{key}: must be a list of strings")
+    if "spec" in plan and not isinstance(plan["spec"], str):
+        out.append("spec: must be a string")
+    srcs = plan.get("sources", [])
+    if not isinstance(srcs, list) or not all(isinstance(x, dict) and isinstance(x.get("id"), str)
+                                             and isinstance(x.get("label"), str) for x in srcs):
+        out.append("sources: must be a list of {id, label, href?} objects")
+    ctx = plan.get("context")
+    comp_ids: set[str] = set()
+    if not isinstance(ctx, dict):
+        out.append("context: must be an object with components")
+    else:
+        for key in ("summary", "archetype"):
+            if key in ctx and not isinstance(ctx[key], str):
+                out.append(f"context.{key}: must be a string")
+        if "stack" in ctx and not _is_str_list(ctx["stack"]):
+            out.append("context.stack: must be a list of strings")
+        blast = ctx.get("blast", [])
+        if not isinstance(blast, list):
+            out.append("context.blast: must be a list")
+        else:
+            for i, b in enumerate(blast):
+                if (not isinstance(b, dict) or not isinstance(b.get("path"), str)
+                        or not _is_int(b.get("files")) or not _is_int(b.get("hits", 0))):
+                    out.append(f"context.blast[{i}]: must be {{path: string, files: int, hits: int}}")
+        comps = ctx.get("components", [])
+        if not isinstance(comps, list):
+            out.append("context.components: must be a list")
+            comps = []
+        for i, c in enumerate(comps):
+            if not isinstance(c, dict) or not isinstance(c.get("id"), str) or not PLAIN_ID.match(c["id"]) \
+                    or c["id"] in RESERVED_IDS:
+                out.append(f"context.components[{i}]: needs a plain string id (letters, digits, _ . -)")
+                continue
+            if c["id"] in comp_ids:
+                out.append(f"context.components: duplicate id {c['id']!r}")
+            comp_ids.add(c["id"])
+            if not isinstance(c.get("layer"), str) or not c.get("layer").strip():
+                out.append(f"context.components[{c['id']}]: needs a string layer")
+            if not isinstance(c.get("label"), str) or not c.get("label").strip():
+                out.append(f"context.components[{c['id']}]: needs a string label")
+            if "exists" in c and not isinstance(c["exists"], bool):
+                out.append(f"context.components[{c['id']}]: exists must be true or false")
+            if "sub" in c and not isinstance(c["sub"], str):
+                out.append(f"context.components[{c['id']}]: sub must be a string")
+        edges = ctx.get("edges", [])
+        if not isinstance(edges, list):
+            out.append("context.edges: must be a list of {from, to}")
+        else:
+            for i, e in enumerate(edges):
+                a, b = _edge(e)
+                if not isinstance(a, str) or not isinstance(b, str):
+                    out.append(f"context.edges[{i}]: must be {{from: id, to: id}}")
+                elif a not in comp_ids or b not in comp_ids:
+                    out.append(f"context.edges[{i}]: {a!r} -> {b!r} names an unknown component")
+    waves = plan.get("waves")
+    wave_ids: dict[str, list] = {}
+    wave_pos: dict[str, int] = {}
+    if not isinstance(waves, list) or not waves:
+        out.append("waves: must be a non-empty list")
+        waves = []
+    for i, w in enumerate(waves):
+        if not isinstance(w, dict) or not isinstance(w.get("id"), str) or not PLAIN_ID.match(w["id"]) \
+                or w["id"] in RESERVED_IDS:
+            out.append(f"waves[{i}]: needs a plain string id")
+            continue
+        if w["id"] in wave_ids:
+            out.append(f"waves: duplicate id {w['id']!r}")
+        if "title" in w and not isinstance(w["title"], str):
+            out.append(f"waves[{w['id']}]: title must be a string")
+        if not _is_str_list(w.get("steps")):
+            out.append(f"waves[{w['id']}]: steps must be a list of step ids")
+        wave_ids[w["id"]] = w.get("steps") if _is_str_list(w.get("steps")) else []
+        wave_pos.setdefault(w["id"], i)
+    steps = plan.get("steps")
+    if not isinstance(steps, list) or not steps:
+        out.append("steps: must be a non-empty list")
+        steps = []
+    ids: dict[str, dict] = {}
+    for i, s in enumerate(steps):
+        if not isinstance(s, dict) or not isinstance(s.get("id"), str) or not STEP_ID.match(s["id"]):
+            out.append(f"steps[{i}]: needs an id of the form T<n>")
+            continue
+        if s["id"] in ids:
+            out.append(f"steps: duplicate id {s['id']!r}")
+            continue
+        if s["id"] != f"T{i + 1}":
+            out.append(f"steps[{i}]: id {s['id']!r} must equal its 1-based position (T{i + 1})")
+        ids[s["id"]] = s
+    for sid, s in ids.items():
+        tag = f"step {sid}"
+        for key, typ in (("title", str), ("intent", str), ("kind", str), ("layer", str),
+                         ("wave", str), ("parallel", bool), ("depends_on", list), ("files", dict),
+                         ("touches", list), ("red", dict), ("green", dict), ("verify", list),
+                         ("risk", dict), ("effort", dict), ("review", dict)):
+            if key not in s:
+                out.append(f"{tag}: missing field {key!r}")
+            elif not isinstance(s[key], typ) or (typ is not bool and isinstance(s[key], bool)):
+                out.append(f"{tag}: field {key!r} must be a {typ.__name__}")
+        for key in ("title", "intent", "layer"):
+            if isinstance(s.get(key), str) and not s[key].strip():
+                out.append(f"{tag}: {key} must not be empty")
+        if isinstance(s.get("kind"), str) and s["kind"] not in KINDS:
+            out.append(f"{tag}: kind {s['kind']!r} is not one of {'|'.join(KINDS)}")
+        if isinstance(s.get("wave"), str) and wave_ids and s["wave"] not in wave_ids:
+            out.append(f"{tag}: wave {s['wave']!r} is not declared in waves")
+        if isinstance(s.get("depends_on"), list):
+            for d in s["depends_on"]:
+                if not isinstance(d, str):
+                    out.append(f"{tag}: depends_on entries must be step ids (strings)")
+                elif d not in ids:
+                    out.append(f"{tag}: depends_on {d!r} does not resolve to a step id")
+                elif d == sid:
+                    out.append(f"{tag}: depends on itself")
+                else:
+                    dep = ids[d]
+                    if (isinstance(dep.get("wave"), str) and isinstance(s.get("wave"), str)
+                            and dep["wave"] in wave_pos and s["wave"] in wave_pos):
+                        if wave_pos[dep["wave"]] > wave_pos[s["wave"]]:
+                            out.append(f"{tag}: depends on {d}, which runs in a later wave ({dep['wave']})")
+                        elif (dep["wave"] == s["wave"] and s.get("parallel") is True
+                              and dep.get("parallel") is False):
+                            out.append(f"{tag}: a parallel step cannot depend on sequential step {d} of the "
+                                       f"same wave (parallel steps run first)")
+        if isinstance(s.get("touches"), list):
+            for t in s["touches"]:
+                if not isinstance(t, str):
+                    out.append(f"{tag}: touches entries must be component ids (strings)")
+                elif t not in comp_ids:
+                    out.append(f"{tag}: touches {t!r} which is not in context.components")
+        cmds: list[tuple[str, str]] = []
+        for key in ("red", "green"):
+            blk = s.get(key)
+            if isinstance(blk, dict):
+                run = blk.get("run")
+                if not isinstance(run, str) or not run.strip():
+                    out.append(f"{tag}: {key}.run must be a non-empty command")
+                else:
+                    cmds.append((f"{key}.run", run))
+                for sub in ("test", "code", "sketch"):
+                    if sub in blk and not isinstance(blk[sub], str):
+                        out.append(f"{tag}: {key}.{sub} must be a string")
+        ver = s.get("verify")
+        if isinstance(ver, list):
+            if not ver or not all(isinstance(x, str) and x.strip() for x in ver):
+                out.append(f"{tag}: verify must be a non-empty list of commands")
+            cmds += [("verify", x) for x in ver if isinstance(x, str)]
+        for where, cmd in cmds:
+            m = DESTRUCTIVE.search(cmd)
+            if m:
+                out.append(f"{tag}: {where} holds a destructive command form {m.group(0).strip()!r}")
+        ds = s.get("diff_sketch")
+        if ds is not None and (not isinstance(ds, str) or ds.count("\n") + 1 > MAX_DIFF_LINES):
+            out.append(f"{tag}: diff_sketch must be a string of at most {MAX_DIFF_LINES} lines")
+        files = s.get("files")
+        if isinstance(files, dict):
+            for key in ("create", "modify", "test"):
+                lst = files.get(key, [])
+                if not _is_str_list(lst):
+                    out.append(f"{tag}: files.{key} must be a list of paths")
+                    continue
+                for p in lst:
+                    if HOME_PATH.search(p):
+                        out.append(f"{tag}: files.{key} has an absolute home path {p!r}")
+                    elif BAD_PATH.search(p) or not p.strip():
+                        out.append(f"{tag}: files.{key} path {p!r} must be relative to the project root "
+                                   f"(no leading /, drive letter, ~, backslash or ..)")
+        for key in ("screens",):
+            if key in s and not _is_str_list(s[key]):
+                out.append(f"{tag}: {key} must be a list of paths")
+        risk = s.get("risk")
+        if isinstance(risk, dict):
+            if risk.get("level") not in RISK_LEVELS:
+                out.append(f"{tag}: risk.level {risk.get('level')!r} is not one of {'|'.join(RISK_LEVELS)}")
+            if "note" in risk and not isinstance(risk["note"], str):
+                out.append(f"{tag}: risk.note must be a string")
+        eff = s.get("effort")
+        if isinstance(eff, dict) and not _is_int(eff.get("minutes"), 0, 100000):
+            out.append(f"{tag}: effort.minutes must be a non-negative integer")
+        rev = s.get("review")
+        if isinstance(rev, dict):
+            if rev.get("status") not in REVIEW_STATUS:
+                out.append(f"{tag}: review.status {rev.get('status')!r} is not one of {'|'.join(REVIEW_STATUS)}")
+            for key in ("note", "edited_text"):
+                if key in rev and not isinstance(rev[key], str):
+                    out.append(f"{tag}: review.{key} must be a string")
+        hist = s.get("history")
+        if hist is not None:
+            if not isinstance(hist, list):
+                out.append(f"{tag}: history must be a list")
+            else:
+                for i, h in enumerate(hist):
+                    if (not isinstance(h, dict) or not _is_int(h.get("v"), 1) or not _is_str_list(h.get("changed"))
+                            or any(k in h and not isinstance(h[k], str) for k in ("summary", "diff"))):
+                        out.append(f"{tag}: history[{i}] must be {{v: int, changed: [field, …], summary?, diff?}}")
+        info = s.get("infographic")
+        if info is not None:
+            if (not isinstance(info, dict) or info.get("type") not in ("bar", "line", "pie")
+                    or not isinstance(info.get("title"), str)
+                    or not isinstance(info.get("data"), list) or not info["data"]
+                    or not all(isinstance(r, list) and len(r) == 2 and isinstance(r[0], str)
+                               and isinstance(r[1], (int, float)) and not isinstance(r[1], bool)
+                               and r[1] == r[1] and abs(r[1]) != float("inf")
+                               for r in info["data"])):
+                out.append(f"{tag}: infographic must be {{type: bar|line|pie, title, data: [[label, number], …]}}")
+            elif len(info["data"]) > MAX_INFOGRAPHIC_ROWS:
+                out.append(f"{tag}: infographic.data has {len(info['data'])} rows; the limit is {MAX_INFOGRAPHIC_ROWS}")
+    # dependency cycles (DFS over resolvable edges)
+    graph = {sid: [d for d in (s.get("depends_on") or []) if isinstance(d, str) and d in ids and d != sid]
+             for sid, s in ids.items()}
+    state: dict[str, int] = {}
+    cycle: list[str] | None = None
+
+    def visit(node: str, path: list[str]) -> None:
+        nonlocal cycle
+        if cycle:
+            return
+        state[node] = 1
+        for nxt in graph[node]:
+            if state.get(nxt) == 1:
+                cycle = path[path.index(nxt):] + [nxt]
+                return
+            if nxt not in state:
+                visit(nxt, path + [nxt])
+        state[node] = 2
+
+    for sid in sorted(ids, key=lambda x: int(x[1:])):
+        if sid not in state:
+            visit(sid, [sid])
+    if cycle:
+        out.append("depends_on: dependency cycle " + " -> ".join(reversed(cycle)))
+    membership: dict[str, list[str]] = {sid: [] for sid in ids}
+    for wid, wsteps in wave_ids.items():
+        for st in wsteps:
+            if st not in ids:
+                out.append(f"wave {wid}: step {st!r} does not exist")
+            else:
+                membership[st].append(wid)
+        # parallel steps inside one wave never share a create, modify or test path
+        seen: dict[str, tuple[str, str]] = {}
+        for st in wsteps:
+            s = ids.get(st)
+            if not s or s.get("parallel") is not True or not isinstance(s.get("files"), dict):
+                continue
+            for key in ("modify", "create", "test"):
+                for p in s["files"].get(key, []) or []:
+                    if not isinstance(p, str):
+                        continue
+                    p = norm_path(p)
+                    if p in seen and seen[p][0] != st:
+                        out.append(f"wave {wid}: parallel steps {seen[p][0]} and {st} both {seen[p][1]} {p!r}")
+                    else:
+                        seen.setdefault(p, (st, key))
+    for sid, s in ids.items():
+        if isinstance(s.get("wave"), str) and s["wave"] in wave_ids and sid not in wave_ids[s["wave"]]:
+            out.append(f"step {sid}: not listed in wave {s['wave']}")
+        if wave_ids and not membership[sid]:
+            out.append(f"step {sid}: not listed in any wave")
+        elif len(membership[sid]) > 1:
+            out.append(f"step {sid}: listed in more than one wave ({', '.join(membership[sid])})")
+    return out
+
+
+def warnings_of(plan: dict) -> list[str]:
+    """Advisory lines (stderr): inconsistent metrics, dependencies on deferred steps."""
+    out = metrics_warnings(plan)
+    by = step_index(plan)
+    for s in steps_of(plan):
+        if is_deferred(s):
+            continue
+        for d in s.get("depends_on") or []:
+            if isinstance(d, str) and d in by and is_deferred(by[d]):
+                out.append(f"step {s['id']}: depends on {d}, which is deferred — un-defer {d} or defer {s['id']} too")
+    return out
+
+
+def metrics_of(plan: dict) -> dict:
+    """Derived totals (the schema documents `metrics` as optional; this is the source of truth)."""
+    steps = steps_of(plan)
+    by_layer: dict[str, int] = {}
+    for s in steps:
+        by_layer[str(s.get("layer", ""))] = by_layer.get(str(s.get("layer", "")), 0) + 1
+    par = sum(1 for s in steps if s.get("parallel") is True)
+    mins = sum(minutes_of(s) for s in steps)
+    return {"steps": len(steps), "parallel": par, "sequential": len(steps) - par,
+            "minutes": int(mins) if float(mins).is_integer() else mins, "by_layer": by_layer}
+
+
+def metrics_warnings(plan: dict) -> list[str]:
+    given = plan.get("metrics")
+    if not isinstance(given, dict):
+        return []
+    derived = metrics_of(plan)
+    return [f"metrics.{k}: plan says {given[k]!r}, steps give {derived[k]!r} (metrics are derived from steps; the plan's copy is ignored)"
+            for k in ("steps", "parallel", "sequential", "minutes", "by_layer")
+            if k in given and given[k] != derived[k]]
+
+
+# ───────────────────────────────── helpers ──────────────────────────────────────
+def steps_of(plan: dict) -> list[dict]:
+    return [s for s in plan.get("steps", []) if isinstance(s, dict)]
+
+
+def step_index(plan: dict) -> dict[str, dict]:
+    return {s["id"]: s for s in steps_of(plan)}
+
+
+def task_numbers(plan: dict) -> dict[str, int]:
+    """Task N is the step's 1-based position in `steps`; deferral never renumbers the others."""
+    return {s["id"]: i + 1 for i, s in enumerate(steps_of(plan))}
+
+
+def review_of(s: dict) -> dict:
+    r = s.get("review")
+    return r if isinstance(r, dict) else {"status": "pending"}
+
+
+def is_deferred(s: dict) -> bool:
+    return review_of(s).get("status") == "deferred"
+
+
+def minutes_of(s: dict) -> float:
+    e = s.get("effort") or {}
+    m = e.get("minutes", 0)
+    return m if isinstance(m, (int, float)) and not isinstance(m, bool) else 0
+
+
+def layers_of(plan: dict) -> list[str]:
+    out: list[str] = []
+    for c in (plan.get("context") or {}).get("components", []) or []:
+        lay = c.get("layer") if isinstance(c, dict) else None
+        if isinstance(lay, str) and lay not in out:
+            out.append(lay)
+    for s in steps_of(plan):
+        lay = s.get("layer")
+        if isinstance(lay, str) and lay not in out:
+            out.append(lay)
+    return out
+
+
+def esc(s) -> str:
+    return html.escape(str(s), quote=True)
+
+
+# ───────────────────────────────── plan.md ──────────────────────────────────────
+def mermaid_source(plan: dict) -> str:
+    """The wave/dependency graph as a Mermaid block (readable on GitHub; drawn as SVG in plan.html)."""
+    by = step_index(plan)
+    lines = ["graph LR"]
+    for w in plan.get("waves", []):
+        lines.append(f'  subgraph {w["id"]}["{_mm(w["id"] + " " + str(w.get("title", "")))}"]')
+        for sid in w.get("steps", []):
+            s = by.get(sid)
+            if not s:
+                continue
+            title = str(s.get("title", ""))
+            short = title[:28] + ("…" if len(title) > 28 else "")
+            lines.append(f'    {sid}["{_mm(sid + " " + short)}"]')
+        lines.append("  end")
+    for s in steps_of(plan):
+        for d in s.get("depends_on", []) or []:
+            if d in by:
+                lines.append(f"  {d} --> {s['id']}")
+    return "\n".join(lines)
+
+
+def _mm(s: str) -> str:
+    return s.replace('"', "'").replace("[", "(").replace("]", ")")
+
+
+def _code(s: str) -> str:
+    s = str(s).replace("\n", " ")
+    return "`" + s.replace("`", "'") + "`"
+
+
+def task_block(plan: dict, s: dict) -> str:
+    nums = task_numbers(plan)
+    by = step_index(plan)
+    files = s.get("files") or {}
+    red = s.get("red") or {}
+    green = s.get("green") or {}
+    risk = s.get("risk") or {}
+    rev = review_of(s)
+    deps = [d for d in (s.get("depends_on") or []) if d in nums]
+    dep_txt = ", ".join(f"Task {nums[d]}" for d in deps)
+    par = "YES" if s.get("parallel") else "NO"
+    if dep_txt:
+        par += f" (depends on {dep_txt})"
+    o = [f"### Task {nums[s['id']]}: {s.get('title', '')} ({s['id']})",
+         f"Parallel: {par}",
+         "",
+         f"Wave: {s.get('wave', '')} · Kind: {s.get('kind', '')} · Layer: {s.get('layer', '')}",
+         "",
+         str(s.get("intent", "")).strip(),
+         "",
+         "**Files:**"]
+    for label, key in (("Create", "create"), ("Modify", "modify"), ("Test", "test")):
+        lst = files.get(key) or []
+        o.append(f"- {label}: " + (", ".join(_code(p) for p in lst) if lst else "—"))
+    o.append("")
+    red_test = str(red.get("test", "")).strip()
+    red_code = str(red.get("code", "")).strip()
+    sketch = str(green.get("sketch", "")).strip()
+    fences: list[str] = []
+    if "\n" in red_code:
+        o.append("- [ ] Write failing test: " + red_test + " — see the test code below")
+        fences.append("**Test code:**\n\n```\n" + red_code + "\n```")
+    else:
+        o.append("- [ ] Write failing test: " + red_test + (f" — {_code(red_code)}" if red_code else ""))
+    o.append("- [ ] Run test: verify FAIL — " + _code(red.get("run", "")))
+    if "\n" in sketch:
+        o.append("- [ ] Implement: see the implementation sketch below")
+        fences.append("**Implementation sketch:**\n\n```\n" + sketch + "\n```")
+    else:
+        o.append("- [ ] Implement: " + sketch)
+    o.append("- [ ] Run test: verify PASS — " + _code(green.get("run") or red.get("run", "")))
+    o.append(f'- [ ] Commit: `git commit -m "feat: {_commit_msg(s)}"`')
+    o.append("")
+    for f in fences:
+        o += [f, ""]
+    o.append("**Verify:** " + " && ".join(_code(v) for v in (s.get("verify") or [])))
+    o.append(f"**Touches:** {', '.join(s.get('touches') or []) or '—'}")
+    note = str(risk.get("note", "")).strip()
+    o.append(f"**Risk:** {risk.get('level', '')}" + (f" — {note}" if note else ""))
+    o.append(f"**Effort:** {fmt_num(minutes_of(s))} min")
+    if s.get("diff_sketch"):
+        o += ["", "```diff", str(s["diff_sketch"]).rstrip("\n"), "```"]
+    rnote = str(rev.get("note", "")).strip()
+    o.append("")
+    o.append(f"Review: {rev.get('status', 'pending')}" + (f" ({rnote})" if rnote else ""))
+    if rev.get("status") == "edited" and str(rev.get("edited_text", "")).strip():
+        o += ["", "**Reviewer edit:**"]
+        o += ["> " + line.replace("`", "'") for line in str(rev["edited_text"]).strip().splitlines()]
+    if deps:
+        o.append(f"Depends on: {', '.join(deps)}")
+    return "\n".join(o) + "\n"
+
+
+def _commit_msg(s: dict) -> str:
+    """A conventional-commit subject from the title: shell-significant characters removed so the
+    line is safe to paste into a shell."""
+    t = re.sub(r"[\x00-\x1f\x7f$`\\\"'!<>|&;]", "", str(s.get("title", "")))
+    t = re.sub(r"\s+", " ", t).strip()
+    return t[:60].rstrip() or s.get("id", "step")
+
+
+def render_md(plan: dict) -> str:
+    steps = steps_of(plan)
+    active = [s for s in steps if not is_deferred(s)]
+    deferred = [s for s in steps if is_deferred(s)]
+    par = sum(1 for s in active if s.get("parallel"))
+    mins = sum(minutes_of(s) for s in active)
+    ctx = plan.get("context") or {}
+    o = [f"# Plan: {plan.get('title', '')}", "",
+         f"Version: v{plan.get('version', '')} · Status: {plan.get('status', '')} · Spec: "
+         f"{_code(plan.get('spec', '')) if plan.get('spec') else '—'}", "",
+         f"Feature: {plan.get('feature', '')} · Steps: {len(active)} ({par} parallel, {len(active) - par} sequential)"
+         f"{f' · {len(deferred)} deferred' if deferred else ''} · ~{fmt_num(round(mins / 60, 1))} h",
+         ""]
+    for r in plan.get("research", []) or []:
+        o.append(f"- Research: {_code(r)}")
+    if plan.get("research"):
+        o.append("")
+    o += ["## Global Constraints", "_Every task inherits these — do not restate per task._"]
+    cons = plan.get("constraints") or []
+    o += [f"- {c}" for c in cons] or ["- (none)"]
+    o.append("")
+    if ctx:
+        o += ["## Context", ""]
+        if ctx.get("summary"):
+            o += [str(ctx["summary"]).strip(), ""]
+        if ctx.get("stack"):
+            o += ["Stack: " + ", ".join(str(x) for x in ctx["stack"]), ""]
+        blast = ctx.get("blast") or []
+        if blast:
+            o += ["| Blast radius | Files | Hits |", "|---|---|---|"]
+            o += [f"| {_code(b.get('path', ''))} | {fmt_num(b.get('files', 0))} | {fmt_num(b.get('hits', 0))} |"
+                  for b in blast if isinstance(b, dict)]
+            o.append("")
+    by = step_index(plan)
+    o += ["## Waves", ""]
+    for w in plan.get("waves", []):
+        names = []
+        for sid in w.get("steps", []):
+            s = by.get(sid)
+            tag = "deferred" if s and is_deferred(s) else "parallel" if s and s.get("parallel") else "sequential"
+            names.append(f"{sid} ({tag})")
+        o.append(f"- {w['id']} {w.get('title', '')}: " + (", ".join(names) or "—"))
+    o += ["", "```mermaid", mermaid_source(plan), "```", "",
+          "> Execute waves in order; inside a wave, tasks marked *Parallel: YES* may run concurrently "
+          "(they never share a modified file). Deferred tasks are listed at the end and are not executed.",
+          "", "## Tasks", ""]
+    o += [task_block(plan, s) for s in active]
+    if deferred:
+        o += ["## Deferred — not executed this run", ""]
+        o += [task_block(plan, s) for s in deferred]
+    srcs = plan.get("sources") or []
+    if srcs:
+        o += ["## Sources", ""]
+        for src in srcs:
+            if isinstance(src, dict):
+                lab = str(src.get("label", ""))
+                href = src.get("href")
+                o.append(f"- {src.get('id', '')}: " + (f"[{lab}]({href})" if href else lab))
+        o.append("")
+    o.append(f"<!-- {SCHEMA} v{plan.get('version', '')} sha256:{plan_hash(plan)} -->")
+    return "\n".join(o) + "\n"
+
+
+# ───────────────────────── Markdown subset → HTML (stdlib) ───────────────────────
+_INLINE_CODE = re.compile(r"`([^`]+)`")
+_BOLD = re.compile(r"\*\*(.+?)\*\*")
+_ITAL = re.compile(r"(?<![\w*])\*(?!\s)([^*]+?)(?<!\s)\*(?![\w*])")
+_ITAL_U = re.compile(r"(?<![\w_])_(?!\s)([^_]+?)(?<!\s)_(?![\w_])")
+_LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+
+
+def _inline(text: str) -> str:
+    """Inline code, bold, italic, links; everything else HTML-escaped."""
+    parts: list[str] = []
+    pos = 0
+    for m in _INLINE_CODE.finditer(text):
+        parts.append(_inline_text(text[pos:m.start()]))
+        parts.append("<code>" + esc(m.group(1)) + "</code>")
+        pos = m.end()
+    parts.append(_inline_text(text[pos:]))
+    return "".join(parts)
+
+
+def _inline_text(t: str) -> str:
+    t = esc(t)
+    t = _BOLD.sub(r"<strong>\1</strong>", t)
+    t = _ITAL.sub(r"<em>\1</em>", t)
+    t = _ITAL_U.sub(r"<em>\1</em>", t)
+    t = _LINK.sub(lambda m: '<a href="%s">%s</a>' % (m.group(2), m.group(1))
+                  if re.match(r"(?i)^(https?:|#|\.|/|[\w.-]+/|[\w.-]+\.md)", m.group(2))
+                  else m.group(0), t)
+    return t
+
+
+def md_to_html(md: str, mermaid_svg: str | None = None) -> str:
+    """A small, predictable Markdown subset: headings, bullet/numbered lists, task lists, pipe
+    tables, fenced code, blockquotes, paragraphs, HTML comments (dropped). A ```mermaid fence is
+    replaced by `mermaid_svg` when given."""
+    lines = md.replace("\r\n", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        if not line.strip():
+            i += 1
+            continue
+        if line.startswith("```"):
+            lang = line[3:].strip()
+            body: list[str] = []
+            i += 1
+            while i < n and not lines[i].startswith("```"):
+                body.append(lines[i])
+                i += 1
+            i += 1
+            if lang == "mermaid" and mermaid_svg:
+                out.append('<div class="graph">' + mermaid_svg + "</div>")
+            else:
+                cls = f' class="language-{esc(lang)}"' if lang else ""
+                if lang == "diff":
+                    rows = ['<span class="add">' + esc(b) + "</span>" if b.startswith("+")
+                            else '<span class="del">' + esc(b) + "</span>" if b.startswith("-")
+                            else esc(b) for b in body]
+                    out.append(f"<pre><code{cls}>" + "\n".join(rows) + "</code></pre>")
+                else:
+                    out.append(f"<pre><code{cls}>" + esc("\n".join(body)) + "</code></pre>")
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*?)\s*#*$", line)
+        if m:
+            lvl = len(m.group(1))
+            out.append(f"<h{lvl}>{_inline(m.group(2))}</h{lvl}>")
+            i += 1
+            continue
+        if line.lstrip().startswith("<!--"):
+            # Only a one-line comment (the plan.md trailer) is dropped; anything else that looks like
+            # a comment is shown escaped, so plan text can never swallow the document.
+            if "-->" not in line:
+                out.append("<p>" + esc(line.strip()) + "</p>")
+            i += 1
+            continue
+        if line.startswith(">"):
+            quote: list[str] = []
+            while i < n and lines[i].startswith(">"):
+                quote.append(lines[i][1:].strip())
+                i += 1
+            out.append("<blockquote><p>" + _inline(" ".join(quote)) + "</p></blockquote>")
+            continue
+        if "|" in line and i + 1 < n and re.match(r"^\s*\|?\s*:?-{3,}", lines[i + 1]):
+            head = _cells(line)
+            i += 2
+            rows: list[list[str]] = []
+            while i < n and lines[i].strip().startswith("|"):
+                rows.append(_cells(lines[i]))
+                i += 1
+            t = "<table><thead><tr>" + "".join(f"<th>{_inline(c)}</th>" for c in head) + "</tr></thead>"
+            if rows:
+                t += "<tbody>" + "".join("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>"
+                                         for r in rows) + "</tbody>"
+            out.append(t + "</table>")
+            continue
+        lm = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", line)
+        if lm:
+            ordered = lm.group(2)[0].isdigit()
+            tag = "ol" if ordered else "ul"
+            items: list[str] = []
+            while i < n:
+                lm = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", lines[i])
+                if not lm or lm.group(2)[0].isdigit() != ordered:
+                    break
+                body_txt = lm.group(3)
+                tm = re.match(r"^\[([ xX])\]\s*(.*)$", body_txt)
+                if tm:
+                    checked = " checked" if tm.group(1).lower() == "x" else ""
+                    items.append('<li class="task"><input type="checkbox" disabled' + checked + "> "
+                                 + _inline(tm.group(2)) + "</li>")
+                else:
+                    items.append("<li>" + _inline(body_txt) + "</li>")
+                i += 1
+            out.append(f"<{tag}>" + "".join(items) + f"</{tag}>")
+            continue
+        para: list[str] = []
+        while i < n and lines[i].strip() and not re.match(r"^(#{1,6}\s|```|>|\s*([-*]|\d+\.)\s|\s*\|)", lines[i]) \
+                and not (lines[i].lstrip().startswith("<!--") and para):
+            para.append(lines[i].strip())
+            i += 1
+        if para:
+            out.append("<p>" + _inline(" ".join(para)) + "</p>")
+        else:
+            i += 1
+    return "\n".join(out) + "\n"
+
+
+def _cells(line: str) -> list[str]:
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in re.split(r"(?<!\\)\|", s)]
+
+
+# ───────────────────────────── SVG: wave graph + charts ──────────────────────────
+def wave_graph_svg(plan: dict) -> str:
+    """Boxes per step grouped by wave (columns), arrows for depends_on. Deterministic, no library."""
+    by = step_index(plan)
+    waves = [w for w in plan.get("waves", []) if isinstance(w, dict)]
+    colw, boxw, boxh, gap, top = 220, 180, 44, 14, 44
+    rows = max([len([s for s in w.get("steps", []) if s in by]) for w in waves] or [1])
+    W = max(1, len(waves)) * colw + 20
+    H = top + rows * (boxh + gap) + 16
+    pos: dict[str, tuple] = {}
+    body: list[str] = []
+    for wi, w in enumerate(waves):
+        x0 = 10 + wi * colw
+        body.append(f'<rect class="wave" x="{x0}" y="8" width="{colw - 16}" height="{H - 16}" rx="10"/>')
+        body.append(f'<text class="wavelabel" x="{x0 + 12}" y="30">{esc(w["id"])} · {esc(w.get("title", ""))}</text>')
+        k = 0
+        for sid in w.get("steps", []):
+            s = by.get(sid)
+            if not s:
+                continue
+            x, y = x0 + 12, top + k * (boxh + gap)
+            pos[sid] = (x, y)
+            k += 1
+    for s in steps_of(plan):
+        for d in s.get("depends_on", []) or []:
+            if d in pos and s["id"] in pos:
+                ax, ay = pos[d]
+                bx, by_ = pos[s["id"]]
+                sx, sy = ax + boxw, ay + boxh / 2
+                tx, ty = bx, by_ + boxh / 2
+                if bx <= ax:  # same column (or earlier): route around the right side
+                    sx, sy, tx, ty = ax + boxw / 2, ay + boxh, bx + boxw / 2, by_
+                    mid = (sy + ty) / 2
+                    body.append(f'<path class="dep" d="M{sx:g},{sy:g} C{sx:g},{mid:g} {tx:g},{mid:g} {tx:g},{ty:g}" marker-end="url(#arrow)"/>')
+                else:
+                    mid = (sx + tx) / 2
+                    body.append(f'<path class="dep" d="M{sx:g},{sy:g} C{mid:g},{sy:g} {mid:g},{ty:g} {tx:g},{ty:g}" marker-end="url(#arrow)"/>')
+    for sid, (x, y) in pos.items():
+        s = by[sid]
+        title = str(s.get("title", ""))
+        short = title[:24] + ("…" if len(title) > 24 else "")
+        cls = "step deferred" if is_deferred(s) else ("step seq" if not s.get("parallel") else "step")
+        body.append(f'<g class="{cls}" data-step="{esc(sid)}"><rect x="{x}" y="{y}" width="{boxw}" height="{boxh}" rx="8"/>'
+                    f'<text class="id" x="{x + 10}" y="{y + 18}">{esc(sid)}</text>'
+                    f'<text class="t" x="{x + 10}" y="{y + 34}">{esc(short)}</text><title>{esc(sid + " " + title)}</title></g>')
+    desc = "; ".join(f"{w['id']}: {', '.join(w.get('steps', []))}" for w in waves)
+    return (f'<svg class="wavegraph" viewBox="0 0 {W} {H}" role="img" aria-labelledby="wg-title wg-desc">'
+            f'<title id="wg-title">Waves and dependencies</title><desc id="wg-desc">{esc(desc)}</desc>'
+            '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">'
+            '<path d="M0,0 L10,5 L0,10 z"/></marker></defs>' + "".join(body) + "</svg>")
+
+
+def mermaid_via_mmdc(src: str) -> str | None:
+    exe = shutil.which("mmdc")
+    if not exe:
+        return None
+    tmp = tempfile.mkdtemp(prefix="plan-render-")
+    try:
+        inp, outp = os.path.join(tmp, "graph.mmd"), os.path.join(tmp, "graph.svg")
+        with open(inp, "w", encoding="utf-8") as fh:
+            fh.write(src)
+        r = subprocess.run([exe, "-q", "-i", inp, "-o", outp], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0 or not os.path.exists(outp):
+            return None
+        with open(outp, encoding="utf-8") as fh:
+            svg = fh.read()
+        return svg if svg.lstrip().startswith("<svg") else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _sr_table(title: str, rows: list[tuple[str, str]], head: tuple[str, str] = ("Item", "Value")) -> str:
+    return ('<table class="sr"><caption>' + esc(title) + "</caption><thead><tr><th>" + esc(head[0]) + "</th><th>"
+            + esc(head[1]) + "</th></tr></thead><tbody>"
+            + "".join(f"<tr><th>{esc(a)}</th><td>{esc(b)}</td></tr>" for a, b in rows) + "</tbody></table>")
+
+
+def _chart(key: str, title: str, svg_body: str, vb: tuple[int, int], desc: str, rows, head=("Item", "Value")) -> str:
+    cid = "c-" + re.sub(r"[^a-z0-9]+", "-", key.lower())
+    return (f'<div class="chart" data-chart="{esc(key)}"><div class="label">{esc(title)}</div>'
+            f'<svg viewBox="0 0 {vb[0]} {vb[1]}" role="img" aria-labelledby="{cid}-t {cid}-d">'
+            f'<title id="{cid}-t">{esc(title)}</title><desc id="{cid}-d">{esc(desc)}</desc>{svg_body}</svg>'
+            + _sr_table(title, rows, head) + "</div>")
+
+
+def chart_bar(key: str, title: str, data: list[tuple[str, float]], alt: bool = False, unit: str = "") -> str:
+    W, H, pl, pb = 320, 170, 36, 34
+    mx = max([d[1] for d in data] or [1]) or 1
+    bw = (W - pl - 10) / len(data)
+    parts = []
+    for i, (lab, val) in enumerate(data):
+        h = (H - pb - 14) * val / mx
+        x = pl + i * bw + bw * 0.15
+        y = H - pb - h
+        cls = "bar hatch" if alt and i % 2 else "bar"
+        short = lab if len(lab) <= 11 else lab[:10] + "…"
+        fs = 9 if len(data) > 4 else 11
+        parts.append(f'<rect class="{cls}" x="{x:.1f}" y="{y:.1f}" width="{bw * .7:.1f}" height="{h:.1f}" rx="3"><title>{esc(lab)}: {fmt_num(val)}</title></rect>'
+                     f'<text x="{x + bw * .35:.1f}" y="{y - 4:.1f}" text-anchor="middle">{fmt_num(val)}</text>'
+                     f'<text x="{x + bw * .35:.1f}" y="{H - pb + 14}" text-anchor="middle" font-size="{fs}">{esc(short)}</text>')
+    body = f'<line class="axis" x1="{pl}" y1="{H - pb}" x2="{W - 4}" y2="{H - pb}"/>' + "".join(parts)
+    desc = "; ".join(f"{lab} {fmt_num(val)}{unit}" for lab, val in data)
+    return _chart(key, title, body, (W, H), desc, [(lab, fmt_num(val) + unit) for lab, val in data])
+
+
+def chart_hbar(key: str, title: str, data: list[tuple[str, float]], unit: str = "") -> str:
+    rowh, pl, W = 22, 150, 420
+    H = len(data) * rowh + 24
+    mx = max([d[1] for d in data] or [1]) or 1
+    parts = []
+    for i, (lab, val) in enumerate(data):
+        y = 8 + i * rowh
+        w = (W - pl - 50) * val / mx
+        short = lab if len(lab) <= 22 else "…" + lab[-21:]
+        parts.append(f'<text x="{pl - 8}" y="{y + 14}" text-anchor="end">{esc(short)}</text>'
+                     f'<rect class="bar{" hatch" if i % 2 else ""}" x="{pl}" y="{y + 3}" width="{w:.1f}" height="{rowh - 7}" rx="3"><title>{esc(lab)}: {fmt_num(val)}</title></rect>'
+                     f'<text x="{pl + w + 6:.1f}" y="{y + 14}">{fmt_num(val)}</text>')
+    body = f'<line class="axis" x1="{pl}" y1="4" x2="{pl}" y2="{H - 12}"/>' + "".join(parts)
+    desc = "; ".join(f"{lab} {fmt_num(val)}{unit}" for lab, val in data)
+    return _chart(key, title, body, (W, H), desc, [(lab, fmt_num(val) + unit) for lab, val in data])
+
+
+def chart_donut(key: str, title: str, data: list[tuple[str, float]]) -> str:
+    import math
+    total = sum(d[1] for d in data) or 1
+    cols = ["var(--accent)", "var(--ok)", "var(--warn)", "var(--ink-3)", "var(--stop)", "var(--ink-2)"]
+    a0 = -math.pi / 2
+    segs = []
+    r, cx, cy = 60, 80, 80
+    for i, (lab, val) in enumerate(data):
+        a1 = a0 + 2 * math.pi * val / total
+        if val >= total:  # a single full circle cannot be drawn as one arc
+            segs.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{cols[i % 6]}" stroke-width="22"><title>{esc(lab)}: {fmt_num(val)}</title></circle>')
+        else:
+            x0, y0 = cx + r * math.cos(a0), cy + r * math.sin(a0)
+            x1, y1 = cx + r * math.cos(a1), cy + r * math.sin(a1)
+            big = 1 if a1 - a0 > math.pi else 0
+            dash = ' stroke-dasharray="6 3"' if i % 2 else ""
+            segs.append(f'<path d="M{x0:.1f},{y0:.1f} A{r},{r} 0 {big} 1 {x1:.1f},{y1:.1f}" fill="none" stroke="{cols[i % 6]}" stroke-width="22"{dash}><title>{esc(lab)}: {fmt_num(val)}</title></path>')
+        a0 = a1
+    leg = "".join(f'<text x="170" y="{40 + i * 20}"><tspan fill="{cols[i % 6]}">■</tspan> {esc(lab)} — {fmt_num(val)} min ({round(100 * val / total)}%)</text>'
+                  for i, (lab, val) in enumerate(data))
+    centre = f'<text class="big" x="{cx}" y="{cy + 5}" text-anchor="middle">{fmt_num(round(total / 60, 1))} h</text>'
+    H = max(170, 40 + len(data) * 20)
+    desc = "; ".join(f"{lab} {fmt_num(val)} min" for lab, val in data)
+    return _chart(key, title, "".join(segs) + centre + leg, (320, H), desc, [(lab, fmt_num(val) + " min") for lab, val in data])
+
+
+def chart_line(key: str, title: str, data: list[tuple[str, float]]) -> str:
+    W, H, pl, pb = 320, 170, 36, 34
+    mx = max([d[1] for d in data] or [1]) or 1
+    n = max(1, len(data) - 1)
+    pts = []
+    labels = []
+    for i, (lab, val) in enumerate(data):
+        x = pl + (W - pl - 14) * i / n
+        y = H - pb - (H - pb - 20) * val / mx
+        pts.append(f"{x:.1f},{y:.1f}")
+        labels.append(f'<circle class="dot" cx="{x:.1f}" cy="{y:.1f}" r="4"><title>{esc(lab)}: {fmt_num(val)}</title></circle>'
+                      f'<text x="{x:.1f}" y="{H - pb + 14}" text-anchor="middle" font-size="9">{esc(lab[:10])}</text>'
+                      f'<text x="{x:.1f}" y="{y - 8:.1f}" text-anchor="middle">{fmt_num(val)}</text>')
+    body = (f'<line class="axis" x1="{pl}" y1="{H - pb}" x2="{W - 4}" y2="{H - pb}"/>'
+            f'<polyline class="series" points="{" ".join(pts)}"/>' + "".join(labels))
+    desc = "; ".join(f"{lab} {fmt_num(val)}" for lab, val in data)
+    return _chart(key, title, body, (W, H), desc, [(lab, fmt_num(val)) for lab, val in data])
+
+
+def chart_gantt(plan: dict) -> str:
+    steps = steps_of(plan)
+    by = step_index(plan)
+    start: dict[str, float] = {}
+    for s in steps:  # steps are listed in wave order, so one pass resolves dependencies declared earlier
+        deps = [d for d in (s.get("depends_on") or []) if d in start]
+        start[s["id"]] = max([start[d] + minutes_of(by[d]) for d in deps] or [0])
+    span = max([start[s["id"]] + minutes_of(s) for s in steps] or [1]) or 1
+    W, rowh, pl = 640, 18, 40
+    H = len(steps) * rowh + 30
+    sc = (W - pl - 10) / span
+    rows = []
+    for i, s in enumerate(steps):
+        y = 10 + i * rowh
+        x = pl + start[s["id"]] * sc
+        w = max(4, minutes_of(s) * sc)
+        cls = "task" + (" seq" if not s.get("parallel") else "") + (" deferred" if is_deferred(s) else "")
+        rows.append(f'<text x="2" y="{y + 13}">{esc(s["id"])}</text>'
+                    f'<rect class="{cls}" data-step="{esc(s["id"])}" x="{x:.1f}" y="{y + 3}" width="{w:.1f}" height="{rowh - 6}" rx="3">'
+                    f'<title>{esc(s["id"])} {esc(s.get("title", ""))} — {fmt_num(minutes_of(s))} min, starts at {fmt_num(start[s["id"]])}</title></rect>')
+    body = ("".join(rows) + f'<line class="axis" x1="{pl}" y1="{H - 12}" x2="{W - 10}" y2="{H - 12}"/>'
+            f'<text x="{pl}" y="{H - 1}">0</text><text x="{W - 10}" y="{H - 1}" text-anchor="end">{fmt_num(span)} min end-to-end</text>')
+    desc = f"Dependency-ordered timeline; {fmt_num(span)} minutes end to end. Highlighted bar: the current step; hatched: sequential."
+    return _chart("critical_path", "Critical path (minutes, dependency-ordered)", body, (W, H), desc,
+                  [(s["id"], f"start {fmt_num(start[s['id']])}, {fmt_num(minutes_of(s))} min") for s in steps],
+                  ("Step", "Start, duration"))
+
+
+def chart_risk(plan: dict) -> str:
+    steps = steps_of(plan)
+    W, H, cell, ox, oy = 320, 190, 50, 50, 10
+    grid = []
+    for r in range(3):
+        for e in range(3):
+            tone = "stop" if r + e >= 3 else "warn" if r + e >= 2 else "ok"
+            grid.append(f'<rect class="cell {tone}" x="{ox + e * cell}" y="{oy + (2 - r) * cell}" width="{cell}" height="{cell}"/>')
+    pts = []
+    seen: dict[tuple, int] = {}
+    for s in steps:
+        r = {"low": 0, "medium": 1, "high": 2}.get((s.get("risk") or {}).get("level"), 0)
+        m = minutes_of(s)
+        e = 2 if m > 90 else 1 if m > 40 else 0
+        k = seen.get((r, e), 0)
+        seen[(r, e)] = k + 1
+        x = ox + e * cell + 12 + (k % 3) * 13
+        y = oy + (2 - r) * cell + 14 + (k // 3) * 14
+        pts.append(f'<circle class="dot" data-step="{esc(s["id"])}" cx="{x}" cy="{y}" r="5"><title>{esc(s["id"])} {esc(s.get("title", ""))} — {esc((s.get("risk") or {}).get("level", ""))} risk, {fmt_num(m)} min</title></circle>')
+    labels = (f'<text x="{ox - 6}" y="{oy + cell * 2.5 + 4:g}" text-anchor="end">low</text>'
+              f'<text x="{ox - 6}" y="{oy + cell * 1.5 + 4:g}" text-anchor="end">med</text>'
+              f'<text x="{ox - 6}" y="{oy + cell * .5 + 4:g}" text-anchor="end">high</text>'
+              f'<text x="{ox + cell * .5:g}" y="{oy + cell * 3 + 16}" text-anchor="middle">≤40 min</text>'
+              f'<text x="{ox + cell * 1.5:g}" y="{oy + cell * 3 + 16}" text-anchor="middle">≤90</text>'
+              f'<text x="{ox + cell * 2.5:g}" y="{oy + cell * 3 + 16}" text-anchor="middle">&gt;90</text>'
+              f'<text x="8" y="{oy + cell * 1.5:g}" transform="rotate(-90 8 {oy + cell * 1.5:g})" text-anchor="middle">risk</text>')
+    rows = [(s["id"], f"{(s.get('risk') or {}).get('level', '')} risk, {fmt_num(minutes_of(s))} min") for s in steps]
+    return _chart("risk_matrix", "Risk × effort (each dot is a step)", "".join(grid) + "".join(pts) + labels, (W, H),
+                  "Rows: risk low to high; columns: effort up to 40, 90 and over 90 minutes.", rows, ("Step", "Risk, effort"))
+
+
+def charts_html(plan: dict) -> str:
+    """Every applicable chart (§5.3 rules), each as <div class="chart" data-chart=…>; the page clones
+    them into the side panel. Charts render only where the plan has the data."""
+    steps = steps_of(plan)
+    waves = [w for w in plan.get("waves", []) if isinstance(w, dict)]
+    ctx = plan.get("context") or {}
+    out = []
+    if len(waves) >= 2:
+        out.append(chart_bar("tasks_per_wave", "Tasks per wave", [(w["id"], len(w.get("steps", []))) for w in waves]))
+    if steps:
+        par = sum(1 for s in steps if s.get("parallel"))
+        out.append(chart_bar("parallel_vs_sequential", "Parallel vs sequential", [("parallel", par), ("sequential", len(steps) - par)], alt=True))
+    by_layer: dict[str, float] = {}
+    for s in steps:
+        if minutes_of(s) > 0:
+            by_layer[str(s.get("layer", ""))] = by_layer.get(str(s.get("layer", "")), 0) + minutes_of(s)
+    if len(by_layer) >= 2:
+        out.append(chart_donut("effort_by_layer", "Effort by layer", list(by_layer.items())))
+    blast = [b for b in (ctx.get("blast") or []) if isinstance(b, dict)]
+    if blast:
+        out.append(chart_hbar("blast_radius", "Blast radius — files per directory",
+                              [(str(b.get("path", "")), b.get("files", 0) or 0) for b in blast], " files"))
+    if len(steps) >= 3:
+        out.append(chart_gantt(plan))
+    if any((s.get("risk") or {}).get("level") in ("medium", "high") for s in steps):
+        out.append(chart_risk(plan))
+    for s in steps:
+        info = s.get("infographic")
+        if isinstance(info, dict) and isinstance(info.get("data"), list) and info["data"]:
+            data = [(str(r[0]), r[1]) for r in info["data"]]
+            key = "step:" + s["id"]
+            if info.get("type") == "line":
+                out.append(chart_line(key, str(info.get("title", "")), data))
+            elif info.get("type") == "pie":
+                out.append(chart_donut(key, str(info.get("title", "")), data))
+            else:
+                out.append(chart_bar(key, str(info.get("title", "")), data, alt=True))
+    return "\n".join(out)
+
+
+# ─────────────────────────────────── diff ───────────────────────────────────────
+def _flat(obj, prefix: str = "") -> dict:
+    """One level of nesting is enough for the "what changed" panel: files.modify, red.run, …"""
+    if isinstance(obj, dict) and prefix == "":
+        out = {}
+        for k, v in obj.items():
+            if isinstance(v, dict):
+                for k2, v2 in v.items():
+                    out[f"{k}.{k2}"] = v2
+            else:
+                out[k] = v
+        return out
+    return obj
+
+
+def diff(a: dict, b: dict) -> dict:
+    sa, sb = step_index(a), step_index(b)
+    changed: dict[str, list[str]] = {}
+    for sid in sb:
+        if sid in sa:
+            fa, fb = _flat(sa[sid]), _flat(sb[sid])
+            fields = sorted(k for k in set(fa) | set(fb) if fa.get(k) != fb.get(k))
+            if fields:
+                changed[sid] = fields
+    plan_fields = sorted(k for k in set(a) | set(b) if k != "steps" and a.get(k) != b.get(k))
+    return {"from": a.get("version"), "to": b.get("version"),
+            "added": [sid for sid in sb if sid not in sa],
+            "removed": [sid for sid in sa if sid not in sb],
+            "changed": changed, "plan": plan_fields}
+
+
+# ────────────────────────────────── plan.html ───────────────────────────────────
+def inline_json(obj) -> str:
+    """JSON for a <script type="application/json">: `</` and `<!--` can never end or confuse the
+    element, and both replacements stay valid JSON."""
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")) \
+        .replace("</", "<\\/").replace("<!--", "<\\u0021--")
+
+
+def render_html(plan: dict, theme: str = "auto", static: bool = False, mermaid: bool = False,
+                transport: str = "auto") -> str:
+    md = render_md(plan)
+    graph = None
+    if mermaid:
+        graph = mermaid_via_mmdc(mermaid_source(plan))
+    if graph is None:
+        graph = wave_graph_svg(plan)
+    md_html = md_to_html(md, graph)
+    initial = "dark" if theme == "dark" else "light"
+    slots = {"TITLE": esc(plan.get("title", "")), "THEME": initial, "THEME_MODE": theme,
+             "REVIEW_MODE": "static" if static else transport, "CHARTS": charts_html(plan),
+             "PLAN_MD_HTML": md_html, "PLAN_MD_RAW": inline_json(md), "PLAN_JSON": inline_json(plan)}
+    # One pass over the template: a placeholder-shaped string inside plan text is never re-expanded.
+    return re.sub(r"@@([A-Z_]+)@@", lambda m: slots[m.group(1)], TEMPLATE)
+
+
+TEMPLATE = r'''<!DOCTYPE html>
+<html lang="en" data-theme="@@THEME@@" data-theme-mode="@@THEME_MODE@@" data-review="@@REVIEW_MODE@@">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src http://127.0.0.1:*">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Plan walkthrough — @@TITLE@@</title>
+<style>
+:root{
+  --dur-fast:120ms;--dur-base:240ms;--dur-slow:600ms;--ease:cubic-bezier(.2,0,0,1);
+  --r-card:8px;--r-ctl:4px;--sp1:4px;--sp2:8px;--sp3:16px;--sp4:24px;--sp5:32px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+}
+[data-theme="light"]{
+  --canvas:#F7F4EE;--surface:#FFFFFF;--surface-2:#EFEAE1;--ink:#1F2328;--ink-2:#4B5563;--ink-3:#5B6470;
+  --accent:#0B5FFF;--on-accent:#FFFFFF;--ok:#1E6B3A;--warn:#8A5A00;--stop:#B42318;--line:#908A7E;--line-soft:#D8D2C6;
+  --l-1:#F6EADF;--l-2:#E8EEF9;--l-3:#EEF2F6;--l-4:#F2E8F7;--l-5:#EAF3E6;--l-6:#FFF4D6;
+  --ok-bg:#E3F1E7;--warn-bg:#FBEFD6;--stop-bg:#FBE4E1;--accent-bg:#E6EEFF;--scrim:rgba(0,0,0,.35);
+}
+[data-theme="dark"]{
+  --canvas:#15171A;--surface:#1E2126;--surface-2:#272B31;--ink:#ECEDEE;--ink-2:#B7BCC4;--ink-3:#9AA1AB;
+  --accent:#7FA8FF;--on-accent:#0B1430;--ok:#7CCB95;--warn:#E8B85A;--stop:#F28B82;--line:#707884;--line-soft:#3A3F47;
+  --l-1:#3A2E26;--l-2:#26303F;--l-3:#2B3139;--l-4:#33293A;--l-5:#263424;--l-6:#3D3521;
+  --ok-bg:#1F3326;--warn-bg:#3A2F17;--stop-bg:#3D2321;--accent-bg:#20304F;--scrim:rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html{font-size:16px}
+body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:1rem}
+a{color:var(--accent)}
+.skip{position:absolute;left:-999px;top:8px;background:var(--surface);padding:8px 12px;border:2px solid var(--accent);border-radius:4px;z-index:20}
+.skip:focus{left:8px}
+button{font:inherit;color:inherit}
+.btn{min-height:44px;min-width:44px;padding:0 var(--sp3);border:1px solid var(--line);background:var(--surface);border-radius:var(--r-ctl);cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background var(--dur-fast) var(--ease)}
+.btn:hover{background:var(--surface-2)}
+.btn:active{filter:brightness(.92)}
+.btn:disabled{opacity:.38;cursor:default;pointer-events:none}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.btn.danger{color:var(--stop);border-color:var(--stop)}
+.btn.icon{padding:0;justify-content:center}
+.btn.on{box-shadow:inset 0 0 0 2px var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 2px var(--surface)}
+.label{font-size:.8125rem;line-height:1.125rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.mono{font-family:var(--mono);font-size:.8125rem;line-height:1.25rem}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:.8125rem;font-weight:600;border:1px solid var(--line-soft);background:var(--surface-2);color:var(--ink)}
+.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.stop{background:var(--stop-bg);color:var(--stop);border-color:transparent}
+.chip.accent{background:var(--accent-bg);color:var(--accent);border-color:transparent}
+.wrap{max-width:1280px;margin:0 auto;padding:var(--sp3)}
+header.top{display:flex;flex-wrap:wrap;gap:var(--sp3);align-items:center;justify-content:space-between;padding:var(--sp3) 0}
+header.top h1{font-size:1.5rem;line-height:2rem;margin:0;font-weight:700}
+.meta{display:flex;gap:var(--sp2);align-items:center;flex-wrap:wrap;color:var(--ink-2)}
+.actions{display:flex;gap:var(--sp2);flex-wrap:wrap}
+.theme{cursor:pointer;gap:10px}
+.theme select{font:inherit;color:inherit;background:transparent;border:0;min-height:40px;cursor:pointer}
+.card{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-card);padding:var(--sp3)}
+.controls{display:flex;gap:var(--sp2);align-items:center;flex-wrap:wrap;margin-top:var(--sp3)}
+.controls .grow{flex:1}
+.progress{color:var(--ink-2)}
+.timeline{display:flex;gap:4px;margin-top:var(--sp3);border-radius:var(--r-card);overflow:hidden;background:var(--surface-2);padding:4px}
+.tl{flex:1;min-height:44px;min-width:44px;border:0;background:transparent;border-radius:4px;padding:6px 8px;text-align:left;cursor:pointer;position:relative;display:flex;flex-direction:column;justify-content:center}
+.tl .t{font-weight:600;font-size:.875rem}
+.tl .c{font-size:.75rem;color:var(--ink-3)}
+.tl[aria-current="step"]{background:var(--surface);box-shadow:inset 0 0 0 2px var(--accent)}
+.tl .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--accent);width:0;border-radius:2px}
+.main{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp3);margin-top:var(--sp3)}
+.map{grid-column:1/-1}
+.map svg{width:100%;height:auto;display:block}
+.bandlabel{font-size:11px;font-weight:700;letter-spacing:.06em;fill:var(--ink-3);text-transform:uppercase}
+.node rect{fill:var(--surface);stroke:var(--line);stroke-width:1.5;transition:stroke var(--dur-base) var(--ease),fill var(--dur-base) var(--ease),stroke-width var(--dur-base) var(--ease)}
+.node text{font-size:12px;fill:var(--ink);font-weight:600}
+.node .sub{font-size:10px;fill:var(--ink-3);font-weight:500}
+.node.new rect{stroke-dasharray:4 3}
+.node.active rect{stroke:var(--accent);stroke-width:3;fill:var(--accent-bg)}
+.node.done rect{stroke:var(--ok)}
+.node .badge{font-size:9px;font-weight:700;fill:var(--on-accent)}
+.node .badgebg{fill:var(--accent)}
+.node{cursor:pointer}
+.node:focus{outline:none}.node:focus rect{stroke:var(--accent);stroke-width:3}
+.edge{stroke:var(--line);stroke-width:1.5;fill:none;transition:stroke var(--dur-base) var(--ease)}
+.edge.active{stroke:var(--accent);stroke-width:2.5}
+.packet{fill:var(--accent);opacity:0}
+.legend{display:flex;gap:var(--sp3);flex-wrap:wrap;margin-top:var(--sp2);font-size:.8125rem;color:var(--ink-2)}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.sw{width:14px;height:14px;border:1.5px solid var(--line);border-radius:3px;background:var(--surface)}
+.sw.active{border:3px solid var(--accent);background:var(--accent-bg)}.sw.new{border-style:dashed}.sw.done{border-color:var(--ok)}
+.detail h2{font-size:1.125rem;line-height:1.625rem;margin:var(--sp2) 0}
+.detail .chips{display:flex;gap:var(--sp2);flex-wrap:wrap;align-items:center}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px var(--sp3);margin-top:var(--sp3);font-size:.9375rem}
+.kv dt{color:var(--ink-3);font-weight:600;font-size:.8125rem;letter-spacing:.04em;text-transform:uppercase;padding-top:3px}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.kv ul{margin:0;padding-left:1.1em}
+.dim{color:var(--ink-3)}
+.fade{animation:fade var(--dur-fast) var(--ease)}
+@keyframes fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}
+.toolbar{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp3);padding-top:var(--sp3);border-top:1px solid var(--line-soft);align-items:center}
+.toolbar .status{margin-left:auto}
+.side h3{margin:0 0 var(--sp2);font-size:.8125rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.side .block+.block{margin-top:var(--sp4)}
+.diff{background:var(--surface-2);border-radius:var(--r-ctl);padding:var(--sp2) var(--sp3);white-space:pre-wrap;margin:0;overflow-wrap:anywhere}
+.diff .add,.mdbody .add{color:var(--ok)}.diff .del,.mdbody .del{color:var(--stop)}
+pre.cmd{background:var(--surface-2);border-radius:var(--r-ctl);padding:8px 12px;margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--sp3)}
+.chart{position:relative}
+.chart .label{margin-bottom:6px}
+.chart svg{width:100%;height:auto;display:block;max-height:420px}
+.chart .axis{stroke:var(--line)}
+.chart text{fill:var(--ink-2);font-size:11px}
+.chart text.big{fill:var(--ink);font-weight:700;font-size:14px}
+.chart .bar{fill:var(--accent)}
+.chart .hatch{fill:url(#hatch)}
+.chart .series{fill:none;stroke:var(--accent);stroke-width:2}
+.chart .dot{fill:var(--ink-2)}
+.chart .dot.cur{fill:var(--accent);r:7}
+.chart .task{fill:var(--ink-3);opacity:.7}
+.chart .task.seq{fill:url(#hatch-warn)}
+.chart .task.cur{fill:var(--accent);opacity:1}
+.chart .task.deferred{opacity:.25}
+.chart .cell{stroke:var(--surface)}
+.chart .cell.ok{fill:var(--ok-bg)}.chart .cell.warn{fill:var(--warn-bg)}.chart .cell.stop{fill:var(--stop-bg)}
+.inset svg{width:100%;height:auto;display:block}
+.inset text{font-weight:700;font-size:10px}
+.wavegraph .wave{fill:var(--surface-2)}
+.wavegraph .wavelabel{font-size:12px;font-weight:700;fill:var(--ink-2)}
+.wavegraph .step rect{fill:var(--surface);stroke:var(--line);stroke-width:1.5}
+.wavegraph .step.seq rect{stroke:var(--warn);stroke-width:2}
+.wavegraph .step.deferred rect{stroke-dasharray:4 3;opacity:.5}
+.wavegraph .step .id{font-size:11px;font-weight:700;fill:var(--accent)}
+.wavegraph .step .t{font-size:11px;fill:var(--ink)}
+.wavegraph .dep{fill:none;stroke:var(--ink-3);stroke-width:1.5}
+.wavegraph marker path{fill:var(--ink-3)}
+.graph{background:var(--surface-2);border-radius:var(--r-card);padding:var(--sp2);margin:var(--sp2) 0;overflow:auto}
+.graph svg{max-width:100%;height:auto}
+.ring{width:40px;height:40px;flex:none}
+.ring circle{fill:none;stroke-width:4;stroke:var(--line-soft)}
+.ring circle.arc{stroke:var(--accent);stroke-dasharray:60 100;stroke-linecap:round;transform-origin:50% 50%;animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.revising{display:flex;gap:var(--sp3);align-items:center;background:var(--accent-bg);border-radius:var(--r-card);padding:var(--sp2) var(--sp3);margin-top:var(--sp3)}
+.banner{background:var(--warn-bg);color:var(--warn);border-radius:var(--r-card);padding:var(--sp2) var(--sp3);margin-top:var(--sp3);font-weight:600}
+.banner.edit{background:var(--accent-bg);color:var(--accent)}
+.changes{border-collapse:collapse;width:100%;font-size:.8125rem;margin-top:var(--sp2)}.changes th,.changes td{border:1px solid var(--line-soft);padding:4px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}.changes th{background:var(--surface-2)}.changes .add{color:var(--ok)}.changes .del{color:var(--stop)}
+.whatchanged p{margin:0 0 var(--sp2)}
+.sheet-bg{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:10;padding:var(--sp3)}
+.sheet-bg[open]{display:flex}
+.sheet{background:var(--surface);border-radius:var(--r-card);padding:var(--sp4);max-width:560px;width:100%;border:1px solid var(--line)}
+.sheet h2{margin:0 0 var(--sp2);font-size:1.125rem}
+.sheet p{color:var(--ink-2);margin:0 0 var(--sp3)}
+.sheet textarea,.helper-form textarea{width:100%;min-height:120px;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface);color:var(--ink);resize:vertical}
+.sheet .row{display:flex;gap:var(--sp2);justify-content:flex-end;margin-top:var(--sp3)}
+.sheet label{display:block;font-weight:600;margin-bottom:4px}
+.hint{font-size:.8125rem;color:var(--ink-3)}
+.helper-fab{position:fixed;right:24px;bottom:24px;width:56px;height:56px;border-radius:999px;font-size:1.5rem;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:9}
+.helper{position:fixed;right:24px;bottom:92px;width:380px;max-width:calc(100vw - 48px);max-height:min(640px,calc(100vh - 120px));background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);display:flex;flex-direction:column;z-index:9;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.helper[hidden]{display:none}
+.helper-head{display:flex;justify-content:space-between;align-items:flex-start;padding:var(--sp3);border-bottom:1px solid var(--line-soft)}
+.helper-link{font-size:.8125rem;color:var(--ink-2);display:flex;gap:6px;align-items:center;margin-top:2px}
+.helper-link .dot{width:8px;height:8px;border-radius:999px;background:var(--warn);display:inline-block}
+.helper-link.live .dot{background:var(--ok)}
+.helper-intro{margin:0;padding:var(--sp2) var(--sp3);font-size:.875rem;color:var(--ink-2);border-bottom:1px solid var(--line-soft)}
+.helper-log{flex:1;overflow:auto;padding:var(--sp3);display:flex;flex-direction:column;gap:var(--sp2);min-height:120px}
+.msg{max-width:92%;padding:8px 12px;border-radius:12px;font-size:.9375rem;line-height:1.4;overflow-wrap:anywhere}
+.msg.you{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:4px}
+.msg.claude{align-self:flex-start;background:var(--surface-2);border-bottom-left-radius:4px}
+.msg.sys{align-self:center;font-size:.8125rem;color:var(--ink-3)}
+.msg .who{display:block;font-size:.6875rem;letter-spacing:.06em;text-transform:uppercase;opacity:.75;margin-bottom:2px}
+.helper-form{padding:var(--sp3);border-top:1px solid var(--line-soft)}
+.helper-form textarea{min-height:72px;padding:8px 10px}
+.helper-form .row{display:flex;justify-content:space-between;align-items:center;gap:var(--sp2);margin-top:var(--sp2)}
+.helper-scope{display:flex;gap:var(--sp3);font-size:.875rem;margin-bottom:var(--sp2)}
+.helper-scope label{display:inline-flex;gap:6px;align-items:center;min-height:44px;padding:0 6px;cursor:pointer}
+.helper-scope input{width:20px;height:20px;margin:0}
+.mdsheet{max-width:960px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:0}
+.mdhead{display:flex;justify-content:space-between;gap:var(--sp3);align-items:flex-start;padding:var(--sp3) var(--sp4);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.mdhead p{margin:0}
+.mdbody{overflow:auto;padding:var(--sp3) var(--sp4) var(--sp4);font-size:.9375rem}
+.mdbody h1{font-size:1.5rem;margin:.2em 0 .4em}.mdbody h2{font-size:1.125rem;margin:1.4em 0 .4em;padding-top:.6em;border-top:1px solid var(--line-soft)}.mdbody h3{font-size:1rem;margin:1.2em 0 .3em}
+.mdbody code{font-family:var(--mono);font-size:.8125rem;background:var(--surface-2);padding:1px 5px;border-radius:3px}
+.mdbody pre{background:var(--surface-2);padding:10px 12px;border-radius:var(--r-ctl);overflow:auto}.mdbody pre code{background:none;padding:0}
+.mdbody table{border-collapse:collapse;width:100%;font-size:.875rem}.mdbody th,.mdbody td{border:1px solid var(--line-soft);padding:5px 8px;text-align:left}.mdbody th{background:var(--surface-2)}
+.mdbody blockquote{border-left:3px solid var(--line);margin:0;padding:2px 12px;color:var(--ink-2)}
+.mdbody ul,.mdbody ol{padding-left:1.4em}.mdbody li.task{list-style:none;margin-left:-1.2em}
+.mdbody input[type=checkbox]{margin-right:6px}
+footer{margin-top:var(--sp4);color:var(--ink-3);font-size:.875rem;display:flex;gap:var(--sp3);flex-wrap:wrap;justify-content:space-between}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--canvas);padding:10px 16px;border-radius:var(--r-card);opacity:0;transition:opacity var(--dur-base) var(--ease);pointer-events:none;font-size:.9375rem;max-width:90vw}
+.toast.show{opacity:1}
+.kbd{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 6px;font-family:var(--mono);font-size:.75rem;background:var(--surface)}
+.help{display:none;margin-top:var(--sp3)}
+.help[open]{display:block}
+.help dl{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin:0}
+#charts{display:none}
+@media (max-width:1007px){.main{grid-template-columns:1fr}.kv{grid-template-columns:100px 1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.ring circle.arc{stroke-dasharray:160 0}}
+</style>
+</head>
+<body>
+<a class="skip" href="#detail">Skip to step detail</a>
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute"><defs>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--ink-3)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--surface)" stroke-width="3"/></pattern>
+<pattern id="hatch-warn" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--warn)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--surface)" stroke-width="2"/></pattern>
+</defs></svg>
+<div class="wrap">
+<header class="top">
+  <div>
+    <div class="label">magician · /blueprint · plan review</div>
+    <h1 id="title">@@TITLE@@</h1>
+    <div class="meta"><span class="chip accent" id="ver"></span><span id="counts"></span><span class="chip" id="planstatus"></span><span class="chip" id="tally" aria-live="polite"></span></div>
+  </div>
+  <div class="actions">
+    <label class="btn theme" for="theme"><span class="label">Plan theme</span><select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    <button class="btn" id="showmd" aria-haspopup="dialog">Show plan document</button>
+    <button class="btn danger" id="reject">Reject plan</button>
+    <button class="btn primary" id="approveplan">Approve plan</button>
+  </div>
+</header>
+
+<section class="card" aria-label="Player">
+  <div class="controls">
+    <button class="btn primary" id="play" aria-pressed="false">▶ Play</button>
+    <button class="btn" id="prev">◀ Previous</button>
+    <button class="btn" id="next">Next ▶</button>
+    <button class="btn" id="restart">↺ Restart</button>
+    <button class="btn" id="speed">Speed 1×</button>
+    <span class="grow"></span>
+    <span class="progress" id="progress" aria-live="polite"></span>
+    <button class="btn icon" id="helpbtn" aria-label="Keyboard help" aria-expanded="false">?</button>
+  </div>
+  <div class="help" id="help">
+    <dl><dt><span class="kbd">Space</span></dt><dd>Play / pause</dd><dt><span class="kbd">←</span> <span class="kbd">→</span></dt><dd>Previous / next step</dd><dt><span class="kbd">R</span></dt><dd>Restart</dd><dt><span class="kbd">S</span></dt><dd>Cycle speed</dd><dt><span class="kbd">A</span></dt><dd>Approve step</dd><dt><span class="kbd">C</span></dt><dd>Request change</dd><dt><span class="kbd">E</span></dt><dd>Edit step</dd><dt><span class="kbd">D</span></dt><dd>Defer step</dd><dt><span class="kbd">H</span></dt><dd>Helper panel</dd><dt><span class="kbd">?</span></dt><dd>This help</dd><dt><span class="kbd">Esc</span></dt><dd>Close sheet</dd></dl>
+  </div>
+  <div class="timeline" id="timeline" role="tablist" aria-label="Waves"></div>
+</section>
+
+<div class="main">
+  <section class="card map" aria-label="Architecture map">
+    <div class="label">Architecture map — what the plan touches</div>
+    <div id="map"></div>
+    <div class="legend"><span><i class="sw"></i>existing</span><span><i class="sw new"></i>new in this plan</span><span><i class="sw active"></i>touched by this step</span><span><i class="sw done"></i>approved</span></div>
+  </section>
+
+  <section class="card detail" id="detail" aria-label="Step detail" tabindex="-1">
+    <div id="detailbody"></div>
+  </section>
+
+  <section class="card side" aria-label="Context panel">
+    <div id="sidebody"></div>
+  </section>
+</div>
+
+<footer>
+  <span>Sources: <span id="sources"></span></span>
+  <span id="modenote"></span>
+</footer>
+</div>
+
+<div class="sheet-bg" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="sheet">
+    <h2 id="sheet-title"></h2>
+    <p id="sheet-text"></p>
+    <div id="sheet-fields"></div>
+    <div class="row"><button class="btn" id="sheet-cancel">Cancel</button><button class="btn primary" id="sheet-ok">Send</button></div>
+  </div>
+</div>
+<button class="btn primary helper-fab" id="helperbtn" aria-expanded="false" aria-controls="helper" aria-label="Open the Claude helper">✦</button>
+<aside class="helper" id="helper" aria-label="Claude helper" hidden>
+  <div class="helper-head"><div><div class="label">✦ Claude helper</div><div class="helper-link" id="helperlink"><span class="dot"></span><span id="helperstatus"></span></div></div><button class="btn icon" id="helperclose" aria-label="Close helper">×</button></div>
+  <p class="helper-intro" id="helperintro"></p>
+  <div class="helper-log" id="helperlog" aria-live="polite"></div>
+  <form class="helper-form" id="helperform">
+    <div class="helper-scope" role="radiogroup" aria-label="Scope"><label><input type="radio" name="scope" value="step" checked> This step (<span id="helperstep">—</span>)</label><label><input type="radio" name="scope" value="plan"> Whole plan</label></div>
+    <label class="sr" for="helpertext">Message</label>
+    <textarea id="helpertext" rows="3" maxlength="2000" placeholder="e.g. use a managed Redis instead of self-hosted"></textarea>
+    <div class="row"><span class="hint" id="helperhint"></span><button class="btn primary" type="submit" id="helpersend">Send</button></div>
+  </form>
+</aside>
+<div class="sheet-bg" id="mddlg" role="dialog" aria-modal="true" aria-labelledby="md-title">
+  <div class="sheet mdsheet">
+    <div class="mdhead"><div><h2 id="md-title">Plan document — plan.md</h2><p>What /orchestrate and /ward will execute. Rendered from the same plan.json as this page.</p><p class="hint" id="mdnote"></p></div><div class="row" style="margin:0"><button class="btn" id="md-copy">Copy plan</button><button class="btn primary" id="md-close">Close</button></div></div>
+    <div class="mdbody" id="mdbody" tabindex="0"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sr" id="livenote" role="status" aria-live="polite"></div>
+
+<div id="charts" aria-hidden="true">
+@@CHARTS@@
+</div>
+<template id="plan-md">
+@@PLAN_MD_HTML@@
+</template>
+<script type="application/json" id="plan-md-raw">@@PLAN_MD_RAW@@</script>
+<script type="application/json" id="plan">@@PLAN_JSON@@</script>
+<script>
+(function(){
+'use strict';
+const PLAN=JSON.parse(document.getElementById('plan').textContent);
+const PLAN_MD=JSON.parse(document.getElementById('plan-md-raw').textContent);
+const $=s=>document.querySelector(s);
+const root=document.documentElement;
+/* Transport (data-review): auto | local | artifact | static.
+   local    — the companion server injected window.__MAGICIAN_LIVE: events are POSTed, state is polled / streamed.
+   artifact — the page runs as a Claude Artifact: events go to the artifact's db capability, state is a db document.
+   static   — nothing leaves the page; every send composes a chat line.
+   auto     — local when __MAGICIAN_LIVE is present, else artifact when window.claude.use exists, else static. */
+const MODE=root.dataset.review||'auto';
+const LIVE=((MODE==='auto'||MODE==='local')&&window.__MAGICIAN_LIVE&&typeof window.__MAGICIAN_LIVE==='object')?window.__MAGICIAN_LIVE:null;
+const ARTIFACT_HOST=!LIVE&&(MODE==='auto'||MODE==='artifact')&&!!(window.claude&&typeof window.claude.use==='function');
+const RENDERED_VERSION=Number(PLAN.version)||1;
+PLAN.version=RENDERED_VERSION;
+const steps=PLAN.steps||[]; const byId={};
+function normStep(s){s.review=Object.assign({status:'pending',note:'',edited_text:''},s.review||{}); if(!('v' in s)) s.v=PLAN.version; s.history=Array.isArray(s.history)?s.history:[]; s.depends_on=s.depends_on||[]; s.touches=s.touches||[]; s.files=s.files||{}; s.red=s.red||{}; s.green=s.green||{}; s.verify=s.verify||[]; s.risk=s.risk||{}; s.effort=s.effort||{}; return s}
+steps.forEach(normStep); steps.forEach(s=>{byId[s.id]=s});
+const ctx=PLAN.context||{}; const comps=[]; const edges=[]; const layers=[];
+function deriveContext(){comps.length=0; edges.length=0; layers.length=0; (ctx.components||[]).filter(c=>c&&c.id).forEach(c=>comps.push(c)); (ctx.edges||[]).map(e=>Array.isArray(e)?e:[e.from,e.to]).filter(e=>e[0]&&e[1]).forEach(e=>edges.push(e)); comps.forEach(c=>{if(!layers.includes(c.layer)) layers.push(c.layer)}); steps.forEach(s=>{if(s.layer&&!layers.includes(s.layer)) layers.push(s.layer)})}
+deriveContext();
+const tint=l=>'var(--l-'+((Math.max(0,layers.indexOf(l))%6)+1)+')';
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let cur=0, playing=false, speed=1, timer=null, dwellStart=0, dwellLen=0, raf=null;
+const items=[{kind:'context',id:'context'}].concat(steps);
+let n=items.length;
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function num(x){return typeof x==='number'&&isFinite(x)?x:0}
+function minutes(){return steps.filter(s=>s.review.status!=='deferred').reduce((a,s)=>a+num(s.effort.minutes),0)}
+
+/* ---------- link state (shared by every transport) ---------- */
+const link={kind:ARTIFACT_HOST?'pending':(LIVE?'local':'static'),db:null,readOnly:false,stateVersion:0,etag:null,queue:Promise.resolve(),pending:[],lastHint:'',lastNotice:'',seen:{},cached:false,unsub:[]};
+const isLive=()=>link.kind!=='static';
+const REVISING_TYPES=['step.change_request','step.edit','plan.change_request'];
+const WAIT_MS=600000; /* 10 min without a revision ⇒ "waiting for Claude" */
+let revising=null;   /* {step, started, confirmed, waiting} while a revision is in flight */
+function liveUrl(p){const b=String(LIVE&&LIVE.base||''); return b?b.replace(/\/+$/,'')+'/'+p:p}
+function statusLine(){return link.kind==='local'?'Live · same session · events.jsonl':link.kind==='artifact'?'Artifact · database · events collection':link.kind==='pending'?'Artifact · connecting to the database…':'Static — this page cannot reach the session; reply in chat (e.g. “T7: use managed Redis”)'}
+
+/* ---------- header ---------- */
+function renderHeader(){
+  $('#ver').textContent='v'+PLAN.version;
+  const par=steps.filter(s=>s.parallel).length;
+  $('#counts').textContent=steps.length+' steps · '+(PLAN.waves||[]).length+' waves · '+par+' parallel · ~'+(Math.round(minutes()/60*10)/10)+' h';
+  const settled=steps.every(s=>['approved','deferred','edited'].includes(s.review.status));
+  $('#approveplan').disabled=!(PLAN.status==='in_review'||PLAN.status==='draft')||link.readOnly; $('#approveplan').title=settled?'Every step is reviewed':'Some steps are not reviewed yet — you will be asked to confirm';
+  $('#reject').disabled=link.readOnly||PLAN.status==='approved'||PLAN.status==='rejected';
+  const ps=$('#planstatus'); ps.textContent=String(PLAN.status||'').replace('_',' ');
+  const tally={}; steps.forEach(s=>{tally[s.review.status]=(tally[s.review.status]||0)+1});
+  $('#tally').textContent=['approved','edited','deferred','changed','revising','pending'].filter(k=>tally[k]).map(k=>tally[k]+' '+k).join(' · ')||'no steps';
+  ps.className='chip '+(PLAN.status==='approved'?'ok':PLAN.status==='rejected'?'stop':'');
+  $('#sources').textContent=(PLAN.sources||[]).map(s=>s.id+' '+s.label).join(' · ')||'—';
+  $('#modenote').textContent=(isLive()?statusLine():'Static page — review marks stay in this tab; reply in chat to change the plan')+(link.readOnly?' · read-only':'')+' · Version history: '+Array.from({length:PLAN.version},(_,k)=>'v'+(k+1)).join(', ');
+  $('#helperstatus').textContent=statusLine(); $('#helperlink').classList.toggle('live',link.kind==='local'||link.kind==='artifact');
+  $('#helpersend').disabled=link.readOnly; $('#helpersend').textContent=isLive()?'Send':'Copy chat line';
+}
+
+/* ---------- timeline ---------- */
+function renderTimeline(){
+  const tl=$('#timeline'); tl.innerHTML='';
+  const groups=[{id:'ctx',title:'Context',count:1,idx:[0]}].concat((PLAN.waves||[]).map(w=>({id:w.id,title:w.title||'',count:(w.steps||[]).length,idx:(w.steps||[]).map(id=>items.findIndex(i=>i.id===id)).filter(i=>i>0)})));
+  groups.forEach(g=>{
+    const b=document.createElement('button'); b.className='tl'; b.setAttribute('role','tab'); b.type='button';
+    b.innerHTML='<span class="t">'+(g.id==='ctx'?'':esc(g.id)+' · ')+esc(g.title)+'</span><span class="c">'+(g.id==='ctx'?'step 0':g.count+' steps')+'</span><span class="bar"></span>';
+    const on=g.idx.includes(cur); b.setAttribute('aria-selected',on); if(on) b.setAttribute('aria-current','step');
+    b.onclick=()=>{if(g.idx.length) go(g.idx[0])}; tl.appendChild(b);
+  });
+}
+
+/* ---------- map ---------- */
+const pos={};
+function buildMap(){
+  if(!comps.length){$('#map').innerHTML='<p class="dim">No components declared in context.components — nothing to map.</p>';return}
+  const W=1200,bandH=86,pad=16; const H=layers.length*bandH+pad;
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-labelledby="maptitle mapdesc"><title id="maptitle">Architecture map</title><desc id="mapdesc">'+esc(layers.map(l=>l+': '+comps.filter(c=>c.layer===l).map(c=>c.label).join(', ')).join('. '))+'</desc>';
+  layers.forEach((l,i)=>{
+    const y=i*bandH+8; svg+='<rect class="band" fill="'+tint(l)+'" x="0" y="'+y+'" width="'+W+'" height="'+(bandH-6)+'" rx="8"/><text class="bandlabel" x="14" y="'+(y+18)+'">'+esc(l)+'</text>';
+    const cs=comps.filter(c=>c.layer===l); const gap=(W-120)/Math.max(1,cs.length);
+    cs.forEach((c,j)=>{const x=110+j*gap+gap/2-80, cy=y+30; pos[c.id]={x:x+80,y:cy+22,l:x,r:x+160,t:cy,b:cy+44};});
+  });
+  svg+='<g id="edges">'+edges.map(([a,b])=>{const A=pos[a],B=pos[b]; if(!A||!B)return ''; const sy=A.y>B.y?A.t:A.b, ty=A.y>B.y?B.b:B.t; const mid=(sy+ty)/2; return '<path class="edge" data-e="'+esc(a)+'|'+esc(b)+'" d="M'+A.x+','+sy+' C'+A.x+','+mid+' '+B.x+','+mid+' '+B.x+','+ty+'"/>'}).join('')+'</g>';
+  svg+='<g id="nodes" role="group" aria-label="Components">'+comps.map(c=>{const p=pos[c.id]; const sub=c.sub||c.layer; return '<g class="node '+(c.exists===false?'new':'')+'" data-id="'+esc(c.id)+'" tabindex="0" role="button" aria-label="'+esc(c.label)+', '+esc(sub)+(c.exists===false?', new':'')+'"><rect x="'+p.l+'" y="'+p.t+'" width="160" height="44" rx="8"/><text x="'+(p.l+12)+'" y="'+(p.t+19)+'">'+esc(String(c.label||c.id).slice(0,24))+'</text><text class="sub" x="'+(p.l+12)+'" y="'+(p.t+34)+'">'+esc(String(sub).slice(0,30))+'</text>'+(c.exists===false?'<rect class="badgebg" x="'+(p.r-36)+'" y="'+(p.t-8)+'" width="30" height="16" rx="8"/><text class="badge" x="'+(p.r-29)+'" y="'+(p.t+4)+'">NEW</text>':'')+'</g>'}).join('')+'</g>';
+  svg+='<circle class="packet" r="5"/></svg>';
+  $('#map').innerHTML=svg;
+  $('#map').querySelectorAll('.node').forEach(nd=>{const open=()=>{const id=nd.dataset.id; const i=items.findIndex((it,k)=>k>0&&it.touches.includes(id)); if(i>0) go(i)}; nd.onclick=open; nd.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}}});
+}
+function updateMap(){
+  const it=items[cur]; const touched=cur===0?[]:it.touches;
+  const approvedComps=new Set(steps.filter(s=>s.review.status==='approved').flatMap(s=>s.touches));
+  $('#map').querySelectorAll('.node').forEach(nd=>{const id=nd.dataset.id; nd.classList.toggle('active',touched.includes(id)); nd.classList.toggle('done',!touched.includes(id)&&approvedComps.has(id));});
+  $('#map').querySelectorAll('.edge').forEach(e=>{const [a,b]=e.dataset.e.split('|'); e.classList.toggle('active',touched.includes(a)&&touched.includes(b))});
+  if(!reduced&&cur>0){const e=$('#map').querySelector('.edge.active'); if(e){const pk=$('#map').querySelector('.packet'); const L=e.getTotalLength(); let t0=performance.now(); pk.style.opacity=1; (function anim(now){const k=Math.min(1,(now-t0)/600); const p=e.getPointAtLength(L*k); pk.setAttribute('cx',p.x); pk.setAttribute('cy',p.y); if(k<1)requestAnimationFrame(anim); else pk.style.opacity=0})(t0)}}
+}
+
+/* ---------- detail + side ---------- */
+function list(a){return a&&a.length?'<ul>'+a.map(x=>'<li class="mono">'+esc(x)+'</li>').join('')+'</ul>':'<span class="mono dim">—</span>'}
+function diffHtml(d){return '<pre class="diff mono">'+String(d).split('\n').map(l=>l.startsWith('+')?'<span class="add">'+esc(l)+'</span>':l.startsWith('-')?'<span class="del">'+esc(l)+'</span>':esc(l)).join('\n')+'</pre>'}
+function statusChip(s){const m={pending:['','pending'],approved:['ok','approved ✓'],deferred:['warn','deferred ⏸'],edited:['accent','edited by you'],changed:['warn','changed — re-review'],revising:['accent','revising…']}; const [c,t]=m[s.review.status]||['',s.review.status]; return '<span class="chip '+c+'">'+esc(t)+'</span>'}
+function elapsedText(){const ms=revising?Math.max(0,Date.now()-revising.started):0; const s=Math.floor(ms/1000); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function renderDetail(){
+  const d=$('#detailbody'); const it=items[cur]; const card=$('#detail');
+  if(cur===0){
+    card.setAttribute('aria-busy','false');
+    d.innerHTML='<div class="chips"><span class="chip">context</span><span class="chip">step 0</span></div><h2 aria-live="polite">What exists today, and what this plan changes</h2><p>'+esc(ctx.summary||'')+'</p>'
+    +'<dl class="kv"><dt>Spec</dt><dd class="mono">'+esc(PLAN.spec||'—')+'</dd>'+(ctx.stack&&ctx.stack.length?'<dt>Stack</dt><dd>'+esc(ctx.stack.join(', '))+'</dd>':'')+'<dt>Constraints</dt><dd>'+list(PLAN.constraints||[])+'</dd><dt>Waves</dt><dd>'+list((PLAN.waves||[]).map(w=>w.id+' '+(w.title||'')+' — '+(w.steps||[]).join(', ')))+'</dd></dl>'
+    +'<p class="dim">Press <span class="kbd">Space</span> or Play to walk the steps. Each step has a review toolbar'+(isLive()?'; Request change sends your text to the Claude session.':'; this page is static, so Request change composes a chat line you paste into the session.')+'</p>';
+  } else {
+    const s=it; const deps=s.depends_on.length?s.depends_on.map(x=>'<span class="chip">'+esc(x)+'</span>').join(' '):'<span class="chip">none</span>';
+    const lvl=s.risk.level||'low'; const risk='<span class="chip '+(lvl==='high'?'stop':lvl==='medium'?'warn':'ok')+'">'+esc(lvl)+'</span> '+esc(s.risk.note||'');
+    const busy=s.review.status==='revising'; const last=s.history[s.history.length-1]; const waiting=busy&&revising&&revising.waiting; const off=busy||link.readOnly;
+    card.setAttribute('aria-busy',busy?'true':'false');
+    d.innerHTML='<div class="chips"><span class="chip">'+esc(s.id)+'</span><span class="chip">'+esc(s.kind)+'</span><span class="chip" style="background:'+tint(s.layer)+'">'+esc(s.layer)+'</span><span class="chip">'+(s.parallel?'parallel':'sequential')+'</span>'+(s.v>1?'<span class="chip accent" data-badge="version">v'+esc(s.v)+'</span>':'')+'</div>'
+    +'<h2 aria-live="polite">'+esc(s.title)+'</h2><p>'+esc(s.intent)+'</p>'
+    +(busy?(waiting?'<div class="banner" role="status" aria-live="polite">Waiting for Claude — check the session (no revision for 10 min). The request for '+esc(s.id)+' was sent; the step updates here when the plan is rebuilt.</div>':'<div class="revising" role="status" aria-live="polite"><svg class="ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16"/><circle class="arc" cx="20" cy="20" r="16"/></svg><div><b>Claude is revising '+esc(s.id)+'</b><br><span class="mono" id="elapsed">'+elapsedText()+'</span> · rewriting the step, re-rendering plan.md + plan.html</div></div>'):'')
+    +(s.review.status==='changed'?'<div class="banner">Changed in v'+(last&&Number(last.v)||s.v)+': '+esc(last?(last.summary||('fields changed: '+(last.changed||[]).join(', '))):'')+' — review and approve again.</div>':'')
+    +(s.review.status==='edited'?'<div class="banner edit">Reviewer edit carried verbatim into plan.md: “'+esc(s.review.edited_text||s.review.note)+'”</div>':'')
+    +'<dl class="kv"><dt>Create</dt><dd>'+list(s.files.create)+'</dd><dt>Modify</dt><dd>'+list(s.files.modify)+'</dd><dt>Tests</dt><dd>'+list(s.files.test)+'</dd>'
+    +'<dt>RED</dt><dd><div class="mono">'+esc(s.red.test||'')+'</div>'+(s.red.code?'<pre class="cmd mono">'+esc(s.red.code)+'</pre>':'')+'<div class="mono dim">$ '+esc(s.red.run||'')+'</div></dd>'
+    +'<dt>GREEN</dt><dd>'+esc(s.green.sketch||'')+'<div class="mono dim">$ '+esc(s.green.run||s.red.run||'')+'</div></dd>'
+    +'<dt>Verify</dt><dd>'+s.verify.map(v=>'<pre class="cmd mono">$ '+esc(v)+'</pre>').join('')+'</dd>'
+    +'<dt>Risk</dt><dd>'+risk+'</dd><dt>Effort</dt><dd>'+num(s.effort.minutes)+' min</dd><dt>Depends on</dt><dd>'+deps+'</dd><dt>Touches</dt><dd>'+esc(s.touches.join(', ')||'—')+'</dd></dl>'
+    +'<div class="toolbar" role="group" aria-label="Review '+esc(s.id)+'">'
+    +'<button class="btn'+(s.review.status==='approved'?' on':'')+'" type="button" data-act="approve" aria-pressed="'+(s.review.status==='approved')+'"'+(off?' disabled':'')+'>✓ Approve</button>'
+    +'<button class="btn" type="button" data-act="change"'+(off?' disabled':'')+'>✎ Request change</button>'
+    +'<button class="btn" type="button" data-act="edit"'+(off?' disabled':'')+'>✏ Edit</button>'
+    +'<button class="btn" type="button" data-act="defer"'+(off?' disabled':'')+'>'+(s.review.status==='deferred'?'▶ Un-defer':'⏸ Defer')+'</button>'
+    +'<span class="status">'+statusChip(s)+'</span></div>';
+    d.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>act(b.dataset.act));
+  }
+  d.classList.remove('fade'); void d.offsetWidth; d.classList.add('fade');
+  renderSide();
+}
+function chart(key){const c=document.querySelector('#charts .chart[data-chart="'+key.replace(/"/g,'')+'"]'); if(!c) return null; const el=c.cloneNode(true); const id=cur>0?items[cur].id:null; const svg=el.querySelector('svg'); const t=el.querySelector('title'); if(svg&&t){svg.setAttribute('aria-label',t.textContent); svg.removeAttribute('aria-labelledby')} el.querySelectorAll('[id]').forEach(x=>x.removeAttribute('id')); el.querySelectorAll('[data-step]').forEach(x=>{x.classList.toggle('cur',x.dataset.step===id); x.classList.toggle('deferred',!!byId[x.dataset.step]&&byId[x.dataset.step].review.status==='deferred')}); return el.outerHTML}
+function block(title,inner){return inner?'<div class="block">'+(title?'<h3>'+esc(title)+'</h3>':'')+inner+'</div>':''}
+function show(v){if(v==null) return '—'; if(typeof v==='string') return v; return JSON.stringify(v)}
+function changedHtml(h){
+  const rows=(h.changed||[]).map(f=>'<tr><th scope="row" class="mono">'+esc(f)+'</th><td><span class="del">'+esc(show(h.before?h.before[f]:undefined))+'</span></td><td><span class="add">'+esc(show(h.after?h.after[f]:undefined))+'</span></td></tr>').join('');
+  return '<div class="whatchanged" data-from="'+esc(Number(h.v)-1)+'" data-to="'+esc(h.v)+'">'+(h.summary?'<p>'+esc(h.summary)+'</p>':'')+(rows?'<table class="changes"><thead><tr><th>Field</th><th>v'+esc(Number(h.v)-1)+'</th><th>v'+esc(h.v)+'</th></tr></thead><tbody>'+rows+'</tbody></table>':'')+(typeof h.diff==='string'&&h.diff?diffHtml(h.diff):'')+'</div>';
+}
+function renderSide(){
+  const sd=$('#sidebody'); const it=items[cur]; let h='';
+  if(cur===0){
+    h+=block('Blast radius (kg blast)',chart('blast_radius'));
+    const glance=[chart('tasks_per_wave'),chart('parallel_vs_sequential')].filter(Boolean).join('');
+    h+=block('Plan at a glance',glance?'<div class="charts">'+glance+'</div>':'');
+    h+=block('',chart('effort_by_layer'));
+    h+=block('',chart('risk_matrix'));
+  } else {
+    const s=it;
+    const last=s.history[s.history.length-1]; if(last&&(last.before||(typeof last.diff==='string'&&last.diff))) h+=block('What changed (v'+(Number(last.v)-1)+' → v'+Number(last.v)+')',changedHtml(last));
+    if(s.diff_sketch) h+=block('Diff sketch',diffHtml(s.diff_sketch));
+    if(s.kind==='verify'||s.layer==='tests') h+=block('RED → GREEN cycle','<div class="inset"><svg viewBox="0 0 320 90" role="img" aria-label="Red, green, refactor cycle"><title>RED → GREEN → REFACTOR</title>'+[['RED','var(--stop)',30],['GREEN','var(--ok)',160],['REFACTOR','var(--accent)',290]].map(([t,c,x])=>'<circle cx="'+x+'" cy="40" r="26" fill="none" stroke="'+c+'" stroke-width="3"/><text x="'+x+'" y="44" text-anchor="middle" style="fill:'+c+'">'+t+'</text>').join('')+'<path d="M58,40 H132 M188,40 H262" stroke="var(--line)" stroke-width="2"/><path d="M290,66 Q160,110 30,66" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 3"/></svg><p class="mono dim" style="margin:4px 0 0">write the failing test · make it pass · simplify with tests green</p></div>');
+    h+=block('Step infographic',chart('step:'+s.id));
+    h+=block(s.kind==='rollout'?'Rollout order':'Where this step sits',chart('critical_path'));
+    if(!h) h='<p class="dim">No infographic for this step — nothing to chart.</p>';
+  }
+  sd.innerHTML=h||'<p class="dim">Nothing to chart for this plan.</p>';
+}
+
+/* ---------- player ---------- */
+function dwellFor(i){ if(i===0) return 6000/speed; const s=items[i]; const words=((s.intent||'')+' '+(s.red.test||'')+' '+(s.green.sketch||'')+' '+s.verify.join(' ')).split(/\s+/).length; return Math.min(10,Math.max(4,4+0.5*words/40))*1000/speed }
+function nextPlayable(i){for(let k=i+1;k<n;k++){if(items[k].review&&items[k].review.status==='deferred') continue; return k} return i}
+function go(i){cur=Math.max(0,Math.min(n-1,i)); render(); if(playing) armDwell()}
+function render(){const hs=$('#helperstep'); if(hs) hs.textContent=cur===0?'context':items[cur].id; renderHeader();renderTimeline();updateMap();renderDetail(); $('#progress').textContent=cur===0?'Step 0 / '+(n-1)+' · context':'Step '+cur+' / '+(n-1)+' · '+items[cur].id+' '+(items[cur].layer||'')}
+function armDwell(){clearTimeout(timer); cancelAnimationFrame(raf); dwellLen=dwellFor(cur); dwellStart=performance.now(); timer=setTimeout(()=>{const nx=nextPlayable(cur); if(nx>cur) go(nx); else setPlaying(false)},dwellLen); const b=document.querySelector('.tl[aria-current="step"] .bar'); if(b&&!reduced){(function tick(){const k=Math.min(1,(performance.now()-dwellStart)/dwellLen); b.style.width=(k*100)+'%'; if(k<1&&playing) raf=requestAnimationFrame(tick)})()}}
+function setPlaying(p){playing=p; $('#play').textContent=p?'❚❚ Pause':'▶ Play'; $('#play').setAttribute('aria-pressed',p); if(p){ if(cur===n-1) cur=0; render(); armDwell()} else {clearTimeout(timer); cancelAnimationFrame(raf); const b=document.querySelector('.tl .bar'); if(b) b.style.width='0'}}
+$('#play').onclick=()=>setPlaying(!playing); $('#prev').onclick=()=>go(cur-1); $('#next').onclick=()=>go(cur+1); $('#restart').onclick=()=>{setPlaying(false);go(0)};
+$('#speed').onclick=()=>{speed=speed===1?2:speed===2?0.5:1; $('#speed').textContent='Speed '+speed+'×'; if(playing) armDwell()};
+$('#helpbtn').onclick=()=>{const h=$('#help'); const o=h.hasAttribute('open'); if(o)h.removeAttribute('open'); else h.setAttribute('open',''); $('#helpbtn').setAttribute('aria-expanded',!o)};
+$('#theme').onchange=e=>{root.dataset.theme=e.target.value};
+if(root.dataset.themeMode==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches){root.dataset.theme='dark'}
+$('#theme').value=root.dataset.theme;
+
+/* ---------- sheet + toast ---------- */
+function sheet({title,text,fields,ok,onok}){const s=$('#sheet'); $('#sheet-title').textContent=title; $('#sheet-text').textContent=text; $('#sheet-fields').innerHTML=fields||''; $('#sheet-ok').textContent=ok||'Send'; s.setAttribute('open',''); const f=s.querySelector('textarea,input'); if(f) f.focus(); else $('#sheet-ok').focus(); $('#sheet-ok').onclick=()=>{if(onok()!==false) close()}; $('#sheet-cancel').onclick=close; function close(){s.removeAttribute('open'); $('#detail').focus()}}
+function trap(e){if(e.key!=='Tab') return; const f=Array.from(e.currentTarget.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')).filter(x=>!x.disabled&&x.getClientRects().length); if(!f.length) return; const first=f[0],last=f[f.length-1]; if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()} else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}
+$('#sheet').addEventListener('keydown',trap); $('#mddlg').addEventListener('keydown',trap);
+$('#sheet').addEventListener('keydown',e=>{if(e.key==='Escape') $('#sheet-cancel').click(); if(e.key==='Enter'&&e.target.tagName==='TEXTAREA'&&!e.shiftKey){e.preventDefault();$('#sheet-ok').click()}});
+function toast(m){const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3200)}
+function copyText(text,label){const done=()=>toast((label||'Copied')+' — paste it into the Claude session'); const fail=()=>{toast('Clipboard refused by the browser — copy the line from the helper panel'); helperSay('sys',text)}; if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fail)} else fail()}
+
+/* ---------- events: §6.2 schema; sent by the transport, or composed as a chat line ---------- */
+const log=[];
+function describe(ev){const t=ev.type; return t==='step.review'?ev.step+' → '+ev.status:t==='step.change_request'?'['+ev.step+'] '+ev.text:t==='plan.change_request'?'[plan] '+ev.text:t==='step.edit'?'['+ev.step+'] edit '+Object.keys(ev.fields||{}).join(', ')+': '+Object.values(ev.fields||{}).join(' ').slice(0,200):t==='plan.approved'?'plan v'+ev.v+' approved ('+Object.keys(ev.steps||{}).length+' steps)':t==='plan.rejected'?'plan v'+ev.v+' rejected: '+ev.reason:t}
+function emit(ev){
+  ev.id=log.length+1; ev.v=PLAN.version; log.push(ev);
+  helperSay('you',describe(ev),ev.type);
+  if(!isLive()) return ev;
+  if(link.stateVersion>PLAN.version){helperSay('sys','Not sent — the plan moved to v'+link.stateVersion+' while you were reviewing ('+ev.type+' carried v'+ev.v+'); the new version is loading.'); return ev}
+  if(link.readOnly){helperSay('sys','Read-only view — '+ev.type+' was not sent.'); return ev}
+  ev.ts=new Date().toISOString();
+  const body=JSON.stringify(ev);
+  if(body.length>8192){helperSay('sys','Not sent — the event is over 8 KB; shorten the text.'); toast('Event too large (over 8 KB)'); return ev}
+  if(link.kind==='pending'){link.pending.push(ev); return ev}
+  if(link.kind==='local') sendLocal(ev,body); else sendArtifact(ev);
+  if(REVISING_TYPES.includes(ev.type)) beginRevising(ev.step||null);
+  return ev;
+}
+function sendLocal(ev,body){
+  fetch(liveUrl('events'),{method:'POST',headers:{'content-type':'application/json'},body}).then(r=>{
+    if(!r.ok){helperSay('sys','The companion refused '+ev.type+' ('+r.status+')'); toast('The companion refused the event ('+r.status+')'); if(REVISING_TYPES.includes(ev.type)&&revising&&!revising.confirmed){endRevising(); render()} startPolling(0); return}
+    return r.json().then(j=>{if(j&&j.id!=null) ev.server_id=j.id},()=>{}).then(()=>{if(REVISING_TYPES.includes(ev.type)) startPolling(2000)});
+  },()=>{helperSay('sys','Could not reach the companion — reply in chat instead'); toast('Could not reach the companion — reply in chat instead'); if(REVISING_TYPES.includes(ev.type)&&revising&&!revising.confirmed){endRevising(); render()}});
+}
+function sendArtifact(ev){
+  const doc=Object.assign({},ev);
+  link.queue=link.queue.then(()=>link.db.collection('events').add(doc)).then(ref=>{ev.server_id=ref.id},e=>{dbError(e,'send '+ev.type); if(REVISING_TYPES.includes(ev.type)&&revising&&!revising.confirmed){endRevising(); render()}});
+}
+function dbError(e,what){
+  const code=e&&typeof e.code==='string'?e.code:'unavailable';
+  if(code==='invalid_argument'||code==='transform_error') setReadOnly('This view cannot write to the artifact database ('+code+') — the controls are read-only; comment on the artifact instead.');
+  else if(code==='revoked'||code==='not_granted'||code==='capability_disabled'||code==='capability_removed') setReadOnly('The artifact database is not available in this view ('+code+') — read-only.');
+  else if(code==='quota_exceeded') helperSay('sys','The artifact database is full — '+String(e.message||'').slice(0,200)+'. Ask the owner to delete this artifact after the review.');
+  else helperSay('sys','Could not '+what+' ('+code+')'+(e&&e.message?': '+String(e.message).slice(0,200):''));
+}
+function setReadOnly(msg){if(!link.readOnly){link.readOnly=true; helperSay('sys',msg)} render()}
+
+/* ---------- revising indicator (§5.4) ---------- */
+function beginRevising(step,startedAt){
+  const s=step&&byId[step]; if(s) s.review.status='revising';
+  if(!revising||revising.step!==(step||'plan')) revising={step:step||'plan',started:isFinite(startedAt)?startedAt:Date.now(),confirmed:false,waiting:false};
+  if(isFinite(startedAt)){revising.started=startedAt; revising.confirmed=true}
+  setPlaying(false); render();
+}
+function endRevising(){if(!revising) return; const s=byId[revising.step]; if(s&&s.review.status==='revising') s.review.status='pending'; revising=null}
+setInterval(()=>{ if(!revising) return; const el=$('#elapsed'); if(el) el.textContent=elapsedText(); if(!revising.waiting&&Date.now()-revising.started>WAIT_MS){revising.waiting=true; helperSay('sys','Waiting for Claude — check the session (no revision for 10 min)'); render()} },1000);
+
+/* ---------- state (state.json / state document): the same shape on every transport ---------- */
+function applyState(st){
+  if(!st||typeof st!=='object') return;
+  const ver=Number(st.version)||0; if(ver) link.stateVersion=ver;
+  if(typeof st.status==='string'&&ver>=PLAN.version&&(!link.sentFinal||ver>PLAN.version||st.status==='approved'||st.status==='rejected')) PLAN.status=st.status;
+  const rv=st.revising&&typeof st.revising==='object'&&st.revising.step?st.revising:null;
+  if(st.steps&&typeof st.steps==='object'){Object.keys(st.steps).forEach(id=>{const s=byId[id]; const v=st.steps[id]; if(!s||v==null) return; const status=typeof v==='string'?v:(v.review||v.status); if(rv&&String(rv.step)===id) return; if(status==='revising'){beginRevising(id,revising&&revising.step===id?revising.started:Date.now()); return} if(revising&&!revising.confirmed&&revising.step===id) return; if(status&&['pending','approved','deferred','edited','changed'].includes(status)) s.review.status=status})}
+  if(Array.isArray(st.changed)) st.changed.forEach(id=>{const s=byId[id]; if(s&&s.review.status!=='deferred'&&s.review.status!=='revising') s.review.status='changed'});
+  if(rv){const t=Date.parse(rv.started_at); beginRevising(String(rv.step),isFinite(t)?t:undefined)}
+  else if(revising&&revising.confirmed&&ver<=PLAN.version){endRevising()}
+  if(typeof st.hint==='string'&&st.hint&&st.hint!==link.lastHint){link.lastHint=st.hint; helperSay('claude',st.hint.slice(0,500))}
+  if(typeof st.notice==='string'&&st.notice&&st.notice!==link.lastNotice){link.lastNotice=st.notice; helperSay('sys',st.notice.slice(0,500))}
+  if(Array.isArray(st.messages)) st.messages.forEach(m=>{if(!m||typeof m!=='object'||typeof m.text!=='string') return; const k=String(m.ts||'')+'|'+m.text; if(link.seen[k]) return; link.seen[k]=1; helperSay('claude',m.text.slice(0,2000))});
+  if(ver>PLAN.version) loadPlan(ver);
+  render();
+}
+function loadPlan(ver){
+  if(link.kind==='local'){ if(link.loading===ver) return; link.loading=ver; fetch(liveUrl('plan.json'),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{link.loading=0; if(p) applyPlan(p); else helperSay('sys','plan.json v'+ver+' is announced but could not be loaded yet')},()=>{link.loading=0}) }
+  else if(link.kind==='artifact'&&link.planDoc&&Number(link.planDoc.version)>PLAN.version) applyPlan(link.planDoc);
+}
+/* per-step diff, same flattening and field order as `plan-render diff` (one level, sorted keys); review.* is
+   left out because the page holds its own review marks and a status flip is not a content change */
+function canon(v){if(Array.isArray(v)) return '['+v.map(canon).join(',')+']'; if(v&&typeof v==='object') return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}'; return JSON.stringify(v===undefined?null:v)}
+function flat(s){const o={}; Object.keys(s).forEach(k=>{if(k==='v'||k==='history'||k==='review') return; const v=s[k]; if(v&&typeof v==='object'&&!Array.isArray(v)) Object.keys(v).forEach(k2=>{o[k+'.'+k2]=v[k2]}); else o[k]=v}); return o}
+function stepDiff(a,b){const fa=flat(a),fb=flat(b); const keys=Object.keys(Object.assign({},fa,fb)).sort(); const changed=keys.filter(k=>canon(fa[k])!==canon(fb[k])); const before={},after={}; changed.forEach(k=>{before[k]=fa[k]; after[k]=fb[k]}); return {changed,before,after}}
+function applyPlan(np){
+  if(!np||typeof np!=='object'||!Array.isArray(np.steps)) return;
+  const nv=Number(np.version)||0; if(nv<=PLAN.version) return;
+  const prev=Object.assign({},byId); const changedIds=[]; const curId=cur>0?items[cur].id:null;
+  const fresh=np.steps.filter(s=>s&&typeof s==='object'&&s.id).map(s=>normStep(JSON.parse(JSON.stringify(s))));
+  fresh.forEach(s=>{const o=prev[s.id]; if(!o){s.v=nv; changedIds.push(s.id); s.history.push({v:nv,changed:['(new step)'],summary:'added in v'+nv}); return}
+    const d=stepDiff(o,s); const localMark=['approved','deferred','edited'].includes(o.review.status);
+    if(d.changed.length){s.v=nv; changedIds.push(s.id); s.history=o.history.concat([{v:nv,changed:d.changed,before:d.before,after:d.after}]); if(s.review.status!=='deferred') s.review.status='changed'}
+    else {s.v=o.v; s.history=o.history; if(s.review.status==='pending'&&localMark) s.review.status=o.review.status; if(o.review.status==='edited'&&s.review.status!=='deferred'){s.review.status='edited'; s.review.edited_text=o.review.edited_text; s.review.note=o.review.note}}});
+  const removed=Object.keys(prev).filter(id=>!fresh.some(s=>s.id===id));
+  Object.keys(np).forEach(k=>{if(k!=='steps'&&k!=='context') PLAN[k]=np[k]}); PLAN.version=nv;
+  Object.keys(ctx).forEach(k=>{delete ctx[k]}); Object.assign(ctx,np.context||{});
+  steps.length=0; fresh.forEach(s=>steps.push(s)); Object.keys(byId).forEach(k=>{delete byId[k]}); steps.forEach(s=>{byId[s.id]=s});
+  items.length=1; steps.forEach(s=>items.push(s)); n=items.length; deriveContext(); buildMap();
+  const rs=revising?revising.step:null; revising=null;
+  const target=rs&&byId[rs]?rs:(changedIds[0]||curId); cur=Math.max(0,items.findIndex(it=>it.id===target)); if(cur<0) cur=0;
+  helperSay('claude','Plan v'+nv+' landed'+(changedIds.length?' — changed: '+changedIds.join(', '):' — no step changed')+(removed.length?' · removed: '+removed.join(', '):'')+'. Review the changed steps again.');
+  toast('Plan v'+nv+' loaded'+(changedIds.length?' — '+changedIds.length+' step(s) changed':''));
+  const note=$('#mdnote'); if(note) note.textContent='The plan document below is the v'+RENDERED_VERSION+' render; the page is at v'+nv+'. Reload the page for the rebuilt document.';
+  setPlaying(false); render();
+}
+
+/* ---------- local transport: poll `state` (ETag), stream `events-stream`, fetch `plan.json` ---------- */
+let pollTimer=null, stream=null;
+function startPolling(ms){if(link.kind!=='local') return; clearTimeout(pollTimer); pollTimer=setTimeout(poll,ms)}
+function poll(){
+  const h={}; if(link.etag) h['if-none-match']=link.etag;
+  fetch(liveUrl('state'),{cache:'no-store',headers:h}).then(r=>{if(r.status===304||!r.ok) return null; link.etag=r.headers.get('etag'); return r.json()}).then(st=>{if(st) applyState(st); schedule()},()=>schedule());
+  function schedule(){clearTimeout(pollTimer); pollTimer=setTimeout(poll,revising?2000:10000)}
+}
+function openStream(){
+  if(typeof window.EventSource!=='function') return;
+  try{stream=new EventSource(liveUrl('events-stream'))}catch(e){return}
+  stream.onmessage=e=>{let o; try{o=JSON.parse(e.data)}catch(_){return} handleStream(o)};
+}
+function handleStream(o){
+  if(!o||typeof o!=='object') return;
+  if(o.state&&typeof o.state==='object'){applyState(o.state); return}
+  if(typeof o.type!=='string'){if('version' in o) applyState(o); return}
+  if(o.type==='state'){applyState(o.data||o); return}
+  const v=Number(o.v)||0;
+  if(v&&v<PLAN.version){helperSay('sys','Ignored a stale '+o.type+' (v'+v+'; the plan is at v'+PLAN.version+')'); return}
+  if(o.type==='plan.revising'){const t=Date.parse(o.started_at); beginRevising(String(o.step||''),isFinite(t)?t:undefined); startPolling(2000); return}
+  if(o.type==='plan.error'){helperSay('sys',String(o.message||'plan.error').slice(0,500)); startPolling(0); return}
+  if(o.type==='plan.revised'){helperSay('claude','Revised to v'+v+(Array.isArray(o.steps)&&o.steps.length?' — '+o.steps.join(', '):'')+(o.summary?': '+String(o.summary).slice(0,300):'')); if(v>PLAN.version) loadPlan(v); startPolling(0); return}
+  if(/^(plan|step)\./.test(o.type)) startPolling(0);
+}
+
+/* ---------- artifact transport: db capability (declared by the skill, not by this page) ---------- */
+function startArtifact(){
+  window.claude.use('db').then(db=>{
+    if(!db){link.kind='static'; link.pending.length=0; helperSay('sys','Artifact without a database — reply in chat'); render(); return}
+    link.db=db; link.kind='artifact'; render(); helperSay('sys','Connected to the artifact database — events go to the "events" collection; the session answers through state/current.');
+    let loaded=false; const timer=setTimeout(()=>{if(!loaded) helperSay('sys','The artifact database has not answered in 10 s — the review state may be out of date or not reachable yet')},10000);
+    const settle=()=>{if(!loaded){loaded=true; clearTimeout(timer)}};
+    link.unsub.push(db.doc('state/current').onSnapshot(snap=>{
+      if(snap.metadata&&snap.metadata.fromCache){if(!link.cached){link.cached=true; helperSay('sys','Showing a cached copy of the review state — it may be out of date until the store answers')}} else {settle(); if(link.cached){link.cached=false; helperSay('sys','Review state confirmed by the store')}}
+      if(!snap.exists){if(!link.cached&&!link.noState){link.noState=true; helperSay('sys','No review state yet — the session writes state/current when it wakes')} return}
+      link.noState=false; applyState(snap.data());
+    },e=>{settle(); dbError(e,'read the review state')}));
+    link.unsub.push(db.doc('plan/current').onSnapshot(snap=>{if(!snap.exists) return; const p=snap.data(); if(p&&typeof p==='object'){link.planDoc=p; if(Number(p.version)>PLAN.version) applyPlan(p)}},e=>dbError(e,'read the plan')));
+    const q=link.pending.splice(0); q.forEach(ev=>{sendArtifact(ev); if(REVISING_TYPES.includes(ev.type)) beginRevising(ev.step||null)});
+  },e=>{link.kind='static'; link.pending.length=0; helperSay('sys','Artifact without a database — reply in chat'); render()});
+}
+function chatLine(scope,text){return (scope==='plan'?'plan':scope)+': '+text.replace(/\s+/g,' ').trim()}
+
+/* ---------- review actions ---------- */
+function dependents(id){return steps.filter(s=>s.depends_on.includes(id)).map(s=>s.id)}
+function act(a){
+  if(cur===0) return; const s=items[cur]; if(s.review.status==='revising'||link.readOnly) return; setPlaying(false);
+  if(a==='approve'){s.review.status=s.review.status==='approved'?'pending':'approved'; emit({type:'step.review',step:s.id,status:s.review.status}); render(); toast(s.id+' '+s.review.status+(isLive()?'':' (kept in this tab)')); return}
+  if(a==='defer'){ if(s.review.status==='deferred'){s.review.status='pending'; emit({type:'step.review',step:s.id,status:'pending'}); render(); return}
+    const deps=dependents(s.id); sheet({title:'Defer '+s.id+' to a later run?',text:(deps.length?'Dependents '+deps.join(', ')+' will be deferred too. ':'')+'The step stays in plan.md under “Deferred — not executed this run” and can be un-deferred.'+(isLive()?'':' This page is static: tell the session in chat, e.g. “'+s.id+': defer”.'),ok:'Defer',onok:()=>{[s.id,...deps].forEach(id=>{byId[id].review.status='deferred'; emit({type:'step.review',step:id,status:'deferred'})}); if(!isLive()) copyText(chatLine(s.id,'defer'+(deps.length?' (with '+deps.join(', ')+')':'')),'Chat line copied'); render()}}); return}
+  if(a==='edit'){sheet({title:'Edit '+s.id+' — intent',text:'Your text is carried verbatim into plan.md under “Reviewer edit”.'+(isLive()?' Claude integrates the edit and may adjust dependents if a file list changes.':' This page is static: the edit is kept in this tab and copied as a chat line for the session.'),fields:'<label for="ed">Intent</label><textarea id="ed" maxlength="2000">'+esc(s.review.edited_text||s.intent)+'</textarea>',ok:'Save edit',onok:()=>{const t=$('#ed').value.trim(); if(!t) return false; s.review.edited_text=t; s.review.status='edited'; s.review.note=t.slice(0,80)+(t.length>80?'…':''); emit({type:'step.edit',step:s.id,fields:{intent:t}}); if(!isLive()) copyText(chatLine(s.id,'edit intent — '+t),'Chat line copied'); render()}}); return}
+  if(a==='change'){sheet({title:'Request a change to '+s.id,text:isLive()?'Claude will revise this step and any step that depends on it, then re-render plan.md and plan.html. You stay on this page.':'This page is static and cannot reach the session. Your request is copied as a chat line (“'+s.id+': …”) — paste it into the Claude session, which will revise the step and re-render both documents.',fields:'<label for="cr">Adapt this step like…</label><textarea id="cr" maxlength="2000" placeholder="e.g. use a managed Redis instead of self-hosted"></textarea><div class="hint">≤ 2,000 characters · sent as untrusted text · Enter sends, Shift+Enter for a new line</div>',ok:isLive()?'Send to Claude':'Copy chat line',onok:()=>{const t=$('#cr').value.trim(); if(!t) return false; if(isLive()){emit({type:'step.change_request',step:s.id,text:t}); render()} else {emit({type:'step.change_request',step:s.id,text:t}); copyText(chatLine(s.id,t),'Chat line copied')}}}); return}
+}
+function approvePlan(){const map={}; steps.forEach(s=>{if(['pending','changed'].includes(s.review.status)) s.review.status='approved'; map[s.id]=s.review.status}); emit({type:'plan.approved',steps:map}); PLAN.status='approved'; link.sentFinal=true; render(); const d=steps.filter(s=>s.review.status==='deferred').map(s=>s.id); const m='Plan v'+PLAN.version+' approved ('+(steps.length-d.length)+' of '+steps.length+' steps'+(d.length?'; '+d.join(', ')+' deferred':'')+').'; toast(m); helperSay('sys',m+(isLive()?' The session continues to /orchestrate.':' Static page: tell the session in chat.')); if(!isLive()) copyText('plan: approved v'+PLAN.version+(d.length?' — defer '+d.join(', '):'')+(steps.some(s=>s.review.status==='edited')?' — edited: '+steps.filter(s=>s.review.status==='edited').map(s=>s.id+' ('+s.review.edited_text.replace(/\s+/g,' ').slice(0,200)+')').join('; '):''),'Approval line copied')}
+$('#approveplan').onclick=()=>{const open=steps.filter(s=>['pending','changed'].includes(s.review.status)); const busy=steps.some(s=>s.review.status==='revising'); if(busy){toast('A revision is in progress — wait for it to land');return} if(!open.length) return approvePlan(); sheet({title:'Approve plan v'+PLAN.version+'?',text:open.length+' of '+steps.length+' steps are not reviewed yet ('+open.map(s=>s.id).join(', ')+'). Approving the plan marks them approved; deferred steps stay deferred. Nothing runs until the session sees the approval.',ok:'Approve all and continue',onok:approvePlan})};
+$('#reject').onclick=()=>{sheet({title:'Reject plan v'+PLAN.version+'?',text:isLive()?'This archives the version to history/plan.v'+PLAN.version+'.rejected.json with your reason, writes a decision record, and returns to the spec. Nothing is executed.':'This page is static: the reason is copied as a chat line `plan: rejected — <reason>` for you to paste; nothing is archived from here.',fields:'<label for="rr">Reason (required)</label><textarea id="rr" maxlength="2000"></textarea>',ok:'Reject plan',onok:()=>{const r=$('#rr').value.trim(); if(!r) return false; emit({type:'plan.rejected',reason:r}); PLAN.status='rejected'; link.sentFinal=true; render(); if(!isLive()) copyText('plan: rejected — '+r,'Rejection line copied'); toast('Plan v'+PLAN.version+' rejected: '+r.slice(0,80))}})};
+
+/* ---------- helper (✦ link to the Claude session) ---------- */
+const hl=$('#helperlog');
+function helperSay(who,text,kind){const d=document.createElement('div'); d.className='msg '+who; if(kind) d.dataset.event=kind; d.innerHTML=(who==='sys'?'':'<span class="who">'+(who==='you'?'You':'Claude')+'</span>')+'<span>'+esc(text)+'</span>'; hl.appendChild(d); hl.scrollTop=hl.scrollHeight; if(who!=='you'){const ln=$('#livenote'); if(ln) ln.textContent=(who==='claude'?'Claude: ':'')+text} return d}
+function helperOpen(o){const was=$('#helper').hidden; $('#helper').hidden=!o; $('#helperbtn').setAttribute('aria-expanded',o); if(o){$('#helperstep').textContent=cur===0?'context':items[cur].id; $('#helpertext').focus()} else if(!was&&$('#helper').contains(document.activeElement)) $('#helperbtn').focus()}
+$('#helperbtn').onclick=()=>helperOpen($('#helper').hidden); $('#helperclose').onclick=()=>helperOpen(false);
+$('#helpertext').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#helperform').requestSubmit()} if(e.key==='Escape') helperOpen(false)});
+$('#helperform').onsubmit=e=>{e.preventDefault(); const t=$('#helpertext').value.trim(); if(!t||link.readOnly) return; const scope=$('#helperform').scope.value; $('#helpertext').value='';
+  const stepScope=scope==='step'&&cur>0; const s=stepScope?items[cur]:null;
+  if(isLive()){ if(s){ if(s.review.status==='revising'){helperSay('sys',s.id+' is already being revised — wait for it to land'); return} emit({type:'step.change_request',step:s.id,text:t}); render()} else emit({type:'plan.change_request',text:t}) }
+  else { emit(s?{type:'step.change_request',step:s.id,text:t}:{type:'plan.change_request',text:t}); const line=chatLine(s?s.id:'plan',t); helperSay('sys','Chat line: '+line); copyText(line,'Chat line copied') }
+};
+if(link.kind==='local'){$('#helperintro').textContent='Talk to the Claude session that wrote this plan. Ask for a change, a clarification or a re-plan; the answer lands here and the plan rebuilds in place.'; $('#helperhint').textContent='Enter sends · Shift+Enter new line · sent as untrusted text'; helperSay('sys','Connected to the session that wrote this plan.'); startPolling(0); openStream()}
+else if(link.kind==='pending'){$('#helperintro').textContent='This page runs as a Claude Artifact. Toolbar actions are written to the artifact database; the session that published it reads them and rebuilds the plan in place.'; $('#helperhint').textContent='Enter sends · Shift+Enter new line · sent as untrusted text'; helperSay('sys','Connecting to the artifact database…'); startArtifact()}
+else {$('#helperintro').textContent='This page was rendered as a static file. Review marks are kept in this tab so you can tally them; Send composes the chat line and copies it to the clipboard for you to paste into the Claude session.'; $('#helperhint').textContent='Enter copies the chat line · Shift+Enter new line'; helperSay('sys','Static page — nothing is sent anywhere. Paste the copied lines into the Claude session that wrote this plan.'); if(MODE==='artifact') helperSay('sys','Artifact without a database — reply in chat')}
+helperSay('claude','Plan v'+PLAN.version+' has '+steps.length+' steps in '+(PLAN.waves||[]).length+' waves. Review each step, or say what to change.');
+
+/* ---------- plan document dialog (pre-rendered by plan-render; no runtime library) ---------- */
+function mdOpen(){const d=$('#mddlg'); const body=$('#mdbody'); body.innerHTML=''; body.appendChild(document.getElementById('plan-md').content.cloneNode(true));
+  d.setAttribute('open',''); $('#md-close').focus(); setPlaying(false);
+  $('#md-close').onclick=()=>{d.removeAttribute('open'); $('#showmd').focus()};
+  $('#md-copy').onclick=()=>{if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(PLAN_MD).then(()=>toast('plan.md copied ('+PLAN_MD.length+' chars)'),()=>toast('Clipboard refused by the browser')); else toast('Clipboard not available here')};
+}
+$('#showmd').onclick=mdOpen;
+$('#mddlg').addEventListener('keydown',e=>{if(e.key==='Escape') $('#md-close').click()});
+
+/* ---------- keyboard ---------- */
+document.addEventListener('keydown',e=>{ if($('#sheet').hasAttribute('open')||$('#mddlg').hasAttribute('open')) return; const tag=e.target.tagName; if(tag==='TEXTAREA'||tag==='INPUT'||tag==='SELECT'||tag==='BUTTON'||tag==='A'||e.target.isContentEditable) return; if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const k=e.key; if(k===' '){e.preventDefault();setPlaying(!playing)} else if(k==='ArrowRight'){go(cur+1)} else if(k==='ArrowLeft'){go(cur-1)} else if(k==='r'||k==='R'){$('#restart').click()} else if(k==='s'||k==='S'){$('#speed').click()} else if(k==='a'||k==='A'){act('approve')} else if(k==='c'||k==='C'){act('change')} else if(k==='e'||k==='E'){act('edit')} else if(k==='d'||k==='D'){act('defer')} else if(k==='h'||k==='H'){helperOpen($('#helper').hidden)} else if(k==='?'){$('#helpbtn').click()} });
+
+buildMap(); render();
+window.__magicianPage={version:()=>PLAN.version,link:()=>link.kind,log:()=>log.slice()};
+})();
+</script>
+</body>
+</html>
+'''
+
+
+# ─────────────────────────── plan.workflow.js (Claude Code Workflow) ───────────────────────────
+# A Workflow script is JavaScript run by the Workflow tool: `meta` must be the first statement and a
+# pure literal; `phase()`, `log()`, `agent(prompt, opts)` and `parallel([thunks])` are the API;
+# Date.now(), Math.random(), new Date() and dynamic import() throw in that runtime, so the generator
+# never emits them and the sanity check refuses a file that carries one outside a string.
+FORBIDDEN_JS = ("Date.now(", "Math.random(", "new Date(", "import(")
+MAX_SUMMARY = 1200
+STALL_MS = 1800000
+
+
+def js_str(s: str) -> str:
+    """A JSON string literal is a valid JS string literal; `</` is escaped so the file could also sit
+    inside an HTML page, and U+2028/2029 so it stays a single line."""
+    return json.dumps(str(s), ensure_ascii=False).replace("</", "<\\/") \
+        .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+def js_lines(text: str, indent: str = "    ") -> str:
+    """A multi-line prompt as one concatenation of per-line string literals (readable in the file)."""
+    lines = text.rstrip("\n").split("\n")
+    return (" +\n" + indent).join(js_str(line + ("\n" if i < len(lines) - 1 else "")) for i, line in enumerate(lines))
+
+
+def ordered_in_wave(plan: dict, wave: dict) -> tuple[list[dict], list[dict]]:
+    """Active steps of a wave: the parallel ones (plan order) and the sequential ones in dependency
+    order (a step after every same-wave step it depends on; ties keep plan order)."""
+    by = step_index(plan)
+    active = [by[sid] for sid in wave.get("steps", []) if sid in by and not is_deferred(by[sid])]
+    par = [s for s in active if s.get("parallel")]
+    seq = [s for s in active if not s.get("parallel")]
+    ids = {s["id"] for s in seq}
+    out: list[dict] = []
+    placed: set[str] = set()
+    pending = list(seq)
+    while pending:
+        progress = False
+        for s in list(pending):
+            needs = [d for d in (s.get("depends_on") or []) if d in ids and d not in placed]
+            if not needs:
+                out.append(s)
+                placed.add(s["id"])
+                pending.remove(s)
+                progress = True
+        if not progress:                      # a cycle slipped past check(): keep plan order
+            out += pending
+            break
+    return par, out
+
+
+def workflow_prompt(plan: dict, s: dict) -> str:
+    nums = task_numbers(plan)
+    cons = plan.get("constraints") or []
+    deferred = {x["id"] for x in steps_of(plan) if is_deferred(x)}
+    skipped = [d for d in (s.get("depends_on") or []) if d in deferred]
+    o = [f"Execute ONE task of the approved plan \"{plan.get('title', '')}\" (plan v{plan.get('version', '')}, "
+         f"feature {plan.get('feature', '')}) with strict TDD on the existing repo. You see none of the parent "
+         "conversation — this prompt is complete. Read the repo's conventions first (CLAUDE.md, linter config) "
+         "and match them. Write the failing test first, make it pass, refactor; run the task's verify commands; "
+         "commit exactly once with the message below. Do NOT push, open a PR, or touch files outside this task's "
+         "Files list.",
+         "",
+         "## Global Constraints",
+         "Every task inherits these — do not restate per task."]
+    o += [f"- {c}" for c in cons] or ["- (none)"]
+    if skipped:
+        o += ["", f"Note: {', '.join(skipped)} is deferred this run; treat its outputs as absent."]
+    o += ["", task_block(plan, s).rstrip("\n"), "",
+          f"RETURN JSON: {{task:\"{s['id']}\" (Task {nums[s['id']]}), green (bool), commit (sha or subject), "
+          f"files_changed[], summary (≤ {MAX_SUMMARY} chars, distilled — no logs), obstacles[] "
+          "(lore/obstacles.md fields: STATUS, OBSTACLE, BLOCKER, SEVERITY, WORKAROUND, RECURRENCE, SCOPE, NEXT; "
+          "empty when clean)}"]
+    return "\n".join(o)
+
+
+def render_workflow(plan: dict) -> str:
+    steps = steps_of(plan)
+    active = [s for s in steps if not is_deferred(s)]
+    deferred = [s for s in steps if is_deferred(s)]
+    waves = [w for w in plan.get("waves", []) if isinstance(w, dict)]
+    phases = []
+    for w in waves:
+        par, seq = ordered_in_wave(plan, w)
+        if par or seq:
+            phases.append({"title": f"{w['id']} {w.get('title', '')}".strip(),
+                           "detail": f"{len(par)} parallel, {len(seq)} sequential"})
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(plan.get("feature", "plan"))).strip("-") or "plan"
+    desc = (f"{plan.get('title', '')} — plan v{plan.get('version', '')}: {len(active)} tasks in {len(phases)} waves"
+            + (f", {len(deferred)} deferred" if deferred else ""))
+    o = ["export const meta = {",
+         f"  name: {js_str(name + '-plan')},",
+         f"  description: {js_str(desc)},",
+         "  phases: [",
+         *[f"    {{ title: {js_str(p['title'])}, detail: {js_str(p['detail'])} }}," for p in phases],
+         "  ],",
+         "}",
+         "",
+         f"// Generated by plan-render from plan.json ({SCHEMA} v{plan.get('version', '')}, sha256:{plan_hash(plan)}).",
+         "// One phase per wave; parallel() for the steps marked Parallel: YES, then the sequential steps in",
+         "// dependency order; deferred steps are omitted. Pass to the Workflow tool as {script}. No Date.now(),",
+         "// Math.random(), new Date() or import() — they throw in the Workflow runtime.",
+         "",
+         "// Return budget (skills/weave/references/template.md): bounded strings, files_changed[], obstacles[].",
+         "const S = (n) => ({ type: 'string', maxLength: n })",
+         "const OBSTACLE = { type: 'object', additionalProperties: false,   // lore/obstacles.md, 8 fields",
+         "  properties: { STATUS: { type: 'string', enum: ['BLOCKED', 'DEGRADED', 'NEEDS_CONTEXT'] }, OBSTACLE: S(200),",
+         "    BLOCKER: S(400), SEVERITY: { type: 'string', enum: ['Critical', 'High', 'Medium', 'Low'] }, WORKAROUND: S(400),",
+         "    RECURRENCE: { type: 'string', enum: ['First-seen', 'Recurring', 'Systemic'] }, SCOPE: S(200), NEXT: S(300) },",
+         "  required: ['STATUS', 'OBSTACLE', 'BLOCKER', 'SEVERITY', 'RECURRENCE', 'SCOPE', 'NEXT'] }",
+         "const OBSTACLES = { type: 'array', maxItems: 8, items: OBSTACLE }",
+         "const FILES = { type: 'array', maxItems: 200, items: S(300) }",
+         "const RESULT = { type: 'object', additionalProperties: false,",
+         f"  properties: {{ task: S(80), green: {{ type: 'boolean' }}, commit: S(64), files_changed: FILES, summary: S({MAX_SUMMARY}), obstacles: OBSTACLES }},",
+         "  required: ['task', 'green', 'summary', 'obstacles'] }",
+         f"const STALL_MS = {STALL_MS}   // per-agent silence budget before a restart",
+         "",
+         "const results = {}",
+         "function task(id, phaseTitle, prompt) {",
+         "  return agent(prompt, { label: id, phase: phaseTitle, schema: RESULT, effort: 'medium', stallMs: STALL_MS })",
+         "    .then((r) => { results[id] = r; if (!r || !r.green) log('⚠ ' + id + ': not green — left for manual follow-up'); return r })",
+         "}",
+         ""]
+    for w in waves:
+        par, seq = ordered_in_wave(plan, w)
+        if not (par or seq):
+            continue
+        title = f"{w['id']} {w.get('title', '')}".strip()
+        o += [f"// ── {title} ──", f"phase({js_str(title)})",
+              f"log({js_str(f'{title}: ' + ', '.join(s['id'] for s in par + seq))})"]
+        if par:
+            o.append("await parallel([")
+            for s in par:
+                o += [f"  () => task({js_str(s['id'])}, {js_str(title)},", "    " + js_lines(workflow_prompt(plan, s)) + "),"]
+            o.append("])")
+        for s in seq:
+            o += [f"await task({js_str(s['id'])}, {js_str(title)},", "  " + js_lines(workflow_prompt(plan, s), "  ") + ")"]
+        o.append(f"log({js_str(title + ' done')})")
+        o.append("")
+    if deferred:
+        o.append("// Deferred — not executed this run: " + ", ".join(s["id"] for s in deferred))
+        o.append("")
+    o += ["return {",
+          f"  plan: {js_str(str(plan.get('feature', '')))}, version: {int(plan.get('version', 0) or 0)},",
+          "  tasks: Object.keys(results).map((id) => ({ id, green: !!(results[id] && results[id].green), commit: results[id] && results[id].commit })),",
+          "  obstacles: Object.keys(results).flatMap((id) => ((results[id] && results[id].obstacles) || []).map((o) => ({ task: id, ...o }))),",
+          f"  deferred: [{', '.join(js_str(s['id']) for s in deferred)}],",
+          "}"]
+    return "\n".join(o) + "\n"
+
+
+def strip_js_strings(src: str) -> str:
+    """Code with string literals and comments blanked (quotes kept), so a token scan and a bracket
+    balance see only code. Template literals keep their `${…}` holes as code."""
+    out: list[str] = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c in "\"'":
+            q = c
+            out.append(q)
+            i += 1
+            while i < n and src[i] != q:
+                if src[i] == "\\":
+                    i += 1
+                if i < n and src[i] == "\n":
+                    return "".join(out) + "\n<<unterminated string>>"
+                i += 1
+            out.append(q)
+            i += 1
+        elif c == "`":
+            out.append("`")
+            i += 1
+            while i < n and src[i] != "`":
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                if src.startswith("${", i):
+                    depth = 0
+                    while i < n:
+                        if src[i] == "{":
+                            depth += 1
+                        elif src[i] == "}":
+                            depth -= 1
+                            if depth == 0:
+                                out.append(src[i])
+                                i += 1
+                                break
+                        out.append(src[i])
+                        i += 1
+                    continue
+                i += 1
+            out.append("`")
+            i += 1
+        elif src.startswith("//", i):
+            while i < n and src[i] != "\n":
+                i += 1
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def js_sanity(src: str) -> list[str]:
+    """Stdlib check of a generated Workflow script: no forbidden runtime calls outside strings,
+    balanced brackets, every string literal closed, `export const meta` first."""
+    problems: list[str] = []
+    code = strip_js_strings(src)
+    if "<<unterminated string>>" in code:
+        problems.append("workflow: unterminated string literal")
+    for tok in FORBIDDEN_JS:
+        if tok in code:
+            problems.append(f"workflow: forbidden token {tok!r} outside a string (it throws in the Workflow runtime)")
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack: list[str] = []
+    for ch in code:
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack[-1] != pairs[ch]:
+                problems.append(f"workflow: unbalanced {ch!r}")
+                break
+            stack.pop()
+    if stack:
+        problems.append(f"workflow: unclosed {stack[-1]!r}")
+    if not src.startswith("export const meta = {"):
+        problems.append("workflow: `export const meta` must be the first statement")
+    for q in ('"', "'", "`"):
+        if code.count(q) % 2:
+            problems.append(f"workflow: odd number of {q} quotes")
+    return problems
+
+
+def checkable_js(src: str) -> str:
+    """The Workflow runtime runs the body after `meta` inside an async function (so top-level `return`
+    and `await` are legal there); `node --check` parses a module, so the same body is wrapped the
+    same way before checking. Line numbers shift by one."""
+    end = src.find("\n}\n")
+    if not src.startswith("export const meta = {") or end < 0:
+        return src
+    head, body = src[:end + 3], src[end + 3:]
+    return head + "async function __workflow(args, budget, agent, parallel, pipeline, phase, log) {\n" + body + "}\n"
+
+
+def node_check(src: str) -> str | None:
+    """`node --check` of the wrapped script when node exists; None when node is absent, "" when ok."""
+    node = shutil.which("node")
+    if not node:
+        return None
+    fd, tmp = tempfile.mkstemp(prefix=".plan-render.", suffix=".mjs")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(checkable_js(src))
+        p = subprocess.run([node, "--check", tmp], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"node --check could not run: {e}"
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return "" if p.returncode == 0 else (p.stderr.strip() or f"node --check exit {p.returncode}")
+
+
+# ───────────────────────────────────── CLI ──────────────────────────────────────
+def write_atomic(path: str, data: str) -> None:
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".plan-render.", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(data)
+        um = os.umask(0)
+        os.umask(um)
+        os.chmod(tmp, 0o666 & ~um)   # mkstemp gives 0600; these files are committed like specs
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def cmd_check(args) -> int:
+    plan, raw = load(args.plan)
+    problems = check(plan, raw)
+    for p in problems:
+        print(p)
+    if problems:
+        print(f"plan-render: {len(problems)} violation(s) in {args.plan}", file=sys.stderr)
+        return 2
+    _warn(plan)
+    print(f"ok: {args.plan} is a valid {SCHEMA} plan "
+          f"(v{plan.get('version')}, {len(steps_of(plan))} steps, {len(plan.get('waves', []))} waves)")
+    return 0
+
+
+def _checked(args) -> dict:
+    plan, raw = load(args.plan)
+    problems = check(plan, raw)
+    if problems:
+        for p in problems:
+            print(p)
+        print(f"plan-render: {len(problems)} violation(s) in {args.plan} — nothing rendered", file=sys.stderr)
+        sys.exit(2)
+    _warn(plan)
+    return plan
+
+
+def cmd_md(args) -> int:
+    plan = _checked(args)
+    out = render_md(plan)
+    if args.output:
+        write_atomic(args.output, out)
+    else:
+        sys.stdout.write(out)
+    return 0
+
+
+def cmd_html(args) -> int:
+    plan = _checked(args)
+    out = render_html(plan, theme=args.theme, static=args.static, mermaid=args.mermaid, transport=args.transport)
+    if args.output:
+        write_atomic(args.output, out)
+    else:
+        sys.stdout.write(out)
+    return 0
+
+
+def checked_workflow(plan: dict) -> str:
+    """Render the Workflow script and refuse to hand back one that fails the sanity checks."""
+    out = render_workflow(plan)
+    problems = js_sanity(out)
+    nc = node_check(out)
+    if nc:
+        problems.append(f"workflow: node --check failed: {nc.splitlines()[-1] if nc.strip() else nc}")
+    if problems:
+        for p in problems:
+            print(p)
+        print(f"plan-render: {len(problems)} violation(s) in the generated workflow — nothing written", file=sys.stderr)
+        sys.exit(2)
+    return out
+
+
+def cmd_workflow(args) -> int:
+    plan = _checked(args)
+    out = checked_workflow(plan)
+    if args.output:
+        write_atomic(args.output, out)
+    else:
+        sys.stdout.write(out)
+    return 0
+
+
+def cmd_diff(args) -> int:
+    a, _ = load(args.a)
+    b, _ = load(args.b)
+    print(json.dumps(diff(a, b), indent=2, ensure_ascii=False))
+    return 0
+
+
+def _warn(plan: dict) -> None:
+    for w in warnings_of(plan):
+        print(f"plan-render: warning: {w}", file=sys.stderr)
+
+
+def newest_history_version(hist: str) -> int:
+    best = 0
+    if os.path.isdir(hist):
+        for name in os.listdir(hist):
+            m = re.match(r"^plan\.v(\d+)(\.rejected)?\.json$", name)
+            if m:
+                best = max(best, int(m.group(1)))
+    return best
+
+
+def cmd_all(args) -> int:
+    plan, raw = load(args.plan)
+    problems = check(plan, raw)
+    folder = os.path.dirname(os.path.abspath(args.plan))
+    hist = os.path.join(folder, "history")
+    snap = os.path.join(hist, f"plan.v{plan.get('version')}.json")
+    if not problems:
+        if os.path.islink(hist):
+            problems.append("history: history/ is a symbolic link; refusing to write through it")
+        else:
+            newest = newest_history_version(hist)
+            if plan["version"] < newest:
+                problems.append(f"version: v{plan['version']} is lower than history/plan.v{newest}.json; bump the version")
+            if os.path.exists(snap):
+                with open(snap, "rb") as fh:
+                    if fh.read() != raw:
+                        problems.append(f"version: history/plan.v{plan['version']}.json already holds a different "
+                                        f"v{plan['version']}; bump the version before rendering a changed plan")
+    if problems:
+        for p in problems:
+            print(p)
+        print(f"plan-render: {len(problems)} violation(s) — nothing rendered", file=sys.stderr)
+        return 2
+    _warn(plan)
+    md_text = render_md(plan)                      # render everything first, then write all files
+    html_text = render_html(plan, theme=args.theme, static=args.static, mermaid=args.mermaid, transport=args.transport)
+    wf_text = checked_workflow(plan)
+    md_path = os.path.join(folder, "plan.md")
+    html_path = os.path.join(folder, "plan.html")
+    wf_path = os.path.join(folder, "plan.workflow.js")
+    write_atomic(md_path, md_text)
+    write_atomic(html_path, html_text)
+    write_atomic(wf_path, wf_text)
+    os.makedirs(hist, exist_ok=True)
+    write_atomic(snap, raw.decode("utf-8"))
+    for p in (md_path, html_path, wf_path, snap):
+        print(_shown_path(p))
+    return 0
+
+
+def _shown_path(p: str) -> str:
+    """A written path relative to the working folder. Both sides are resolved first, so a
+    symlinked folder (macOS /var -> /private/var, a symlinked project) does not print ../../.."""
+    try:
+        return os.path.relpath(os.path.realpath(p), os.path.realpath(os.getcwd()))
+    except ValueError:                       # another drive on Windows
+        return os.path.abspath(p)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="plan-render", description=__doc__.split("\n\n")[0],
+                                 formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 epilog="\n".join(__doc__.split("\n\n")[1:]))
+    sub = ap.add_subparsers(dest="cmd", metavar="<command>")
+    p = sub.add_parser("check", help="validate plan.json; exit 2 with one line per violation")
+    p.add_argument("plan")
+    p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("md", help="render plan.md")
+    p.add_argument("plan")
+    p.add_argument("-o", "--output")
+    p.set_defaults(fn=cmd_md)
+    for name, fn in (("html", cmd_html), ("all", cmd_all)):
+        p = sub.add_parser(name, help="render plan.html" if name == "html"
+                           else "check, then plan.md + plan.html + history/plan.v<version>.json next to the json")
+        p.add_argument("plan")
+        if name == "html":
+            p.add_argument("-o", "--output")
+        p.add_argument("--theme", choices=("light", "dark", "auto"), default="auto",
+                       help="initial theme; auto follows prefers-color-scheme (default)")
+        p.add_argument("--transport", choices=("auto", "local", "artifact", "static"), default="auto",
+                       help="how the review toolbar reaches the session: auto (default), local companion, "
+                            "artifact db capability, or static chat lines")
+        p.add_argument("--static", action="store_true", help="pin the page to static review mode (--transport static)")
+        p.add_argument("--mermaid", action="store_true", help="draw the wave graph with mmdc when on PATH")
+        p.set_defaults(fn=fn)
+    p = sub.add_parser("workflow", help="render plan.workflow.js (a Claude Code Workflow script; deferred steps omitted)")
+    p.add_argument("plan")
+    p.add_argument("-o", "--output")
+    p.set_defaults(fn=cmd_workflow)
+    p = sub.add_parser("diff", help="JSON summary of what changed between two plan versions")
+    p.add_argument("a")
+    p.add_argument("b")
+    p.set_defaults(fn=cmd_diff)
+    args = ap.parse_args(argv)
+    if not args.cmd:
+        ap.print_help()
+        return 64
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

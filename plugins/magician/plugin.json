@@ -1,0 +1,52 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "magician",
+  "version": "5.0.0",
+  "description": "Skills and review lenses for the software lifecycle: research, design, planning, test-first building, code review, security checks and release. Includes a local code index, per-project workspace notes, stack-specific guidance at session start, and optional Jira and Confluence access.",
+  "author": {
+    "name": "Alexander Tyagunov",
+    "email": "tyagunov.alex@gmail.com",
+    "url": "https://github.com/Alexander-Tyagunov"
+  },
+  "homepage": "https://github.com/Alexander-Tyagunov/magician",
+  "repository": "https://github.com/Alexander-Tyagunov/magician",
+  "license": "MIT",
+  "keywords": [
+    "sdlc",
+    "agents",
+    "tdd",
+    "workspace",
+    "knowledge-graph",
+    "code-search",
+    "security",
+    "mobile",
+    "gamedev",
+    "parallel",
+    "orchestration",
+    "port",
+    "integrate",
+    "comprehend",
+    "migrate",
+    "vendor-swap"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Magician",
+        "shortDescription": "Skills for the software lifecycle: research, design, planning, test-first building, verification, review and release.",
+        "category": "Coding",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "$divine review my current branch against main",
+          "$transmute port the saved-searches feature in ../admin-app into apps/customer",
+          "$unravel the checkout total test fails on CI but passes locally"
+        ]
+      },
+      "onboardingSkill": "./skills/almanac/SKILL.md"
+    }
+  }
+}
